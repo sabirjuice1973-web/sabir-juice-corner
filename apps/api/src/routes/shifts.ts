@@ -187,7 +187,7 @@ export async function registerShiftRoutes(app: FastifyInstance) {
       orderWhere = { order: { shiftId: id, status: "PAID", businessDate } };
     }
 
-    // Pull every OrderItem for PAID orders, with the joined item and order number.
+    // Pull every OrderItem for PAID orders, with the joined item.
     const rows = await prisma.orderItem.findMany({
       where: orderWhere,
       select: {
@@ -196,57 +196,51 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         isCustomMix: true,
         customMixComponents: true,
         item: { select: { id: true, itemCode: true, name: true, size: true } },
-        order: { select: { orderNo: true } },
       },
     });
 
-    type MixDetail = {
-      orderNo: string | null;
-      mixLabel: string;        // e.g. "Cherry + Banana"
-      glassQty: number;        // full glasses ordered in this line
-      mixPricePerGlass: number;
-      lineTotal: number;       // full mix revenue (sum of all components)
-      itemQty: number;         // this item's fractional share: glassQty / n
-    };
     type Agg = {
-      itemId: string; itemCode: number; name: string; size: string;
-      qty: number; revenue: number;
-      mixGlasses: number;    // total full-glass count from mixes (for "N from mixes" badge)
-      mixDetails: MixDetail[];
+      itemId: string;
+      itemCode: number | null;  // null for custom mixes
+      name: string;
+      size: string;
+      qty: number;
+      revenue: number;
+      isMix: boolean;
     };
 
     const byItem = new Map<string, Agg>();
     for (const r of rows) {
-      const key = r.item.id.toString();
-      const slot: Agg = byItem.get(key) ?? {
-        itemId: key, itemCode: r.item.itemCode, name: r.item.name, size: r.item.size,
-        qty: 0, revenue: 0, mixGlasses: 0, mixDetails: [],
-      };
       const glassQty = Number(r.qty.toString());
       const lineTotalNum = Number(r.lineTotal.toString());
 
       if (r.isCustomMix) {
+        // Each unique mix combination gets its own row, keyed by sorted component codes.
         const components = Array.isArray(r.customMixComponents)
-          ? (r.customMixComponents as Array<{ name: string }>)
+          ? (r.customMixComponents as Array<{ name: string; size: string; itemCode: number }>)
           : [];
-        const n = components.length || 1;
-        // Qty is fractional: cherry in a 2-fruit mix = 0.5 glass per glass ordered.
-        slot.qty += glassQty / n;
-        slot.revenue += lineTotalNum;
-        slot.mixGlasses += glassQty;
-        slot.mixDetails.push({
-          orderNo: r.order.orderNo,
-          mixLabel: components.map((c) => c.name).join(" + "),
-          glassQty,
-          mixPricePerGlass: glassQty > 0 ? lineTotalNum / glassQty : 0,
-          lineTotal: lineTotalNum,
-          itemQty: glassQty / n,
-        });
-      } else {
+        const sortedCodes = [...components].sort((a, b) => a.itemCode - b.itemCode).map((c) => c.itemCode).join("_");
+        const key = `mix_${sortedCodes}`;
+        const slot: Agg = byItem.get(key) ?? {
+          itemId: key,
+          itemCode: null,
+          name: components.map((c) => c.name).join(" + "),
+          size: components[0]?.size ?? "NA",
+          qty: 0, revenue: 0, isMix: true,
+        };
         slot.qty += glassQty;
         slot.revenue += lineTotalNum;
+        byItem.set(key, slot);
+      } else {
+        const key = r.item.id.toString();
+        const slot: Agg = byItem.get(key) ?? {
+          itemId: key, itemCode: r.item.itemCode, name: r.item.name, size: r.item.size,
+          qty: 0, revenue: 0, isMix: false,
+        };
+        slot.qty += glassQty;
+        slot.revenue += lineTotalNum;
+        byItem.set(key, slot);
       }
-      byItem.set(key, slot);
     }
 
     const items = [...byItem.values()]
@@ -258,8 +252,7 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         size: s.size,
         qty: s.qty.toFixed(2).replace(/\.?0+$/, ""),
         revenue: s.revenue.toFixed(2),
-        mixGlasses: s.mixGlasses > 0 ? s.mixGlasses : null,
-        mixDetails: s.mixDetails.length > 0 ? s.mixDetails : null,
+        isMix: s.isMix,
       }));
 
     const totals = items.reduce(

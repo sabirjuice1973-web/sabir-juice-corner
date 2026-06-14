@@ -21,16 +21,9 @@ import { displayItemName } from "../pos/posState";
 
 type Tab = "orders" | "items";
 
-type MixDetail = {
-  orderNo: string | null; mixLabel: string;
-  glassQty: number; mixPricePerGlass: number;
-  lineTotal: number; itemQty: number;
-};
 type ItemRow = {
-  itemId: string; itemCode: number; name: string; size: string;
-  qty: string; revenue: string;
-  mixGlasses: number | null;
-  mixDetails: MixDetail[] | null;
+  itemId: string; itemCode: number | null; name: string; size: string;
+  qty: string; revenue: string; isMix: boolean;
 };
 
 export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose: () => void }) {
@@ -42,7 +35,6 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"PAID" | "ALL">("PAID");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [expandedMixId, setExpandedMixId] = useState<string | null>(null);
   const [orderItemsCache, setOrderItemsCache] = useState<Record<string, OrderLine[]>>({});
   // null = today (current business date from server); "YYYY-MM-DD" = specific date
   const [fromDate, setFromDate] = useState<string | null>(null);
@@ -297,75 +289,17 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((it) => {
-                        const mixOpen = expandedMixId === it.itemId;
-                        return (
-                          <>
-                            <tr key={it.itemId}>
-                              <td className="font-mono text-xs text-slate-500">#{it.itemCode}</td>
-                              <td>
-                                {displayItemName(it.name, it.size)}
-                                {it.mixGlasses != null && it.mixDetails && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setExpandedMixId(mixOpen ? null : it.itemId)}
-                                    className="ml-2 text-[10px] pill bg-amber-100 text-amber-800 hover:bg-amber-200 cursor-pointer border-0"
-                                  >
-                                    {it.mixGlasses} from mixes {mixOpen ? "▲" : "▼"}
-                                  </button>
-                                )}
-                              </td>
-                              <td>{it.size !== "NA" && <span className="pill bg-slate-100 text-slate-700 text-[10px]">{it.size}</span>}</td>
-                              <td className="text-right font-mono font-medium">{it.qty}</td>
-                              <td className="text-right font-mono">PKR {it.revenue}</td>
-                            </tr>
-                            {mixOpen && it.mixDetails && (
-                              <tr key={`${it.itemId}-mix`} className="bg-amber-50">
-                                <td colSpan={5} className="px-4 py-2">
-                                  <div className="text-xs font-semibold text-amber-800 mb-1.5">Mix breakdown — how PKR {it.revenue} was built:</div>
-                                  <table className="w-full text-xs border-collapse">
-                                    <thead>
-                                      <tr className="text-amber-700">
-                                        <th className="text-left pb-1 font-semibold w-24">Order</th>
-                                        <th className="text-left pb-1 font-semibold">Mix</th>
-                                        <th className="text-right pb-1 font-semibold w-20">Glasses</th>
-                                        <th className="text-right pb-1 font-semibold w-24">Price/glass</th>
-                                        <th className="text-right pb-1 font-semibold w-24">Mix total</th>
-                                        <th className="text-right pb-1 font-semibold w-24">This item's share</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-amber-100">
-                                      {it.mixDetails.map((d, i) => (
-                                        <tr key={i}>
-                                          <td className="py-1 font-mono text-slate-600">{d.orderNo ?? "—"}</td>
-                                          <td className="py-1 text-slate-700 font-medium">{d.mixLabel}</td>
-                                          <td className="py-1 text-right tabular-nums">{d.glassQty}</td>
-                                          <td className="py-1 text-right tabular-nums">Rs {d.mixPricePerGlass.toFixed(0)}</td>
-                                          <td className="py-1 text-right tabular-nums font-semibold">Rs {d.lineTotal.toFixed(0)}</td>
-                                          <td className="py-1 text-right tabular-nums text-amber-700 font-bold">
-                                            {d.itemQty.toFixed(2).replace(/\.?0+$/, "")} glass
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr className="border-t border-amber-200 font-semibold text-amber-900">
-                                        <td colSpan={4} className="pt-1.5">Total from mixes</td>
-                                        <td className="pt-1.5 text-right tabular-nums">
-                                          Rs {it.mixDetails.reduce((s, d) => s + d.lineTotal, 0).toFixed(0)}
-                                        </td>
-                                        <td className="pt-1.5 text-right tabular-nums text-amber-700">
-                                          {it.mixDetails.reduce((s, d) => s + d.itemQty, 0).toFixed(2).replace(/\.?0+$/, "")} glass
-                                        </td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
-                                </td>
-                              </tr>
-                            )}
-                          </>
-                        );
-                      })}
+                      {items.map((it) => (
+                        <tr key={it.itemId} className={it.isMix ? "bg-amber-50/60" : ""}>
+                          <td className="font-mono text-xs text-slate-400">{it.itemCode != null ? `#${it.itemCode}` : ""}</td>
+                          <td className={it.isMix ? "font-medium text-amber-900" : ""}>
+                            {displayItemName(it.name, it.size)}
+                          </td>
+                          <td>{it.size !== "NA" && <span className={`pill text-[10px] ${it.isMix ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>{it.size}</span>}</td>
+                          <td className="text-right font-mono font-medium">{it.qty}</td>
+                          <td className="text-right font-mono">PKR {it.revenue}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </>
