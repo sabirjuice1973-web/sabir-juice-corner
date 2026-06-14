@@ -1,0 +1,35 @@
+{
+  "name": "@sjc/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "lint": "eslint src --ext .ts",
+    "backfill:custom-mix": "tsx src/scripts/backfill-custom-mix-deduction.ts",
+    "seed:reconciliation": "tsx src/scripts/seed-reconciliation-defaults.ts"
+  },
+  "dependencies": {
+    "@sjc/db": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "fastify": "^5.1.0",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/helmet": "^12.0.1",
+    "@fastify/jwt": "^9.0.1",
+    "@fastify/multipart": "^9.0.1",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.5",
+    "openai": "^4.76.0",
+    "xlsx": "^0.18.5",
+    "zod": "^3.23.8",
+    "pino-pretty": "^11.3.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

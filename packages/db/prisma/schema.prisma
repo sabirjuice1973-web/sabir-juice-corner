@@ -1,0 +1,1326 @@
+// Sabir Juice Corner — ERP/POS database schema
+// Conventions:
+//   • Every table has id (BigInt autoincrement), createdAt, updatedAt
+//   • Soft delete via deletedAt where applicable
+//   • Money columns use Decimal(12, 2)
+//   • All quantity/yield columns use Decimal(14, 3)
+//   • Every stock change funnels through StockMovement (audit backbone)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organization & Branches ──────────────────────────────────────────────
+
+model Organization {
+  id        BigInt   @id @default(autoincrement())
+  name      String
+  country   String   @default("PK")
+  currency  String   @default("PKR")
+  timezone  String   @default("Asia/Karachi")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches Branch[]
+  users    User[]
+}
+
+model Branch {
+  id              BigInt    @id @default(autoincrement())
+  organizationId  BigInt
+  code            String    @unique
+  name            String
+  address         String?
+  city            String?
+  phone           String?
+  isCentralKitchen Boolean  @default(false)
+  status          BranchStatus @default(ACTIVE)
+  openedAt        DateTime?
+  // Manually-set "active business date" for this branch. All Orders/Shifts/
+  // Expenses/Transfers created at this branch stamp THIS date on themselves
+  // (not the real calendar date), so reports group by business day even when
+  // the shop runs past midnight or the owner backdates entries. Owner or Branch
+  // Manager updates this via PATCH /branches/:id/business-date.
+  currentBusinessDate DateTime @default(now()) @db.Date
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  stockLocations   StockLocation[]
+  itemPrices       ItemPrice[]
+  userRoles        UserRole[]
+  orders           Order[]
+  shifts           Shift[]
+  expenses         Expense[]
+  transfersOut     Transfer[]       @relation("transfer_from_branch")
+  transfersIn      Transfer[]       @relation("transfer_to_branch")
+  productionBatches ProductionBatch[]
+  purchaseOrders   PurchaseOrder[]
+  salaries         Salary[]
+  dailySummaries   DailyBranchSummary[]
+  alerts           Alert[]
+  auditLogs        AuditLog[]
+  yieldConfigs     YieldConfig[]
+  reconciliations  StockReconciliation[]
+  accounts         Account[]
+  ledgerAccounts   LedgerAccount[]
+  ledgerEntries    LedgerEntry[]
+
+  @@index([organizationId])
+}
+
+enum BranchStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+// ─── Users, Roles, Permissions, Audit ─────────────────────────────────────
+
+model User {
+  id             BigInt   @id @default(autoincrement())
+  organizationId BigInt
+  fullName       String
+  username       String   @unique
+  email          String?  @unique
+  phone          String?
+  passwordHash   String
+  status         UserStatus @default(ACTIVE)
+  lastLoginAt    DateTime?
+  twoFactorSecret String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  userRoles         UserRole[]
+  sessions          Session[]
+  ordersAsCashier   Order[]       @relation("order_cashier")
+  ordersAsWaiter    Order[]       @relation("order_waiter")
+  ordersCancelledBy Order[]       @relation("order_cancelled_by")
+  shiftsOpened      Shift[]       @relation("shift_opened_by")
+  shiftsClosed      Shift[]       @relation("shift_closed_by")
+  stockMovements    StockMovement[]
+  productionBatches ProductionBatch[] @relation("batch_supervised_by")
+  transfersDispatched Transfer[]  @relation("transfer_dispatched_by")
+  transfersReceived Transfer[]    @relation("transfer_received_by")
+  supplierPayments  SupplierPayment[]
+  expenses          Expense[]
+  cashDrawerMoves   CashDrawerMovement[]
+  discountsApproved DiscountApplied[] @relation("discount_approved_by")
+  auditLogs         AuditLog[]
+  aiConversations   AiConversation[]
+  yieldConfigs      YieldConfig[]
+  reconciliationsOpening StockReconciliation[]      @relation("recon_opening_by")
+  reconciliationsClosing StockReconciliation[]      @relation("recon_closed_by")
+  reconReasonsLogged     StockReconciliationLine[]  @relation("recon_reason_by")
+  accountPaymentsRecorded AccountPayment[]          @relation("account_payment_by")
+
+  @@index([organizationId])
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+model Role {
+  id          BigInt   @id @default(autoincrement())
+  code        String   @unique   // OWNER, BRANCH_MANAGER, CASHIER, STORE_MGR, PRODUCTION, ACCOUNTANT, WAITER
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+}
+
+model Permission {
+  id          BigInt   @id @default(autoincrement())
+  code        String   @unique   // e.g. SALE_VOID, DISCOUNT_OVER_10, VIEW_PROFIT
+  description String?
+  category    String?           // POS, INVENTORY, FINANCE, ADMIN
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       BigInt
+  permissionId BigInt
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  roleId    BigInt
+  branchId  BigInt?            // NULL = org-wide
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  // Two unique constraints (NULLs are distinct in Postgres so we need both shapes):
+  //   - "scoped" assignment: same user can have the same role at multiple branches
+  //   - "global" assignment: enforced separately at API layer (one OWNER row per user)
+  @@unique([userId, roleId, branchId])
+  @@index([userId])
+  @@index([branchId])
+}
+
+model Session {
+  id           BigInt   @id @default(autoincrement())
+  userId       BigInt
+  refreshToken String   @unique
+  deviceInfo   String?
+  ip           String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     BigInt?
+  branchId   BigInt?
+  action     String                       // e.g. "order.void", "stock.adjust"
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ─── Catalog: categories, items, prices, recipes ──────────────────────────
+
+model Category {
+  id        BigInt   @id @default(autoincrement())
+  name      String
+  parentId  BigInt?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("category_parent", fields: [parentId], references: [id])
+  children Category[] @relation("category_parent")
+  items    Item[]
+  modifiers Modifier[]
+}
+
+model Item {
+  id           BigInt    @id @default(autoincrement())
+  itemCode     Int       @unique          // legacy POS code, 1..N
+  name         String
+  categoryId   BigInt?
+  size         ItemSize  @default(NA)
+  pairId       BigInt?                    // sibling (Medium ↔ Jumbo) — nullable
+  isActive     Boolean   @default(true)
+  isSeasonal   Boolean   @default(false)
+  // When true, this item is SKIPPED by the per-fruit reconciliation engine.
+  // Today flagged for the two "special composition" items only:
+  //   Mix Fruit Juice (#39/#40), Mix Fruit Shake (#151/#152).
+  // Their fruit composition changes daily; the owner tracks them separately.
+  excludeFromAutoReconciliation Boolean @default(false)
+  sortOrder    Int       @default(0)
+  imageUrl     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  category Category? @relation(fields: [categoryId], references: [id])
+  pair     Item?     @relation("item_pair", fields: [pairId], references: [id])
+  pairedBy Item[]    @relation("item_pair")
+
+  prices         ItemPrice[]
+  recipes        Recipe[]
+  orderItems     OrderItem[]
+  participations ItemParticipation[]
+
+  @@index([categoryId])
+  @@index([name])
+}
+
+enum ItemSize {
+  MEDIUM
+  JUMBO
+  NA
+}
+
+model ItemPrice {
+  id            BigInt    @id @default(autoincrement())
+  itemId        BigInt
+  branchId      BigInt?               // NULL = default org-wide price
+  price         Decimal   @db.Decimal(12, 2)
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+
+  item   Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([itemId, branchId, effectiveFrom])
+}
+
+model Recipe {
+  id        BigInt   @id @default(autoincrement())
+  itemId    BigInt
+  version   Int      @default(1)
+  isActive  Boolean  @default(true)
+  yieldQty  Int      @default(1)        // how many units this recipe produces (usually 1 glass)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  item        Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  ingredients RecipeIngredient[]
+
+  @@unique([itemId, version])
+}
+
+model RecipeIngredient {
+  id              BigInt   @id @default(autoincrement())
+  recipeId        BigInt
+  ingredientType  IngredientType
+  rawMaterialId   BigInt?
+  processedProductId BigInt?
+  quantity        Decimal  @db.Decimal(14, 3)
+  unitId          BigInt
+  isOptional      Boolean  @default(false)
+
+  recipe            Recipe            @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  rawMaterial       RawMaterial?      @relation(fields: [rawMaterialId], references: [id])
+  processedProduct  ProcessedProduct? @relation(fields: [processedProductId], references: [id])
+  unit              Unit              @relation(fields: [unitId], references: [id])
+
+  @@index([recipeId])
+}
+
+enum IngredientType {
+  RAW_MATERIAL
+  PROCESSED_PRODUCT
+  PACKAGING
+  OTHER
+}
+
+model Modifier {
+  id                 BigInt   @id @default(autoincrement())
+  name               String
+  priceDelta         Decimal  @db.Decimal(12, 2) @default(0)
+  appliesToCategoryId BigInt?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  category           Category? @relation(fields: [appliesToCategoryId], references: [id])
+  orderItemModifiers OrderItemModifier[]
+}
+
+// ─── Raw Materials, Units ─────────────────────────────────────────────────
+
+model RawMaterial {
+  id            BigInt   @id @default(autoincrement())
+  name          String   @unique
+  category      String?         // FRUIT, DAIRY, SUGAR, PACKAGING, OTHER
+  defaultUnitId BigInt
+  isPerishable  Boolean  @default(true)
+  reorderLevel  Decimal? @db.Decimal(14, 3)
+  reorderQty    Decimal? @db.Decimal(14, 3)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  defaultUnit       Unit               @relation(fields: [defaultUnitId], references: [id])
+  recipeIngredients RecipeIngredient[]
+  batchInputs       BatchInput[]
+  poItems           PoItem[]
+  grnItems          GrnItem[]
+}
+
+model Unit {
+  id     BigInt   @id @default(autoincrement())
+  code   String   @unique          // kg, g, l, ml, pc, crate, box, shoper, glass
+  name   String
+  type   UnitType
+
+  recipeIngredients RecipeIngredient[]
+  rawMaterials      RawMaterial[]
+  fromConversions   UnitConversion[] @relation("unit_from")
+  toConversions     UnitConversion[] @relation("unit_to")
+  stockLevels       StockLevel[]
+  stockMovements    StockMovement[]
+  batchInputs       BatchInput[]
+  batchOutputs      BatchOutput[]
+  batchWastages     BatchWastage[]
+  transferItems     TransferItem[]
+  poItems           PoItem[]
+  grnItems          GrnItem[]
+}
+
+enum UnitType {
+  WEIGHT
+  VOLUME
+  COUNT
+  CUSTOM
+}
+
+model UnitConversion {
+  id         BigInt  @id @default(autoincrement())
+  fromUnitId BigInt
+  toUnitId   BigInt
+  factor     Decimal @db.Decimal(18, 6)   // 1 fromUnit = factor toUnits
+  context    String?                       // optional: per-material override (e.g. "peach crate")
+
+  fromUnit Unit @relation("unit_from", fields: [fromUnitId], references: [id])
+  toUnit   Unit @relation("unit_to",   fields: [toUnitId],   references: [id])
+
+  @@unique([fromUnitId, toUnitId, context])
+}
+
+// ─── Processed products (pulp / shopers) ──────────────────────────────────
+
+model ProcessedProduct {
+  id                    BigInt   @id @default(autoincrement())
+  name                  String   @unique
+  storageUnit           String                       // "shoper" | "kg" | "liter"
+  defaultGlassesPerUnit Decimal  @db.Decimal(10, 2) @default(12)
+  shelfLifeDays         Int      @default(7)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  recipeIngredients   RecipeIngredient[]
+  batchOutputs        BatchOutput[]
+  yieldConfigs        YieldConfig[]
+  participations      ItemParticipation[]
+  reconciliationLines StockReconciliationLine[]
+}
+
+// ─── Production batches ───────────────────────────────────────────────────
+
+model ProductionBatch {
+  id                BigInt   @id @default(autoincrement())
+  batchNo           String   @unique
+  branchId          BigInt                       // typically the central kitchen
+  startedAt         DateTime @default(now())
+  completedAt       DateTime?
+  supervisedById    BigInt?
+  status            BatchStatus @default(OPEN)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  supervisedBy User?         @relation("batch_supervised_by", fields: [supervisedById], references: [id])
+  inputs       BatchInput[]
+  outputs      BatchOutput[]
+  wastages     BatchWastage[]
+
+  @@index([branchId, startedAt])
+}
+
+enum BatchStatus {
+  OPEN
+  COMPLETED
+  REJECTED
+}
+
+model BatchInput {
+  id            BigInt   @id @default(autoincrement())
+  batchId       BigInt
+  rawMaterialId BigInt
+  quantity      Decimal  @db.Decimal(14, 3)
+  unitId        BigInt
+  costAtIntake  Decimal  @db.Decimal(12, 2) @default(0)
+
+  batch        ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rawMaterial  RawMaterial     @relation(fields: [rawMaterialId], references: [id])
+  unit         Unit            @relation(fields: [unitId], references: [id])
+}
+
+model BatchOutput {
+  id                  BigInt   @id @default(autoincrement())
+  batchId             BigInt
+  processedProductId  BigInt
+  outputQty           Decimal  @db.Decimal(14, 3)
+  outputUnitId        BigInt
+
+  batch            ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  processedProduct ProcessedProduct @relation(fields: [processedProductId], references: [id])
+  outputUnit       Unit             @relation(fields: [outputUnitId], references: [id])
+}
+
+model BatchWastage {
+  id          BigInt   @id @default(autoincrement())
+  batchId     BigInt
+  wastageQty  Decimal  @db.Decimal(14, 3)
+  unitId      BigInt
+  reason      String?
+
+  batch ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  unit  Unit            @relation(fields: [unitId], references: [id])
+}
+
+// ─── Inventory ────────────────────────────────────────────────────────────
+
+model StockLocation {
+  id        BigInt   @id @default(autoincrement())
+  branchId  BigInt
+  name      String
+  type      StockLocationType
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  branch    Branch          @relation(fields: [branchId], references: [id])
+  levels    StockLevel[]
+  movements StockMovement[]
+  transfersFrom Transfer[]  @relation("transfer_from_location")
+  transfersTo   Transfer[]  @relation("transfer_to_location")
+
+  @@index([branchId])
+}
+
+enum StockLocationType {
+  CENTRAL_STORE
+  FREEZER
+  COUNTER
+  DISPLAY
+  KITCHEN
+}
+
+// Polymorphic stockable — encoded via stockableType + stockableId.
+// We do not use Prisma relations here because they cannot be polymorphic;
+// the api layer enforces referential integrity per stockableType.
+model StockLevel {
+  id             BigInt   @id @default(autoincrement())
+  locationId     BigInt
+  stockableType  StockableType
+  stockableId    BigInt
+  quantity       Decimal  @db.Decimal(14, 3) @default(0)
+  unitId         BigInt
+  lastMovementAt DateTime?
+  updatedAt      DateTime @updatedAt
+
+  location StockLocation @relation(fields: [locationId], references: [id])
+  unit     Unit          @relation(fields: [unitId], references: [id])
+
+  @@unique([locationId, stockableType, stockableId])
+  @@index([stockableType, stockableId])
+}
+
+enum StockableType {
+  RAW_MATERIAL
+  PROCESSED_PRODUCT
+  PACKAGING
+  FINISHED_ITEM
+}
+
+model StockMovement {
+  id              BigInt   @id @default(autoincrement())
+  locationId      BigInt
+  stockableType   StockableType
+  stockableId     BigInt
+  movementType    MovementType
+  quantity        Decimal  @db.Decimal(14, 3)        // signed: positive = in, negative = out
+  unitId          BigInt
+  referenceType   String?                            // PURCHASE_ORDER | PRODUCTION_BATCH | TRANSFER | ORDER | ADJUSTMENT
+  referenceId     BigInt?
+  performedById   BigInt?
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  location    StockLocation @relation(fields: [locationId], references: [id])
+  unit        Unit          @relation(fields: [unitId], references: [id])
+  performedBy User?         @relation(fields: [performedById], references: [id])
+
+  @@index([locationId, stockableType, stockableId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+enum MovementType {
+  PURCHASE_IN
+  PRODUCTION_IN
+  PRODUCTION_CONSUME
+  TRANSFER_OUT
+  TRANSFER_IN
+  SALE
+  WASTAGE
+  ADJUSTMENT
+  RETURN
+}
+
+// ─── Transfers ────────────────────────────────────────────────────────────
+
+model Transfer {
+  id              BigInt   @id @default(autoincrement())
+  transferNo      String   @unique
+  fromBranchId    BigInt
+  toBranchId      BigInt
+  fromLocationId  BigInt
+  toLocationId    BigInt
+  status          TransferStatus @default(DRAFT)
+  dispatchedById  BigInt?
+  dispatchedAt    DateTime?
+  receivedById    BigInt?
+  receivedAt      DateTime?
+  notes           String?
+  // Business day for this transfer — copied from the FROM-branch's
+  // currentBusinessDate at create time. Reports group by this.
+  businessDate    DateTime @db.Date
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  fromBranch   Branch         @relation("transfer_from_branch", fields: [fromBranchId], references: [id])
+  toBranch     Branch         @relation("transfer_to_branch",   fields: [toBranchId],   references: [id])
+  fromLocation StockLocation  @relation("transfer_from_location", fields: [fromLocationId], references: [id])
+  toLocation   StockLocation  @relation("transfer_to_location",   fields: [toLocationId],   references: [id])
+  dispatchedBy User?          @relation("transfer_dispatched_by", fields: [dispatchedById], references: [id])
+  receivedBy   User?          @relation("transfer_received_by",   fields: [receivedById],   references: [id])
+  items        TransferItem[]
+
+  @@index([fromBranchId, status])
+  @@index([toBranchId, status])
+}
+
+enum TransferStatus {
+  DRAFT
+  DISPATCHED
+  RECEIVED
+  VARIANCE
+  CLOSED
+}
+
+model TransferItem {
+  id             BigInt   @id @default(autoincrement())
+  transferId     BigInt
+  stockableType  StockableType
+  stockableId    BigInt
+  qtySent        Decimal  @db.Decimal(14, 3)
+  qtyReceived    Decimal? @db.Decimal(14, 3)
+  unitId         BigInt
+  varianceReason String?
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  unit     Unit     @relation(fields: [unitId], references: [id])
+
+  @@index([transferId])
+}
+
+// ─── Suppliers, Purchases, Payments ───────────────────────────────────────
+
+model Supplier {
+  id               BigInt   @id @default(autoincrement())
+  name             String
+  phone            String?
+  address          String?
+  paymentTermsDays Int      @default(15)
+  openingBalance   Decimal  @db.Decimal(12, 2) @default(0)
+  isActive         Boolean  @default(true)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+  payments       SupplierPayment[]
+}
+
+model PurchaseOrder {
+  id           BigInt   @id @default(autoincrement())
+  poNo         String   @unique
+  supplierId   BigInt
+  branchId     BigInt                            // central kitchen typically
+  status       PoStatus @default(DRAFT)
+  expectedAt   DateTime?
+  total        Decimal  @db.Decimal(12, 2) @default(0)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  supplier Supplier   @relation(fields: [supplierId], references: [id])
+  branch   Branch     @relation(fields: [branchId], references: [id])
+  items    PoItem[]
+  grns     GoodsReceivedNote[]
+
+  @@index([supplierId, status])
+}
+
+enum PoStatus {
+  DRAFT
+  OPEN
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PoItem {
+  id            BigInt   @id @default(autoincrement())
+  poId          BigInt
+  rawMaterialId BigInt
+  qty           Decimal  @db.Decimal(14, 3)
+  unitId        BigInt
+  rate          Decimal  @db.Decimal(12, 2)
+  amount        Decimal  @db.Decimal(12, 2)
+
+  po           PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  rawMaterial  RawMaterial   @relation(fields: [rawMaterialId], references: [id])
+  unit         Unit          @relation(fields: [unitId], references: [id])
+}
+
+model GoodsReceivedNote {
+  id           BigInt   @id @default(autoincrement())
+  grnNo        String   @unique
+  poId         BigInt?
+  receivedById BigInt?
+  receivedAt   DateTime @default(now())
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  po    PurchaseOrder? @relation(fields: [poId], references: [id])
+  items GrnItem[]
+}
+
+model GrnItem {
+  id            BigInt   @id @default(autoincrement())
+  grnId         BigInt
+  rawMaterialId BigInt
+  qtyReceived   Decimal  @db.Decimal(14, 3)
+  unitId        BigInt
+  rate          Decimal  @db.Decimal(12, 2)
+  condition     String?
+
+  grn         GoodsReceivedNote @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  rawMaterial RawMaterial       @relation(fields: [rawMaterialId], references: [id])
+  unit        Unit              @relation(fields: [unitId], references: [id])
+}
+
+model SupplierPayment {
+  id          BigInt   @id @default(autoincrement())
+  supplierId  BigInt
+  paidById    BigInt?
+  amount      Decimal  @db.Decimal(12, 2)
+  method      PaymentMethod
+  reference   String?
+  paidAt      DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  paidBy   User?    @relation(fields: [paidById], references: [id])
+}
+
+// ─── Sales / POS ──────────────────────────────────────────────────────────
+
+model Shift {
+  id           BigInt   @id @default(autoincrement())
+  branchId     BigInt
+  openedById   BigInt
+  openedAt     DateTime @default(now())
+  // Business day this shift belongs to. Copied from Branch.currentBusinessDate
+  // at open time and never updated again (locked once the shift starts).
+  businessDate DateTime @db.Date
+  openingCash  Decimal  @db.Decimal(12, 2)
+  closedById   BigInt?
+  closedAt     DateTime?
+  closingCash  Decimal? @db.Decimal(12, 2)
+  expectedCash Decimal? @db.Decimal(12, 2)
+  varianceCash Decimal? @db.Decimal(12, 2)
+  status       ShiftStatus @default(OPEN)
+  notes        String?
+
+  branch         Branch              @relation(fields: [branchId], references: [id])
+  openedBy       User                @relation("shift_opened_by", fields: [openedById], references: [id])
+  closedBy       User?               @relation("shift_closed_by", fields: [closedById], references: [id])
+  orders         Order[]
+  cashDrawerMoves CashDrawerMovement[]
+
+  @@index([branchId, status])
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+  REOPENED
+}
+
+model Order {
+  id              BigInt   @id @default(autoincrement())
+  orderNo         String   @unique
+  branchId        BigInt
+  shiftId         BigInt
+  waiterBox       Int?                       // 1..7 (your token system)
+  waiterId        BigInt?
+  orderType       OrderType @default(DINE_IN)
+  status          OrderStatus @default(OPEN)
+  subtotal        Decimal  @db.Decimal(12, 2) @default(0)
+  discountAmount  Decimal  @db.Decimal(12, 2) @default(0)
+  taxAmount       Decimal  @db.Decimal(12, 2) @default(0)
+  total           Decimal  @db.Decimal(12, 2) @default(0)
+  cashierId       BigInt
+  // Free-text label captured at push-time. Used by the POS for credit / shopkeeper
+  // orders (Box 7 "Market Orders" prompts for shopkeeper name; Boxes 1-5 customer-
+  // account orders can also carry the customer / partner name here). Stays on the
+  // order even after it's pushed to an Account so the receipt + ledger lines
+  // continue to show whose order it was.
+  customerName    String?
+  // When set, this order is on credit with the linked Account. The order is still
+  // marked PAID (revenue is recognised on delivery), but cash hasn't arrived —
+  // the account holder owes us. Subsequent AccountPayment rows settle the bill.
+  accountId       BigInt?
+  openedAt        DateTime @default(now())
+  closedAt        DateTime?
+  // Business day this order counts toward — copied from Branch.currentBusinessDate
+  // at create time. Reports group by this, not by openedAt. See Branch.currentBusinessDate.
+  businessDate    DateTime @db.Date
+  cancelReason    String?
+  cancelledById   BigInt?
+  cancelledAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  branch       Branch          @relation(fields: [branchId], references: [id])
+  shift        Shift           @relation(fields: [shiftId], references: [id])
+  cashier      User            @relation("order_cashier", fields: [cashierId], references: [id])
+  waiter       User?           @relation("order_waiter",  fields: [waiterId],  references: [id])
+  cancelledBy  User?           @relation("order_cancelled_by", fields: [cancelledById], references: [id])
+  account      Account?        @relation(fields: [accountId], references: [id])
+  items        OrderItem[]
+  payments     Payment[]
+  discounts    DiscountApplied[]
+  accountPaymentLinks AccountPaymentOrderLink[]
+
+  @@index([branchId, openedAt])
+  @@index([branchId, businessDate])
+  @@index([accountId])
+  @@index([shiftId])
+  @@index([status])
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderStatus {
+  OPEN
+  PAID
+  CANCELLED
+  VOIDED
+}
+
+model OrderItem {
+  id                   BigInt   @id @default(autoincrement())
+  orderId              BigInt
+  itemId               BigInt
+  qty                  Decimal  @db.Decimal(10, 2)
+  unitPrice            Decimal  @db.Decimal(12, 2)
+  lineTotal            Decimal  @db.Decimal(12, 2)
+  isCustomMix          Boolean  @default(false)
+  customMixComponents  Json?                       // [{ itemId|processedProductId, ratio }]
+  notes                String?
+  createdAt            DateTime @default(now())
+
+  order      Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item       Item               @relation(fields: [itemId], references: [id])
+  modifiers  OrderItemModifier[]
+
+  @@index([orderId])
+}
+
+model OrderItemModifier {
+  id          BigInt  @id @default(autoincrement())
+  orderItemId BigInt
+  modifierId  BigInt
+  priceDelta  Decimal @db.Decimal(12, 2)
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifier  Modifier  @relation(fields: [modifierId], references: [id])
+}
+
+model Payment {
+  id        BigInt   @id @default(autoincrement())
+  orderId   BigInt
+  method    PaymentMethod
+  amount    Decimal  @db.Decimal(12, 2)
+  reference String?
+  paidAt    DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  WALLET            // JazzCash, Easypaisa
+  CREDIT
+  BANK_TRANSFER
+}
+
+model DiscountApplied {
+  id            BigInt   @id @default(autoincrement())
+  orderId       BigInt
+  discountType  String           // PERCENT | FLAT | LOYALTY | PROMO
+  amount        Decimal  @db.Decimal(12, 2)
+  reason        String?
+  approvedById  BigInt?
+  appliedAt     DateTime @default(now())
+
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("discount_approved_by", fields: [approvedById], references: [id])
+}
+
+// ─── Accounts ─────────────────────────────────────────────────────────────
+
+model ExpenseCategory {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+
+  expenses Expense[]
+}
+
+model Expense {
+  id           BigInt   @id @default(autoincrement())
+  branchId     BigInt
+  categoryId   BigInt
+  // The original `amount` column is repurposed as CASH PAID — what actually came
+  // out of the cash drawer. May be 0 (credit purchase) or differ from total
+  // (partial payment, advance). Reports sum this for "today's cash out".
+  amount       Decimal  @db.Decimal(12, 2)
+  paidAt       DateTime @default(now())
+  // Business day this expense counts against — copied from Branch.currentBusinessDate
+  // at create time. Reports group by this, not paidAt.
+  businessDate DateTime @db.Date
+  paidById     BigInt?
+  vendor       String?
+  notes        String?
+  attachmentUrl String?
+  // Extended fields mirroring the old desktop software's data model so the
+  // owner can keep the same workflow:
+  //   productName = what was bought / paid for (e.g. "Khana Irke", "Petrol Motorcycle")
+  //   quantity / rate / total = transaction value breakdown
+  //   amount (above) = how much CASH was actually paid (can differ from total)
+  // All optional so simple cash-out entries (advance to a worker, owner draw)
+  // can be recorded with just amount + category + vendor.
+  productName  String?
+  quantity     Decimal? @db.Decimal(14, 3)
+  rate         Decimal? @db.Decimal(12, 2)
+  total        Decimal? @db.Decimal(12, 2)
+  createdAt    DateTime @default(now())
+
+  branch   Branch          @relation(fields: [branchId], references: [id])
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+  paidBy   User?           @relation(fields: [paidById], references: [id])
+
+  @@index([branchId, paidAt])
+  @@index([branchId, businessDate])
+}
+
+model CashDrawerMovement {
+  id        BigInt   @id @default(autoincrement())
+  shiftId   BigInt
+  type      CashMovementType
+  amount    Decimal  @db.Decimal(12, 2)
+  reason    String?
+  byUserId  BigInt?
+  at        DateTime @default(now())
+
+  shift  Shift @relation(fields: [shiftId], references: [id])
+  byUser User? @relation(fields: [byUserId], references: [id])
+}
+
+enum CashMovementType {
+  IN
+  OUT
+}
+
+model Salary {
+  id         BigInt   @id @default(autoincrement())
+  userId     BigInt
+  branchId   BigInt
+  month      String                     // YYYY-MM
+  gross      Decimal  @db.Decimal(12, 2)
+  deductions Decimal  @db.Decimal(12, 2) @default(0)
+  net        Decimal  @db.Decimal(12, 2)
+  paidAt     DateTime?
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([userId, month])
+}
+
+// ─── Analytics / Alerts / AI ──────────────────────────────────────────────
+
+model DailyBranchSummary {
+  id                  BigInt   @id @default(autoincrement())
+  branchId            BigInt
+  date                DateTime @db.Date
+  salesTotal          Decimal  @db.Decimal(14, 2) @default(0)
+  ordersCount         Int      @default(0)
+  cashTotal           Decimal  @db.Decimal(14, 2) @default(0)
+  cardTotal           Decimal  @db.Decimal(14, 2) @default(0)
+  walletTotal         Decimal  @db.Decimal(14, 2) @default(0)
+  creditTotal         Decimal  @db.Decimal(14, 2) @default(0)
+  discountTotal       Decimal  @db.Decimal(14, 2) @default(0)
+  voidCount           Int      @default(0)
+  cancelCount         Int      @default(0)
+  expenseTotal        Decimal  @db.Decimal(14, 2) @default(0)
+  expectedGlasses     Decimal  @db.Decimal(14, 2) @default(0)
+  actualGlassesSold   Decimal  @db.Decimal(14, 2) @default(0)
+  variancePct         Decimal  @db.Decimal(6, 2)  @default(0)
+  computedAt          DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, date])
+}
+
+model AlertRule {
+  id          BigInt   @id @default(autoincrement())
+  code        String   @unique          // e.g. EXCESSIVE_VOIDS, STOCK_LEAKAGE
+  name        String
+  ruleType    String                    // STAT_THRESHOLD | RATIO | ML
+  threshold   Json
+  severity    AlertSeverity @default(MEDIUM)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  alerts Alert[]
+}
+
+model Alert {
+  id             BigInt   @id @default(autoincrement())
+  ruleId         BigInt
+  branchId       BigInt?
+  severity       AlertSeverity
+  message        String
+  payload        Json?
+  acknowledgedAt DateTime?
+  acknowledgedBy BigInt?
+  createdAt      DateTime @default(now())
+
+  rule   AlertRule @relation(fields: [ruleId], references: [id])
+  branch Branch?   @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, createdAt])
+  @@index([acknowledgedAt])
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model AiConversation {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  title     String?
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  user     User        @relation(fields: [userId], references: [id])
+  messages AiMessage[]
+}
+
+model AiMessage {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  role           AiRole
+  content        String   @db.Text
+  toolCalls      Json?
+  tokensUsed     Int?
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+enum AiRole {
+  USER
+  ASSISTANT
+  TOOL
+  SYSTEM
+}
+
+// ─── Inventory Reconciliation ─────────────────────────────────────────────
+//
+// Per the owner's spec: reconciliation is fruit-level, NOT recipe-level.
+// Each ProcessedProduct (pulp) has a configurable yield (medium glasses per shoper).
+// Each Item has a list of participation percentages mapping it to one or more
+// pulps. The math engine sums (qty × size_factor × participation_pct) per fruit,
+// converts to shopers via yield, and compares against (opening + transfers − closing).
+//
+// Out of scope: recipe weights (grams/ml/kg), ingredient unit conversions,
+// per-batch costs. Those are tracked elsewhere if needed.
+
+// Versioned yield configuration: how many medium-glass equivalents one shoper
+// of this pulp produces. Mirrors the ItemPrice pattern so the owner can edit
+// seasonally (summer = more glass per shoper) without rewriting history.
+//
+// Lookup rule at query time:
+//   active row = WHERE processedProductId = X
+//                AND effectiveFrom <= businessDate
+//                AND (effectiveTo IS NULL OR effectiveTo > businessDate)
+//   Per-branch override (branchId set) wins over the org-wide row (branchId null).
+model YieldConfig {
+  id                 BigInt   @id @default(autoincrement())
+  processedProductId BigInt
+  branchId           BigInt?                       // null = org-wide; set = per-branch override
+  glassesPerShoper   Decimal  @db.Decimal(10, 2)   // medium-glass equivalents per shoper
+  effectiveFrom      DateTime @db.Date
+  effectiveTo        DateTime? @db.Date            // null = currently active
+  notes              String?
+  createdById        BigInt?
+  createdAt          DateTime @default(now())
+
+  processedProduct ProcessedProduct @relation(fields: [processedProductId], references: [id], onDelete: Cascade)
+  branch           Branch?          @relation(fields: [branchId], references: [id])
+  createdBy        User?            @relation(fields: [createdById], references: [id])
+
+  @@index([processedProductId, branchId, effectiveFrom])
+}
+
+// How much each pulp participates in producing a given Item.
+//   Peach Medium      -> [{ Peach Pulp, 100 }]
+//   Peach+Plum Medium -> [{ Peach Pulp, 50 }, { Plum Pulp, 50 }]
+//   Peach+Plum+Falsa  -> 3 rows at 33.3333 each (last row absorbs rounding to total 100)
+// One row per (Item, ProcessedProduct) pair. Owner can review/override in admin.
+model ItemParticipation {
+  id                 BigInt   @id @default(autoincrement())
+  itemId             BigInt
+  processedProductId BigInt
+  participationPct   Decimal  @db.Decimal(8, 4)    // e.g. 100.0000, 50.0000, 33.3333, 25.0000
+  isAutoSeeded       Boolean  @default(false)      // true if seeded by name-parse; owner has not reviewed
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  item             Item             @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  processedProduct ProcessedProduct @relation(fields: [processedProductId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, processedProductId])
+  @@index([processedProductId])
+}
+
+// One reconciliation per branch per business day. Lifecycle:
+//   DRAFT             -> opening just confirmed; day is in progress, sales accumulating
+//   PENDING_CLOSE     -> manager opened the close screen but hasn't submitted yet
+//   PENDING_REASONS   -> submitted, but variance > 5% on some lines needs a reason
+//   CLOSED            -> all required reasons recorded, day fully reconciled
+model StockReconciliation {
+  id                     BigInt   @id @default(autoincrement())
+  branchId               BigInt
+  businessDate           DateTime @db.Date
+  status                 ReconciliationStatus @default(DRAFT)
+  // Opening confirmation — morning manager either accepts last night's closing
+  // as today's opening, or overrides + leaves a note.
+  openingConfirmedById   BigInt?
+  openingConfirmedAt     DateTime?
+  openingOverrideNote    String?
+  // Closing — night manager
+  closedById             BigInt?
+  closedAt               DateTime?
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  branch              Branch                    @relation(fields: [branchId], references: [id])
+  openingConfirmedBy  User?                     @relation("recon_opening_by", fields: [openingConfirmedById], references: [id])
+  closedBy            User?                     @relation("recon_closed_by",  fields: [closedById],           references: [id])
+  lines               StockReconciliationLine[]
+
+  @@unique([branchId, businessDate])
+  @@index([branchId, status])
+}
+
+enum ReconciliationStatus {
+  DRAFT
+  PENDING_CLOSE
+  PENDING_REASONS
+  CLOSED
+}
+
+// ─── Customer / Partner Accounts (creditors ledger) ─────────────────────
+//
+// Per the owner: orders go to credit accounts in three flavours:
+//   FOODPANDA   one account per branch, billing cycle Mon-Sun, payment Tue
+//   MARKET      shopkeepers nearby — push-to-account from Box 7 by name
+//   CUSTOMER    walk-in credit customers — push-to-account from Boxes 1-5
+// Orders pushed to an Account stay PAID (revenue recognised on delivery),
+// payment method = CREDIT, and Order.accountId is set. The balance accumulates
+// until an AccountPayment row settles it. Cash flow is tracked via AccountPayment;
+// the balance column is a cached running total recomputed from Order.total - AccountPayment.amount.
+model Account {
+  id        BigInt   @id @default(autoincrement())
+  branchId  BigInt
+  name      String                              // "Food Panda", "Ali Shopkeeper", customer name
+  type      AccountType
+  phone     String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  branch   Branch           @relation(fields: [branchId], references: [id])
+  orders   Order[]
+  payments AccountPayment[]
+
+  // One account per (branch, name, type) — multi-typed names allowed across types.
+  @@unique([branchId, name, type])
+  @@index([branchId, type, isActive])
+}
+
+enum AccountType {
+  FOODPANDA
+  MARKET
+  CUSTOMER
+}
+
+// A payment received against an Account. Owner enters the cash received + any
+// commission/discount writeoff; the system tracks balance via aggregation.
+// Optionally, the payment may be linked to specific Orders being settled (so the
+// owner has a per-order audit trail of which payment cleared which bills).
+model AccountPayment {
+  id            BigInt   @id @default(autoincrement())
+  accountId     BigInt
+  amount        Decimal  @db.Decimal(12, 2)             // cash actually received
+  discount      Decimal  @db.Decimal(12, 2) @default(0) // written off (e.g. food panda commission)
+  method        PaymentMethod
+  reference     String?                                  // bank-transfer id, cheque #, etc.
+  paidAt        DateTime @default(now())
+  businessDate  DateTime @db.Date
+  notes         String?
+  recordedById  BigInt?
+  createdAt     DateTime @default(now())
+
+  account     Account                    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  recordedBy  User?                      @relation("account_payment_by", fields: [recordedById], references: [id])
+  orderLinks  AccountPaymentOrderLink[]
+
+  @@index([accountId, paidAt])
+}
+
+// Join row: which orders this payment is settling.
+// The owner can split one payment across many orders; the sum of order totals
+// covered (minus discount) should match the payment amount, but we don't enforce
+// that strictly — the balance recomputation is the source of truth.
+model AccountPaymentOrderLink {
+  id         BigInt @id @default(autoincrement())
+  paymentId  BigInt
+  orderId    BigInt
+  appliedAmount Decimal @db.Decimal(12, 2)   // how much of this payment is applied to that order
+
+  payment AccountPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  order   Order          @relation(fields: [orderId], references: [id])
+
+  @@unique([paymentId, orderId])
+  @@index([orderId])
+}
+
+// One row per pulp per reconciliation. Holds opening/closing quantities and the
+// computed expected vs actual, plus the reason code if variance was significant.
+//   expectedConsumptionMGE = sum over sales today of (qty * sizeFactor * participationPct)
+//   expectedConsumptionShopers = expectedConsumptionMGE / glassesPerShoper(yield)
+//   expectedCloseQty = openingQty + transfersInQty - expectedConsumptionShopers
+//   varianceQty      = closingQty - expectedCloseQty   (positive = surplus, negative = deficit)
+//   variancePct      = varianceQty / expectedCloseQty * 100
+// openingFromPrevClose records what the previous night's closing was, so we
+// can detect overrides (morning manager entered something different).
+model StockReconciliationLine {
+  id                          BigInt   @id @default(autoincrement())
+  reconciliationId            BigInt
+  processedProductId          BigInt
+  openingQty                  Decimal  @db.Decimal(14, 3)
+  openingFromPrevClose        Decimal? @db.Decimal(14, 3)
+  transfersInQty              Decimal  @db.Decimal(14, 3) @default(0)
+  glassesPerShoperUsed        Decimal  @db.Decimal(10, 2)   // snapshot of the yield used today
+  expectedConsumptionMGE      Decimal? @db.Decimal(14, 3)
+  expectedConsumptionShopers  Decimal? @db.Decimal(14, 3)
+  expectedCloseQty            Decimal? @db.Decimal(14, 3)
+  closingQty                  Decimal? @db.Decimal(14, 3)
+  varianceQty                 Decimal? @db.Decimal(14, 3)
+  variancePct                 Decimal? @db.Decimal(8, 2)
+  reasonCode                  String?                       // SPILLED | BROKEN | REPLACEMENT | WASTAGE | STAFF_MISTAKE | GIVEAWAY | ROUNDING | OTHER
+  reasonNotes                 String?
+  reasonRecordedById          BigInt?
+  reasonRecordedAt            DateTime?
+
+  reconciliation     StockReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  processedProduct   ProcessedProduct    @relation(fields: [processedProductId], references: [id])
+  reasonRecordedBy   User?               @relation("recon_reason_by", fields: [reasonRecordedById], references: [id])
+
+  @@unique([reconciliationId, processedProductId])
+}
+
+// ─── Expense / Khatabook Ledger ───────────────────────────────────────────
+//
+// 10 named expense-book accounts per branch. Each account can hold unlimited
+// entries: purchasing, salaries, daily expenses, etc. Separate from the
+// credit-customer "Account" model above. The owner can rename accounts freely.
+
+model LedgerAccount {
+  id        BigInt   @id @default(autoincrement())
+  branchId  BigInt
+  position  Int      // 1-10, fixed slot number
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch  Branch        @relation(fields: [branchId], references: [id])
+  entries LedgerEntry[]
+
+  @@unique([branchId, position])
+  @@index([branchId])
+}
+
+model LedgerEntry {
+  id              BigInt   @id @default(autoincrement())
+  branchId        BigInt
+  ledgerAccountId BigInt
+  entryDate       DateTime @db.Date
+  productName     String
+  quantity        Decimal? @db.Decimal(14, 3)
+  rate            Decimal? @db.Decimal(12, 2)
+  total           Decimal  @db.Decimal(12, 2)
+  headName        String?
+  supplierName    String?
+  cashPaid        Decimal  @db.Decimal(12, 2)
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, entryDate])
+  @@index([ledgerAccountId, entryDate])
+}

@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sjc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sjc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sjc_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-sjc_erp}
+      TZ: Asia/Karachi
+      PGTZ: Asia/Karachi
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sjc} -d ${POSTGRES_DB:-sjc_erp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional: pgAdmin for visual DB browsing during dev
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sjc-pgadmin
+    restart: unless-stopped
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sabirjuicecorner.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres-data:
+    driver: local
