@@ -187,8 +187,7 @@ export async function registerShiftRoutes(app: FastifyInstance) {
       orderWhere = { order: { shiftId: id, status: "PAID", businessDate } };
     }
 
-    // Pull every OrderItem for PAID orders, with the joined item.
-    // For mixes we also need customMixComponents to render a human label.
+    // Pull every OrderItem for PAID orders, with the joined item and order number.
     const rows = await prisma.orderItem.findMany({
       where: orderWhere,
       select: {
@@ -197,28 +196,56 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         isCustomMix: true,
         customMixComponents: true,
         item: { select: { id: true, itemCode: true, name: true, size: true } },
+        order: { select: { orderNo: true } },
       },
     });
 
-    // Aggregate. For non-mix rows the key is the itemId. For mix rows we still
-    // use the itemId (anchor) but record that this anchor includes mixes — the
-    // UI can show a note when mix lines are mixed in.
+    type MixDetail = {
+      orderNo: string | null;
+      mixLabel: string;        // e.g. "Cherry + Banana"
+      glassQty: number;        // full glasses ordered in this line
+      mixPricePerGlass: number;
+      lineTotal: number;       // full mix revenue (sum of all components)
+      itemQty: number;         // this item's fractional share: glassQty / n
+    };
     type Agg = {
       itemId: string; itemCode: number; name: string; size: string;
       qty: number; revenue: number;
-      mixCount: number;  // how many of those qty units came from mix orders
+      mixGlasses: number;    // total full-glass count from mixes (for "N from mixes" badge)
+      mixDetails: MixDetail[];
     };
+
     const byItem = new Map<string, Agg>();
     for (const r of rows) {
       const key = r.item.id.toString();
       const slot: Agg = byItem.get(key) ?? {
         itemId: key, itemCode: r.item.itemCode, name: r.item.name, size: r.item.size,
-        qty: 0, revenue: 0, mixCount: 0,
+        qty: 0, revenue: 0, mixGlasses: 0, mixDetails: [],
       };
-      const qty = Number(r.qty.toString());
-      slot.qty += qty;
-      slot.revenue += Number(r.lineTotal.toString());
-      if (r.isCustomMix) slot.mixCount += qty;
+      const glassQty = Number(r.qty.toString());
+      const lineTotalNum = Number(r.lineTotal.toString());
+
+      if (r.isCustomMix) {
+        const components = Array.isArray(r.customMixComponents)
+          ? (r.customMixComponents as Array<{ name: string }>)
+          : [];
+        const n = components.length || 1;
+        // Qty is fractional: cherry in a 2-fruit mix = 0.5 glass per glass ordered.
+        slot.qty += glassQty / n;
+        slot.revenue += lineTotalNum;
+        slot.mixGlasses += glassQty;
+        slot.mixDetails.push({
+          orderNo: r.order.orderNo,
+          mixLabel: components.map((c) => c.name).join(" + "),
+          glassQty,
+          mixPricePerGlass: glassQty > 0 ? lineTotalNum / glassQty : 0,
+          lineTotal: lineTotalNum,
+          itemQty: glassQty / n,
+        });
+      } else {
+        slot.qty += glassQty;
+        slot.revenue += lineTotalNum;
+      }
       byItem.set(key, slot);
     }
 
@@ -231,7 +258,8 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         size: s.size,
         qty: s.qty.toFixed(2).replace(/\.?0+$/, ""),
         revenue: s.revenue.toFixed(2),
-        mixCount: s.mixCount > 0 ? s.mixCount.toFixed(2).replace(/\.?0+$/, "") : null,
+        mixGlasses: s.mixGlasses > 0 ? s.mixGlasses : null,
+        mixDetails: s.mixDetails.length > 0 ? s.mixDetails : null,
       }));
 
     const totals = items.reduce(

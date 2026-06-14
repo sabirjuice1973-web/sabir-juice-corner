@@ -197,7 +197,16 @@ export const api = {
     if (to)   qs.set("to", to);
     const q = qs.toString();
     return request<{
-      items: { itemId: string; itemCode: number; name: string; size: string; qty: string; revenue: string; mixCount: string | null }[];
+      items: {
+        itemId: string; itemCode: number; name: string; size: string;
+        qty: string; revenue: string;
+        mixGlasses: number | null;
+        mixDetails: {
+          orderNo: string | null; mixLabel: string;
+          glassQty: number; mixPricePerGlass: number;
+          lineTotal: number; itemQty: number;
+        }[] | null;
+      }[];
       totals: { qty: string; revenue: string };
     }>("GET", `/shifts/${shiftId}/item-summary${q ? `?${q}` : ""}`);
   },
