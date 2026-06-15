@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { displayItemName, type BoxOrder } from "./posState";
 import { emitOrdersChanged } from "../lib/events";
+import { printReceipt } from "./receipt";
 
 /**
  * Order Details modal — opens when the cashier double-clicks an order row.
@@ -20,16 +21,17 @@ import { emitOrdersChanged } from "../lib/events";
 type Props = {
   order: BoxOrder;
   branchId: string;
+  branchName: string;
   boxNumber: number;
   cashierName: string;
   onClose: () => void;
-  onPrintOnly: () => void;            // reprint only — parent handles
+  onPrintOnly: () => void;            // reprint only — parent handles close
   onSaved: () => void;                 // remove from box — parent handles after we apply discount + pay
-  onPrintAndSaved: () => void;         // same — parent prints first
+  onPrintAndSaved: () => void;         // same — parent handles box removal
   onPushedToAccount: () => void;       // remove from box after creditor push
 };
 
-export function OrderDetails({ order, branchId, boxNumber: _boxNumber, cashierName: _cashierName, onClose, onPrintOnly, onSaved, onPrintAndSaved, onPushedToAccount }: Props) {
+export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumber, cashierName, onClose, onPrintOnly, onSaved, onPrintAndSaved, onPushedToAccount }: Props) {
   const [discountStr, setDiscountStr] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +107,18 @@ export function OrderDetails({ order, branchId, boxNumber: _boxNumber, cashierNa
   const discountInput = Math.max(0, parseFloat(discountStr) || 0);
   const newTotal = Math.max(0, subtotal - appliedDiscount - discountInput);
 
+  // Build the BoxOrder with correct discount values for the receipt. Must be
+  // captured BEFORE async operations clear discountStr / update appliedDiscount.
+  function effectiveOrderForPrint(): BoxOrder {
+    const totalDiscount = Number(order.discountAmount) + discountInput;
+    return {
+      ...order,
+      subtotal: order.subtotal,
+      discountAmount: totalDiscount.toFixed(2),
+      total: Math.max(0, Number(order.subtotal) - totalDiscount).toFixed(2),
+    };
+  }
+
   async function applyDiscountIfNeeded(): Promise<boolean> {
     if (discountInput <= 0) return true;
     if (!order.serverId) {
@@ -146,19 +160,21 @@ export function OrderDetails({ order, branchId, boxNumber: _boxNumber, cashierNa
     } finally { setBusy(false); }
   }
   async function handlePrintAndSave() {
+    const toPrint = effectiveOrderForPrint(); // capture before async ops change discountStr
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
       if (!(await payAsCash())) return;
+      printReceipt(toPrint, { branchName, cashier: cashierName });
       onPrintAndSaved();
     } finally { setBusy(false); }
   }
   async function handlePrintOnly() {
-    // Apply discount if cashier entered one (so the printed bill reflects it),
-    // but don't save/remove the order. They can keep it in the box if needed.
+    const toPrint = effectiveOrderForPrint(); // capture before async ops change discountStr
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
+      printReceipt(toPrint, { branchName, cashier: cashierName });
       onPrintOnly();
       onClose();
     } finally { setBusy(false); }

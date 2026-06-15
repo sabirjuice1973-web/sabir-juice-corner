@@ -832,12 +832,11 @@ export function Pos({
         <OrderDetails
           order={detailOrder}
           branchId={branchId}
+          branchName={branchName}
           boxNumber={detailsTarget.boxIdx + 1}
           cashierName={user.fullName}
           onClose={() => setDetailsTarget(null)}
-          onPrintOnly={() => {
-            printReceipt(detailOrder, { branchName, cashier: user.fullName }, () => setDetailsTarget(null));
-          }}
+          onPrintOnly={() => setDetailsTarget(null)}
           onSaved={() => {
             setState((s) => {
               const nextBoxes = s.boxes.map((arr, i) =>
@@ -848,7 +847,6 @@ export function Pos({
             setDetailsTarget(null);
           }}
           onPrintAndSaved={() => {
-            printReceipt(detailOrder, { branchName, cashier: user.fullName });
             setState((s) => {
               const nextBoxes = s.boxes.map((arr, i) =>
                 i === detailsTarget.boxIdx ? arr.filter((o) => o.localId !== detailsTarget.localId) : arr,
