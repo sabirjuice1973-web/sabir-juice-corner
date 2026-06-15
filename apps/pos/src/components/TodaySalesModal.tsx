@@ -40,8 +40,23 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
   const todayStr = new Date().toISOString().slice(0, 10);
+  const [lateCashReceived, setLateCashReceived] = useState(0);
+  const [lateDiscount, setLateDiscount] = useState(0);
 
   const isToday = fromDate === null && toDate === null;
+
+  // Fetch late cash (account payments collected today) — only meaningful for today
+  useEffect(() => {
+    if (!isToday) { setLateCashReceived(0); setLateDiscount(0); return; }
+    let cancelled = false;
+    api.todayStats(shiftId).then((s) => {
+      if (!cancelled) {
+        setLateCashReceived(Number(s.lateCashReceived));
+        setLateDiscount(Number(s.lateDiscount));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [shiftId, isToday]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,10 +118,11 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
 
   // Summary stats — always computed from ALL paid orders regardless of status filter
   const paidOrders = (orders ?? []).filter((o) => o.status === "PAID");
-  const totalSale   = paidOrders.reduce((s, o) => s + Number(o.total), 0);
+  const totalSale     = paidOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalDiscount = paidOrders.reduce((s, o) => s + Number(o.discountAmount), 0);
-  const cashSale    = paidOrders.flatMap((o) => o.payments).filter((p) => p.method === "CASH").reduce((s, p) => s + Number(p.amount), 0);
-  const netSale     = cashSale - totalDiscount;
+  const cashSale      = paidOrders.flatMap((o) => o.payments).filter((p) => p.method === "CASH").reduce((s, p) => s + Number(p.amount), 0);
+  const creditIssued  = paidOrders.flatMap((o) => o.payments).filter((p) => p.method === "CREDIT").reduce((s, p) => s + Number(p.amount), 0);
+  const totalCashInHand = cashSale + lateCashReceived;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -185,24 +201,58 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
             <div>
               {/* Summary cards — always show totals for ALL paid orders */}
               {paidOrders.length > 0 && (
-                <div className="grid grid-cols-4 gap-3 mb-4">
-                  <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-3 py-2.5 text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold">Total Sale</div>
-                    <div className="font-mono font-bold text-blue-900 text-base mt-0.5">PKR {totalSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                    <div className="text-[10px] text-blue-400 mt-0.5">{paidOrders.length} orders</div>
+                <div className="mb-4 space-y-2">
+                  {/* Row 1: today's order-level stats */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold">Total Sale</div>
+                      <div className="font-mono font-bold text-blue-900 text-base mt-0.5">PKR {totalSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                      <div className="text-[10px] text-blue-400 mt-0.5">{paidOrders.length} orders</div>
+                    </div>
+                    <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">Cash Sale</div>
+                      <div className="font-mono font-bold text-emerald-900 text-base mt-0.5">PKR {cashSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                    </div>
+                    <div className="rounded-xl border-2 border-violet-200 bg-violet-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-violet-500 font-bold">Credit Issued</div>
+                      <div className="font-mono font-bold text-violet-900 text-base mt-0.5">{creditIssued > 0 ? `PKR ${creditIssued.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                    </div>
+                    <div className="rounded-xl border-2 border-orange-200 bg-orange-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-orange-500 font-bold">Discount</div>
+                      <div className="font-mono font-bold text-orange-900 text-base mt-0.5">{totalDiscount > 0 ? `−PKR ${totalDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                    </div>
                   </div>
-                  <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">Cash Sale</div>
-                    <div className="font-mono font-bold text-emerald-900 text-base mt-0.5">PKR {cashSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                  </div>
-                  <div className="rounded-xl border-2 border-orange-200 bg-orange-50 px-3 py-2.5 text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-orange-500 font-bold">Discount</div>
-                    <div className="font-mono font-bold text-orange-900 text-base mt-0.5">{totalDiscount > 0 ? `−PKR ${totalDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-                  </div>
-                  <div className="rounded-xl border-2 border-teal-200 bg-teal-50 px-3 py-2.5 text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Net Cash</div>
-                    <div className="font-mono font-bold text-teal-900 text-base mt-0.5">PKR {netSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                  </div>
+
+                  {/* Row 2: late cash (account payments collected today) — shown only when relevant */}
+                  {isToday && (lateCashReceived > 0 || lateDiscount > 0) && (
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
+                        <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">PKR {lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                        <div className="text-[10px] text-cyan-500 mt-0.5">from credit accounts</div>
+                      </div>
+                      <div className="rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2.5 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-red-500 font-bold">Late Discount</div>
+                        <div className="font-mono font-bold text-red-900 text-base mt-0.5">{lateDiscount > 0 ? `−PKR ${lateDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                        <div className="text-[10px] text-red-400 mt-0.5">written off</div>
+                      </div>
+                      <div className="col-span-2 rounded-xl border-2 border-teal-300 bg-teal-50 px-3 py-2.5 text-center flex flex-col items-center justify-center">
+                        <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
+                        <div className="font-mono font-bold text-teal-900 text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                        <div className="text-[10px] text-teal-500 mt-0.5">cash sales + late cash</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* When no late cash: show simple net cash card */}
+                  {!(isToday && (lateCashReceived > 0 || lateDiscount > 0)) && (
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="col-span-4 rounded-xl border-2 border-teal-200 bg-teal-50 px-3 py-2.5 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
+                        <div className="font-mono font-bold text-teal-900 text-base mt-0.5">PKR {cashSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

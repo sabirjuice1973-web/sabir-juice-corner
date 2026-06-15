@@ -57,7 +57,7 @@ export async function registerShiftRoutes(app: FastifyInstance) {
 
     const businessDate = await getBranchBusinessDate(shift.branchId);
 
-    const [orderAgg, paymentBreakdown] = await Promise.all([
+    const [orderAgg, paymentBreakdown, latePaymentAgg] = await Promise.all([
       prisma.order.aggregate({
         _sum: { total: true, discountAmount: true },
         _count: { _all: true },
@@ -67,6 +67,10 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         by: ["method"],
         where: { order: { shiftId: id, status: "PAID", businessDate } },
         _sum: { amount: true },
+      }),
+      prisma.accountPayment.aggregate({
+        _sum: { amount: true, discount: true },
+        where: { businessDate, account: { branchId: shift.branchId } },
       }),
     ]);
     const byMethod = (m: string) =>
@@ -85,6 +89,8 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         credit: byMethod("CREDIT"),
         bank:   byMethod("BANK_TRANSFER"),
       },
+      lateCashReceived: (latePaymentAgg._sum.amount   ?? new Prisma.Decimal(0)).toString(),
+      lateDiscount:     (latePaymentAgg._sum.discount ?? new Prisma.Decimal(0)).toString(),
     });
   });
 

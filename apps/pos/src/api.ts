@@ -181,6 +181,8 @@ export const api = {
       salesTotal: string;
       discountsTotal: string;
       byMethod: { cash: string; card: string; wallet: string; credit: string; bank: string };
+      lateCashReceived: string;
+      lateDiscount: string;
     }>("GET", `/shifts/${shiftId}/today-stats`),
 
   // ─── Today's Sales — orders list + per-item summary for the active shift ──
@@ -265,7 +267,7 @@ export const api = {
   ledgerUploadAttachment: async (file: File): Promise<{ url: string }> => {
     const form = new FormData();
     form.append("file", file);
-    const token = localStorage.getItem("sjc_token");
+    const token = getToken();
     const res = await fetch("/api/v1/ledger/entries/upload", {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
