@@ -136,7 +136,7 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   const creditSale    = creditOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalSale     = paidOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalDiscount = cashOrders.reduce((s, o) => s + Number(o.discountAmount), 0);
-  const totalCashInHand = cashSale + lateCashReceived - lateDiscount;
+  const totalCashInHand = cashSale + lateCashReceived - totalDiscount - lateDiscount;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -256,7 +256,7 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                       <div className="col-span-2 rounded-xl border-2 border-teal-300 bg-teal-50 px-3 py-2.5 text-center flex flex-col items-center justify-center">
                         <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
                         <div className="font-mono font-bold text-teal-900 text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                        <div className="text-[10px] text-teal-500 mt-0.5">cash + late cash − late discount</div>
+                        <div className="text-[10px] text-teal-500 mt-0.5">cash − discount + late cash − late discount</div>
                       </div>
                     </div>
                   )}

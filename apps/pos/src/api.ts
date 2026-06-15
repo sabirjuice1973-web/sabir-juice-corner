@@ -278,10 +278,11 @@ export const api = {
     return res.json();
   },
 
-  ledgerSuggestions: (branchId: string | number, field: "productName" | "supplierName" | "headName", q: string, opts?: { from?: string; to?: string }) => {
+  ledgerSuggestions: (branchId: string | number, field: "productName" | "supplierName" | "headName", q: string, opts?: { from?: string; to?: string; accountId?: string | number }) => {
     const qs = new URLSearchParams({ branchId: String(branchId), field, q });
-    if (opts?.from) qs.set("from", opts.from);
-    if (opts?.to)   qs.set("to", opts.to);
+    if (opts?.from)      qs.set("from", opts.from);
+    if (opts?.to)        qs.set("to", opts.to);
+    if (opts?.accountId) qs.set("accountId", String(opts.accountId));
     return request<{ suggestions: string[] }>("GET", `/ledger/suggestions?${qs}`);
   },
 

@@ -285,6 +285,7 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
   app.get("/suggestions", async (req, reply) => {
     const q = z.object({
       branchId: z.coerce.bigint(),
+      accountId: z.coerce.bigint().optional(),
       field: z.enum(["productName", "supplierName", "headName"]),
       q: z.string().default(""),
       from: z.string().optional(),
@@ -292,7 +293,7 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
     }).safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "branchId and field required" });
 
-    const { branchId, field, q: search, from, to } = q.data;
+    const { branchId, accountId, field, q: search, from, to } = q.data;
 
     const dateFilter: any = {};
     if (from || to) {
@@ -305,6 +306,7 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
       by: [field],
       where: {
         branchId,
+        ...(accountId ? { accountId } : {}),
         ...dateFilter,
         ...(search
           ? { [field]: { contains: search, mode: "insensitive" } }

@@ -491,7 +491,7 @@ function EntryFormModal({
     if (debRef.current) clearTimeout(debRef.current);
     debRef.current = setTimeout(async () => {
       try {
-        const { suggestions } = await api.ledgerSuggestions(branchId, field, q);
+        const { suggestions } = await api.ledgerSuggestions(branchId, field, q, { accountId: ledgerAccountId });
         setSugg((p) => ({ ...p, [field]: suggestions }));
         setSuggIdx(-1);
       } catch {}
