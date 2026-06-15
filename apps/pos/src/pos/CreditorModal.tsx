@@ -43,6 +43,10 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discountStr, setDiscountStr] = useState("");
+  const [showAddPayment, setShowAddPayment] = useState(false);
+  const [addPaymentAmount, setAddPaymentAmount] = useState("");
+  const [addPaymentNote, setAddPaymentNote] = useState("");
 
   // Load account list whenever search changes
   useEffect(() => {
@@ -55,6 +59,8 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   const loadAccount = useCallback(async (acc: AccountSummary) => {
     setSelectedAccount(acc);
     setSelectedIds(new Set());
+    setDiscountStr("");
+    setShowAddPayment(false);
     setLoadingOrders(true);
     setError(null);
     try {
@@ -77,6 +83,8 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   const selectedOrders = filteredOrders.filter((o) => selectedIds.has(o.id));
   const selectedTotal = selectedOrders.reduce((s, o) => s + Number(o.total), 0);
   const selectedOutstanding = selectedOrders.reduce((s, o) => s + Number(o.outstanding), 0);
+  const discountAmount = Math.max(0, parseFloat(discountStr) || 0);
+  const cashToPay = Math.max(0, selectedOutstanding - discountAmount);
 
   function toggleOrder(id: string) {
     setSelectedIds((s) => {
@@ -199,18 +207,41 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
 
   // ── Cash-paid flow ─────────────────────────────────────────────────────────
 
-  async function recordCashPaid(orderList: AccountOrder[]) {
+  async function recordCashPaid(orderList: AccountOrder[], discount = 0) {
     if (!selectedAccount || orderList.length === 0) return;
-    const amount = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
-    if (amount <= 0) { setError("All selected orders are already fully paid."); return; }
+    const outstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
+    const amount = Math.max(0, outstanding - discount);
+    if (amount <= 0 && discount <= 0) { setError("All selected orders are already fully paid."); return; }
     setBusy(true); setError(null);
     try {
       await api.recordAccountPayment(selectedAccount.id, {
         amount,
+        ...(discount > 0 ? { discount } : {}),
         notes: `Cash received for ${orderList.length} order(s): ${orderList.map((o) => o.orderNo).join(", ")}`,
         orderApplications: orderList.map((o) => ({ orderId: o.id, appliedAmount: Number(o.outstanding) })),
       });
-      // Reload
+      setDiscountStr("");
+      await loadAccount(selectedAccount);
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Payment failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function recordAdvancePayment() {
+    if (!selectedAccount) return;
+    const amount = Math.max(0, parseFloat(addPaymentAmount) || 0);
+    if (amount <= 0) { setError("Enter a valid amount."); return; }
+    setBusy(true); setError(null);
+    try {
+      await api.recordAccountPayment(selectedAccount.id, {
+        amount,
+        notes: addPaymentNote.trim() || "Advance payment",
+      });
+      setShowAddPayment(false);
+      setAddPaymentAmount("");
+      setAddPaymentNote("");
       await loadAccount(selectedAccount);
     } catch (e: any) {
       setError(e.body?.error || e.message || "Payment failed");
@@ -401,64 +432,103 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
               </div>
 
               {/* Footer: summary + bulk actions */}
-              <div className="border-t border-slate-200 px-4 py-3 flex items-center gap-4 flex-wrap">
-                {error && <span className="text-sm text-red-600">{error}</span>}
-                <div className="text-sm text-slate-600">
-                  {selectedOrders.length > 0 ? (
-                    <>
-                      <span className="font-medium">{selectedOrders.length} selected</span>
-                      <span className="text-slate-400 mx-2">·</span>
-                      <span className="font-mono">Total: PKR {selectedTotal.toFixed(0)}</span>
-                      <span className="text-slate-400 mx-2">·</span>
-                      <span className="font-mono font-bold text-red-600">Due: PKR {selectedOutstanding.toFixed(0)}</span>
-                    </>
-                  ) : (
-                    <span className="text-slate-400">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} · click checkboxes to select</span>
-                  )}
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => allSelected ? setSelectedIds(new Set()) : selectAll()}
-                    className="btn-secondary text-xs px-3 py-1.5"
-                  >
-                    {allSelected ? "Deselect All" : "Select All"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => printOrPreview(selectedOrders, true)}
-                    disabled={selectedOrders.length === 0}
-                    className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => printOrPreview(selectedOrders, false)}
-                    disabled={selectedOrders.length === 0}
-                    className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40"
-                  >
-                    Print
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => recordCashPaid(selectedOrders)}
-                    disabled={selectedOrders.length === 0 || busy || selectedOutstanding <= 0}
-                    className="rounded-lg bg-leaf-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-leaf-700 disabled:opacity-40"
-                  >
-                    {busy ? "Processing…" : `Cash Paid · PKR ${selectedOutstanding.toFixed(0)}`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      printOrPreview(selectedOrders, false);
-                      await recordCashPaid(selectedOrders);
-                    }}
-                    disabled={selectedOrders.length === 0 || busy || selectedOutstanding <= 0}
-                    className="rounded-lg bg-accent-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-accent-700 disabled:opacity-40"
-                  >
-                    Print + Cash Paid
-                  </button>
+              <div className="border-t border-slate-200 px-4 py-3 space-y-2">
+                {error && <div className="text-sm text-red-600">{error}</div>}
+
+                {/* Add Payment inline panel */}
+                {showAddPayment && (
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex-wrap">
+                    <span className="text-xs font-semibold text-blue-700 shrink-0">Add Payment</span>
+                    <input
+                      type="number" min="0" placeholder="Amount (PKR)"
+                      value={addPaymentAmount}
+                      onChange={(e) => setAddPaymentAmount(e.target.value)}
+                      className="input text-xs px-2 py-1 w-32"
+                      autoFocus
+                    />
+                    <input
+                      type="text" placeholder="Note (optional)"
+                      value={addPaymentNote}
+                      onChange={(e) => setAddPaymentNote(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void recordAdvancePayment(); }}
+                      className="input text-xs px-2 py-1 flex-1 min-w-[120px]"
+                    />
+                    <button type="button" onClick={() => void recordAdvancePayment()} disabled={busy || !addPaymentAmount}
+                      className="rounded bg-blue-600 text-white px-3 py-1 text-xs font-semibold hover:bg-blue-700 disabled:opacity-40">
+                      {busy ? "…" : "Record"}
+                    </button>
+                    <button type="button" onClick={() => { setShowAddPayment(false); setAddPaymentAmount(""); setAddPaymentNote(""); }}
+                      className="text-slate-400 hover:text-slate-700 text-xs">Cancel</button>
+                  </div>
+                )}
+
+                {/* Main action row */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Left: selection summary + discount */}
+                  <div className="flex items-center gap-2 text-sm text-slate-600 flex-wrap">
+                    {selectedOrders.length > 0 ? (
+                      <>
+                        <span className="font-medium">{selectedOrders.length} selected</span>
+                        <span className="text-slate-300">·</span>
+                        <span className="font-mono">Total: PKR {selectedTotal.toFixed(0)}</span>
+                        <span className="text-slate-300">·</span>
+                        <span className="font-mono font-bold text-red-600">Due: PKR {selectedOutstanding.toFixed(0)}</span>
+                        <span className="text-slate-300">·</span>
+                        <label className="text-xs text-slate-500 shrink-0">Discount:</label>
+                        <input
+                          type="number" min="0" max={selectedOutstanding} placeholder="0"
+                          value={discountStr}
+                          onChange={(e) => setDiscountStr(e.target.value)}
+                          className="input text-xs px-2 py-1 w-24 font-mono"
+                        />
+                        {discountAmount > 0 && (
+                          <span className="text-xs text-orange-600 font-semibold">
+                            Cash: PKR {cashToPay.toFixed(0)}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-400">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} · click checkboxes to select</span>
+                    )}
+                  </div>
+
+                  {/* Right: buttons */}
+                  <div className="ml-auto flex items-center gap-2 flex-wrap">
+                    <button type="button"
+                      onClick={() => { setShowAddPayment((v) => !v); setAddPaymentAmount(""); setAddPaymentNote(""); }}
+                      className={`btn-secondary text-xs px-3 py-1.5 ${showAddPayment ? "bg-blue-100 border-blue-300 text-blue-700" : ""}`}>
+                      + Add Payment
+                    </button>
+                    <button type="button"
+                      onClick={() => allSelected ? setSelectedIds(new Set()) : selectAll()}
+                      className="btn-secondary text-xs px-3 py-1.5">
+                      {allSelected ? "Deselect All" : "Select All"}
+                    </button>
+                    <button type="button"
+                      onClick={() => printOrPreview(selectedOrders, true)}
+                      disabled={selectedOrders.length === 0}
+                      className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40">
+                      Preview
+                    </button>
+                    <button type="button"
+                      onClick={() => printOrPreview(selectedOrders, false)}
+                      disabled={selectedOrders.length === 0}
+                      className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40">
+                      Print
+                    </button>
+                    <button type="button"
+                      onClick={() => void recordCashPaid(selectedOrders, discountAmount)}
+                      disabled={selectedOrders.length === 0 || busy || (selectedOutstanding <= 0 && discountAmount <= 0)}
+                      className="rounded-lg bg-leaf-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-leaf-700 disabled:opacity-40">
+                      {busy ? "Processing…" : `Cash Paid · PKR ${cashToPay.toFixed(0)}`}
+                    </button>
+                    <button type="button"
+                      onClick={async () => { printOrPreview(selectedOrders, false); await recordCashPaid(selectedOrders, discountAmount); }}
+                      disabled={selectedOrders.length === 0 || busy || (selectedOutstanding <= 0 && discountAmount <= 0)}
+                      className="rounded-lg bg-accent-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-accent-700 disabled:opacity-40">
+                      Print + Cash Paid
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
