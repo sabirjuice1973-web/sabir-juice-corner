@@ -176,21 +176,27 @@ export async function registerShiftRoutes(app: FastifyInstance) {
     const q = z.object({
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      type: z.enum(["CASH", "CREDIT"]).optional(),
     }).safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "Invalid query" });
 
     const shift = await prisma.shift.findUnique({ where: { id }, select: { id: true, branchId: true } });
     if (!shift) return reply.code(404).send({ error: "Shift not found" });
 
+    const paymentFilter =
+      q.data.type === "CASH"   ? { payments: { none: { method: "CREDIT" } } } :
+      q.data.type === "CREDIT" ? { payments: { some: { method: "CREDIT" } } } :
+      {};
+
     let orderWhere: Record<string, unknown>;
     if (q.data.from || q.data.to) {
       const dateFilter: Record<string, Date> = {};
       if (q.data.from) dateFilter.gte = new Date(`${q.data.from}T00:00:00.000Z`);
       if (q.data.to)   dateFilter.lte = new Date(`${q.data.to}T00:00:00.000Z`);
-      orderWhere = { order: { branchId: shift.branchId, status: "PAID", businessDate: dateFilter } };
+      orderWhere = { order: { branchId: shift.branchId, status: "PAID", businessDate: dateFilter, ...paymentFilter } };
     } else {
       const businessDate = await getBranchBusinessDate(shift.branchId);
-      orderWhere = { order: { shiftId: id, status: "PAID", businessDate } };
+      orderWhere = { order: { shiftId: id, status: "PAID", businessDate, ...paymentFilter } };
     }
 
     // Pull every OrderItem for PAID orders, with the joined item.

@@ -193,10 +193,11 @@ export const api = {
     const q = qs.toString();
     return request<{ orders: TodayOrder[] }>("GET", `/shifts/${shiftId}/today-orders${q ? `?${q}` : ""}`);
   },
-  itemSummary: (shiftId: string | number, from?: string, to?: string) => {
+  itemSummary: (shiftId: string | number, from?: string, to?: string, type?: "CASH" | "CREDIT") => {
     const qs = new URLSearchParams();
     if (from) qs.set("from", from);
     if (to)   qs.set("to", to);
+    if (type) qs.set("type", type);
     const q = qs.toString();
     return request<{
       items: {

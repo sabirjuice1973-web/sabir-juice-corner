@@ -34,6 +34,7 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"PAID" | "ALL">("PAID");
+  const [orderTypeFilter, setOrderTypeFilter] = useState<"ALL" | "CASH" | "CREDIT">("ALL");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [orderItemsCache, setOrderItemsCache] = useState<Record<string, OrderLine[]>>({});
   // null = today (current business date from server); "YYYY-MM-DD" = specific date
@@ -67,7 +68,8 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
           const r = await api.todayOrders(shiftId, fromDate ?? undefined, toDate ?? undefined);
           if (!cancelled) setOrders(r.orders);
         } else {
-          const r = await api.itemSummary(shiftId, fromDate ?? undefined, toDate ?? undefined);
+          const typeParam = orderTypeFilter !== "ALL" ? orderTypeFilter : undefined;
+          const r = await api.itemSummary(shiftId, fromDate ?? undefined, toDate ?? undefined, typeParam);
           if (!cancelled) { setItems(r.items); setItemTotals(r.totals); }
         }
       } catch (e: any) {
@@ -85,7 +87,7 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
       cancelled = true;
       window.removeEventListener(ORDERS_CHANGED, onChange);
     };
-  }, [tab, shiftId, fromDate, toDate, isToday]);
+  }, [tab, shiftId, fromDate, toDate, isToday, orderTypeFilter]);
 
   // Click an order row → fetch its full items (cached) and toggle expansion
   async function toggleExpand(orderId: string) {
@@ -113,16 +115,28 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
     }
   }
 
-  // Filtered orders for the "PAID only" toggle (controls table rows shown)
-  const visibleOrders = (orders ?? []).filter((o) => statusFilter === "ALL" || o.status === "PAID");
+  const isCashOrder   = (o: TodayOrder) => o.payments.length > 0 && o.payments.every((p) => p.method !== "CREDIT");
+  const isCreditOrder = (o: TodayOrder) => o.payments.some((p) => p.method === "CREDIT");
 
-  // Summary stats — always computed from ALL paid orders regardless of status filter
-  const paidOrders = (orders ?? []).filter((o) => o.status === "PAID");
+  // visibleOrders respects BOTH the status filter and the order-type filter
+  const visibleOrders = (orders ?? []).filter((o) => {
+    const statusOk = statusFilter === "ALL" || o.status === "PAID";
+    const typeOk =
+      orderTypeFilter === "ALL"    ? true :
+      orderTypeFilter === "CASH"   ? isCashOrder(o) :
+      /* CREDIT */                   isCreditOrder(o);
+    return statusOk && typeOk;
+  });
+
+  // Summary stats — always computed from ALL paid orders, never filtered by orderTypeFilter
+  const paidOrders    = (orders ?? []).filter((o) => o.status === "PAID");
+  const cashOrders    = paidOrders.filter(isCashOrder);
+  const creditOrders  = paidOrders.filter(isCreditOrder);
+  const cashSale      = cashOrders.reduce((s, o) => s + Number(o.total), 0);
+  const creditSale    = creditOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalSale     = paidOrders.reduce((s, o) => s + Number(o.total), 0);
-  const totalDiscount = paidOrders.reduce((s, o) => s + Number(o.discountAmount), 0);
-  const cashSale      = paidOrders.flatMap((o) => o.payments).filter((p) => p.method === "CASH").reduce((s, p) => s + Number(p.amount), 0);
-  const creditIssued  = paidOrders.flatMap((o) => o.payments).filter((p) => p.method === "CREDIT").reduce((s, p) => s + Number(p.amount), 0);
-  const totalCashInHand = cashSale + lateCashReceived;
+  const totalDiscount = cashOrders.reduce((s, o) => s + Number(o.discountAmount), 0);
+  const totalCashInHand = cashSale + lateCashReceived - lateDiscount;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -183,7 +197,7 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "orders" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
             onClick={() => setTab("orders")}
           >
-            Orders {orders ? <span className="ml-1 text-xs text-slate-400">({orders.length})</span> : null}
+            Orders {orders ? <span className="ml-1 text-xs text-slate-400">({visibleOrders.length})</span> : null}
           </button>
           <button
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "items" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
@@ -199,36 +213,39 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
 
           {tab === "orders" && (
             <div>
-              {/* Summary cards — always show totals for ALL paid orders */}
+              {/* Summary cards — always computed from ALL paid orders regardless of type/status filter */}
               {paidOrders.length > 0 && (
                 <div className="mb-4 space-y-2">
-                  {/* Row 1: today's order-level stats */}
+                  {/* Row 1: cash sale | credit sale | total sale | discount */}
                   <div className="grid grid-cols-4 gap-3">
+                    <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">Cash Sale</div>
+                      <div className="font-mono font-bold text-emerald-900 text-base mt-0.5">PKR {cashSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                      <div className="text-[10px] text-emerald-500 mt-0.5">{cashOrders.length} orders</div>
+                    </div>
+                    <div className="rounded-xl border-2 border-violet-200 bg-violet-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-violet-500 font-bold">Credit Sale</div>
+                      <div className="font-mono font-bold text-violet-900 text-base mt-0.5">{creditSale > 0 ? `PKR ${creditSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                      <div className="text-[10px] text-violet-400 mt-0.5">{creditOrders.length} orders</div>
+                    </div>
                     <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold">Total Sale</div>
                       <div className="font-mono font-bold text-blue-900 text-base mt-0.5">PKR {totalSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
                       <div className="text-[10px] text-blue-400 mt-0.5">{paidOrders.length} orders</div>
                     </div>
-                    <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center">
-                      <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">Cash Sale</div>
-                      <div className="font-mono font-bold text-emerald-900 text-base mt-0.5">PKR {cashSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                    </div>
-                    <div className="rounded-xl border-2 border-violet-200 bg-violet-50 px-3 py-2.5 text-center">
-                      <div className="text-[10px] uppercase tracking-wider text-violet-500 font-bold">Credit Issued</div>
-                      <div className="font-mono font-bold text-violet-900 text-base mt-0.5">{creditIssued > 0 ? `PKR ${creditIssued.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-                    </div>
                     <div className="rounded-xl border-2 border-orange-200 bg-orange-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-orange-500 font-bold">Discount</div>
                       <div className="font-mono font-bold text-orange-900 text-base mt-0.5">{totalDiscount > 0 ? `−PKR ${totalDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                      <div className="text-[10px] text-orange-400 mt-0.5">on cash orders</div>
                     </div>
                   </div>
 
-                  {/* Row 2: late cash (account payments collected today) — shown only when relevant */}
-                  {isToday && (lateCashReceived > 0 || lateDiscount > 0) && (
+                  {/* Row 2: late cash + late discount + total cash in hand */}
+                  {isToday && (
                     <div className="grid grid-cols-4 gap-3">
                       <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
                         <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
-                        <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">PKR {lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                        <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateCashReceived > 0 ? `PKR ${lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
                         <div className="text-[10px] text-cyan-500 mt-0.5">from credit accounts</div>
                       </div>
                       <div className="rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2.5 text-center">
@@ -239,13 +256,11 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                       <div className="col-span-2 rounded-xl border-2 border-teal-300 bg-teal-50 px-3 py-2.5 text-center flex flex-col items-center justify-center">
                         <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
                         <div className="font-mono font-bold text-teal-900 text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                        <div className="text-[10px] text-teal-500 mt-0.5">cash sales + late cash</div>
+                        <div className="text-[10px] text-teal-500 mt-0.5">cash + late cash − late discount</div>
                       </div>
                     </div>
                   )}
-
-                  {/* When no late cash: show simple net cash card */}
-                  {!(isToday && (lateCashReceived > 0 || lateDiscount > 0)) && (
+                  {!isToday && (
                     <div className="grid grid-cols-4 gap-3">
                       <div className="col-span-4 rounded-xl border-2 border-teal-200 bg-teal-50 px-3 py-2.5 text-center">
                         <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
@@ -256,25 +271,43 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                 </div>
               )}
 
-              {/* Filter toggle */}
-              <div className="flex items-center gap-2 text-sm mb-3">
-                <span className="text-slate-500">Show:</span>
-                <button
-                  className={`px-3 py-1 rounded text-xs font-medium ${statusFilter === "PAID" ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-slate-100 text-slate-600 border border-slate-200"}`}
-                  onClick={() => setStatusFilter("PAID")}
-                >Paid only</button>
-                <button
-                  className={`px-3 py-1 rounded text-xs font-medium ${statusFilter === "ALL" ? "bg-slate-200 text-slate-800 border border-slate-300" : "bg-slate-100 text-slate-600 border border-slate-200"}`}
-                  onClick={() => setStatusFilter("ALL")}
-                >All statuses</button>
+              {/* Filter row: order-type toggle + status toggle */}
+              <div className="flex items-center gap-4 mb-3 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-500 font-medium">Type:</span>
+                  {(["ALL", "CASH", "CREDIT"] as const).map((t) => (
+                    <button
+                      key={t}
+                      className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                        orderTypeFilter === t
+                          ? t === "CASH"   ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          : t === "CREDIT" ? "bg-violet-100 text-violet-800 border-violet-300"
+                          :                  "bg-slate-200 text-slate-800 border-slate-300"
+                          : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300"
+                      }`}
+                      onClick={() => { setOrderTypeFilter(t); setExpandedOrderId(null); }}
+                    >{t === "ALL" ? "All" : t === "CASH" ? "Cash" : "Credit"}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-500 font-medium">Show:</span>
+                  <button
+                    className={`px-3 py-1 rounded text-xs font-medium border ${statusFilter === "PAID" ? "bg-slate-200 text-slate-800 border-slate-300" : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300"}`}
+                    onClick={() => setStatusFilter("PAID")}
+                  >Paid only</button>
+                  <button
+                    className={`px-3 py-1 rounded text-xs font-medium border ${statusFilter === "ALL" ? "bg-slate-200 text-slate-800 border-slate-300" : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300"}`}
+                    onClick={() => setStatusFilter("ALL")}
+                  >All statuses</button>
+                </div>
               </div>
 
               {loading && !orders && <div className="text-slate-400 text-sm">Loading…</div>}
               {orders && visibleOrders.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
                   {isToday
-                    ? `No orders ${statusFilter === "PAID" ? "paid" : "yet"} on this shift.`
-                    : `No ${statusFilter === "PAID" ? "paid " : ""}orders in the selected date range.`}
+                    ? `No ${orderTypeFilter !== "ALL" ? orderTypeFilter.toLowerCase() + " " : ""}orders ${statusFilter === "PAID" ? "paid" : "yet"} on this shift.`
+                    : `No ${orderTypeFilter !== "ALL" ? orderTypeFilter.toLowerCase() + " " : ""}${statusFilter === "PAID" ? "paid " : ""}orders in the selected date range.`}
                 </div>
               )}
 
@@ -308,10 +341,19 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
 
           {tab === "items" && (
             <div>
+              {orderTypeFilter !== "ALL" && (
+                <div className={`mb-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+                  orderTypeFilter === "CASH" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-violet-50 text-violet-700 border-violet-200"
+                }`}>
+                  Showing {orderTypeFilter === "CASH" ? "cash" : "credit"} orders only
+                </div>
+              )}
               {loading && !items && <div className="text-slate-400 text-sm">Loading…</div>}
               {items && items.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
-                  {isToday ? "Nothing sold yet on this shift." : "Nothing sold in the selected date range."}
+                  {isToday
+                    ? `Nothing sold via ${orderTypeFilter !== "ALL" ? orderTypeFilter.toLowerCase() + " orders" : "any order type"} yet.`
+                    : `Nothing sold via ${orderTypeFilter !== "ALL" ? orderTypeFilter.toLowerCase() + " orders" : "any order type"} in the selected range.`}
                 </div>
               )}
 
