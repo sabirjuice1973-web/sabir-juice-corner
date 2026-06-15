@@ -51,6 +51,8 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [addPaymentAmount, setAddPaymentAmount] = useState("");
   const [addPaymentNote, setAddPaymentNote] = useState("");
+  // Real payment totals for this account — used in the slip summary
+  const [accountTotals, setAccountTotals] = useState<{ totalPaid: number; totalDiscount: number } | null>(null);
 
   // Load account list whenever search changes
   useEffect(() => {
@@ -65,12 +67,18 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     setSelectedIds(new Set());
     setDiscountStr("");
     setShowAddPayment(false);
+    setAccountTotals(null);
     setLoadingOrders(true);
     setError(null);
     try {
       const data = await api.getAccount(acc.id);
       setOrders((data.orders ?? []) as AccountOrder[]);
       setAccountBalance(data.currentBalance ?? acc.currentBalance);
+      const pmts = (data.payments ?? []) as { amount: string; discount: string }[];
+      setAccountTotals({
+        totalPaid:     pmts.reduce((s, p) => s + Number(p.amount),   0),
+        totalDiscount: pmts.reduce((s, p) => s + Number(p.discount), 0),
+      });
     } catch (e: any) {
       setError(e.body?.error || e.message || "Failed to load orders");
     } finally {
@@ -114,10 +122,14 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     const dateStr = now.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
     const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-    const grandTotal       = orderList.reduce((s, o) => s + Number(o.total), 0);
-    const grandPaid        = orderList.reduce((s, o) => s + (Number(o.total) - Number(o.outstanding)), 0);
-    const grandOutstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
-    const balance          = Number(accountBalance); // negative = we owe customer
+    const grandTotal   = orderList.reduce((s, o) => s + Number(o.total), 0);
+    // Use real account payment totals (from all AccountPayment rows, incl. advances)
+    // so the slip correctly reflects what was actually paid and discounted.
+    const totalCashPaid  = accountTotals?.totalPaid    ?? 0;
+    const totalDiscount  = accountTotals?.totalDiscount ?? 0;
+    // Outstanding = Total Billed − Cash Paid − Discount
+    // Positive → customer owes us; Negative → we owe customer (credit)
+    const outstanding = grandTotal - totalCashPaid - totalDiscount;
 
     const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
     const fmt = (n: number) => {
@@ -170,22 +182,28 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     }).join("");
 
     // Summary rows — mirrors the receipt's .totals table style
+    const outstandingDisplay = outstanding > 0
+      ? `PKR ${fmt(outstanding)}`
+      : outstanding < 0
+        ? `− PKR ${fmt(Math.abs(outstanding))}`
+        : "PKR 0";
     const summaryRows = `
       <tr class="sub-row">
         <td class="lc">Total Billed (${orderList.length} orders)</td>
         <td class="num">PKR ${fmt(grandTotal)}</td>
       </tr>
-      ${grandPaid > 0 ? `<tr class="sub-row">
+      ${totalCashPaid > 0 ? `<tr class="sub-row">
         <td class="lc">Amount Paid</td>
-        <td class="num">− PKR ${fmt(grandPaid)}</td>
+        <td class="num">− PKR ${fmt(totalCashPaid)}</td>
+      </tr>` : ""}
+      ${totalDiscount > 0 ? `<tr class="sub-row">
+        <td class="lc">Discount</td>
+        <td class="num">− PKR ${fmt(totalDiscount)}</td>
       </tr>` : ""}
       <tr class="total-row">
         <td class="lc">OUTSTANDING</td>
-        <td class="num">${grandOutstanding > 0 ? `PKR ${fmt(grandOutstanding)}` : "PKR 0"}</td>
-      </tr>
-      ${balance < 0 ? `<tr class="credit-row">
-        <td colspan="2" class="credit-cell">Credit Balance (we owe you): PKR ${fmt(Math.abs(balance))}</td>
-      </tr>` : ""}`;
+        <td class="num ${outstanding < 0 ? "credit" : ""}">${outstandingDisplay}</td>
+      </tr>`;
 
     // For actual print: use @page thermal size + auto-print script (same as receipt.ts).
     // For preview: wrap in a centred container so it looks like a slip in the browser.
@@ -246,10 +264,9 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   table.totals { width:100%; border-collapse:collapse; font-weight:900; font-size:11pt; margin-top:1.5mm; }
   table.totals .total-row td { border-top:2px solid #000; border-bottom:2px solid #000; padding:1.5mm 0; }
   table.totals .sub-row td { font-size:9pt; font-weight:600; padding:0.8mm 0; }
-  table.totals .credit-row td { font-size:8.5pt; font-weight:700; padding:1mm 0; }
-  table.totals .credit-cell { text-align:center; color:#006600; }
   table.totals .lc { letter-spacing:0.5px; }
   table.totals .num { text-align:right; white-space:nowrap; }
+  table.totals .num.credit { color:#006600; }
   .footer { text-align:center; margin-top:4mm; font-size:10pt; font-style:italic; color:#111; font-weight:600; }
   .footer .small { display:block; font-style:normal; font-size:9pt; color:#000; margin-top:1mm; font-weight:700; }
 </style>
