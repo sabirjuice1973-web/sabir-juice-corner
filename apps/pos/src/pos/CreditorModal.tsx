@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { displayItemName } from "./posState";
 
 type AccountSummary = {
   id: string;
@@ -23,6 +24,9 @@ type AccountOrder = {
   customerName: string | null;
   itemsSummary: string;
 };
+
+type FullItem = { name: string; size: string; qty: string; unitPrice: string; lineTotal: string; };
+type EnrichedOrder = AccountOrder & { fullItems: FullItem[] | null };
 
 type Props = {
   branchId: string;
@@ -105,7 +109,7 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
 
   // ── Print helpers ──────────────────────────────────────────────────────────
 
-  function buildSlipHtml(orderList: AccountOrder[], forPreview: boolean): string {
+  function buildSlipHtml(orderList: EnrichedOrder[], forPreview: boolean): string {
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
     const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -116,16 +120,32 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     const balance          = Number(accountBalance); // negative = we owe customer
 
     const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
-    const fmt = (n: number) => Math.round(n).toLocaleString("en-PK");
+    const fmt = (n: number) => {
+      const r = Math.round(n * 100) / 100;
+      return Number.isInteger(r) ? r.toLocaleString("en-PK") : r.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
 
-    // Parse "4× Mango MEDIUM, 1× Plum MEDIUM" into individual item rows
-    const itemRows = (summary: string) =>
-      summary.split(", ").map((part) => {
+    const buildItemRows = (o: EnrichedOrder): string => {
+      if (o.fullItems && o.fullItems.length > 0) {
+        // Rich rows: Qty | Name | Rate | Total (matches the thermal receipt layout)
+        return o.fullItems.map((it) => {
+          const label = displayItemName(it.name, it.size);
+          const qtyNum = parseFloat(it.qty);
+          const qtyStr = Number.isInteger(qtyNum) ? `${qtyNum}` : qtyNum.toFixed(2).replace(/\.?0+$/, "");
+          return `<tr>
+            <td class="qty">${qtyStr}×</td>
+            <td class="name">${esc(label)}</td>
+            <td class="rate">${fmt(Number(it.unitPrice))}</td>
+            <td class="linetotal">${fmt(Number(it.lineTotal))}</td>
+          </tr>`;
+        }).join("");
+      }
+      // Fallback: parse itemsSummary string (no rate/total)
+      return o.itemsSummary.split(", ").map((part) => {
         const m = /^(\d+(?:\.\d+)?)×\s+(.+)$/.exec(part.trim());
-        const qty = m ? m[1] : "";
-        const name = m ? m[2] : part;
-        return `<tr><td class="qty">${esc(qty)}×</td><td class="name">${esc(name)}</td></tr>`;
+        return `<tr><td class="qty">${esc(m?.[1] ?? "")}×</td><td class="name" colspan="3">${esc(m?.[2] ?? part)}</td></tr>`;
       }).join("");
+    };
 
     const orderBlocks = orderList.map((o) => {
       const t = new Date(o.openedAt);
@@ -137,10 +157,14 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
         <span class="order-meta">${o.businessDate} ${orderTime}</span>
       </div>
       <table class="items">
-        <colgroup><col style="width:7mm"/><col/></colgroup>
-        <tbody>${itemRows(o.itemsSummary)}</tbody>
+        <colgroup><col style="width:7mm"/><col/><col style="width:12mm"/><col style="width:13mm"/></colgroup>
+        <thead><tr>
+          <th class="qty">Qty</th><th class="name">Item</th>
+          <th class="rate">Rate</th><th class="linetotal">Total</th>
+        </tr></thead>
+        <tbody>${buildItemRows(o)}</tbody>
       </table>
-      <div class="order-subtotal">PKR ${fmt(Number(o.total))}</div>
+      <div class="order-subtotal">Order Total: PKR ${fmt(Number(o.total))}</div>
     </div>
     <hr />`;
     }).join("");
@@ -213,8 +237,11 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   .order-meta { font-size:7.5pt; font-weight:500; color:#333; }
   table.items { width:100%; border-collapse:collapse; font-size:8pt; margin:1mm 0 0.5mm; }
   table.items td { padding:0.4mm 0.3mm; vertical-align:top; }
+  table.items thead th { font-size:7.5pt; font-weight:700; border-bottom:1px solid #000; padding-bottom:0.5mm; }
   table.items .qty { font-weight:700; white-space:nowrap; }
   table.items .name { }
+  table.items .rate { text-align:right; white-space:nowrap; font-weight:500; }
+  table.items .linetotal { text-align:right; white-space:nowrap; font-weight:700; }
   .order-subtotal { text-align:right; font-size:8.5pt; font-weight:700; border-top:1px dotted #999; padding-top:0.5mm; }
   table.totals { width:100%; border-collapse:collapse; font-weight:900; font-size:11pt; margin-top:1.5mm; }
   table.totals .total-row td { border-top:2px solid #000; border-bottom:2px solid #000; padding:1.5mm 0; }
@@ -261,9 +288,28 @@ ${printScript}
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  function printOrPreview(orderList: AccountOrder[], preview: boolean) {
+  async function printOrPreview(orderList: AccountOrder[], preview: boolean) {
     if (orderList.length === 0) return;
-    const html = buildSlipHtml(orderList, preview);
+    // Fetch full item details for all orders in parallel so we can show Qty|Name|Rate|Total
+    const enriched: EnrichedOrder[] = await Promise.all(
+      orderList.map(async (o): Promise<EnrichedOrder> => {
+        try {
+          const { order } = await api.getOrder(o.id);
+          const fullItems: FullItem[] = (order.items as any[]).map((it) => {
+            const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents as any[] : null;
+            const name = mix && mix.length >= 2
+              ? mix.map((m: any) => m.name).join("+")
+              : (it.item?.name ?? "");
+            const size = mix ? (mix[0]?.size ?? "NA") : (it.item?.size ?? "NA");
+            return { name, size, qty: it.qty, unitPrice: it.unitPrice, lineTotal: it.lineTotal };
+          });
+          return { ...o, fullItems };
+        } catch {
+          return { ...o, fullItems: null };
+        }
+      })
+    );
+    const html = buildSlipHtml(enriched, preview);
     if (preview) {
       const w = window.open("", "_blank", "width=460,height=800,resizable=yes");
       if (!w) { setError("Browser blocked the preview window — allow popups."); return; }
@@ -284,7 +330,7 @@ ${printScript}
 
   // Single-order print (uses same slip format but just one order)
   function printSingleOrder(order: AccountOrder) {
-    printOrPreview([order], false);
+    void printOrPreview([order], false);
   }
 
   // ── Cash-paid flow ─────────────────────────────────────────────────────────
@@ -497,7 +543,7 @@ ${printScript}
                                   <button
                                     type="button"
                                     title={`Print + mark cash paid`}
-                                    onClick={async () => { printSingleOrder(o); await recordCashPaid([o]); }}
+                                    onClick={async () => { void printSingleOrder(o); await recordCashPaid([o]); }}
                                     disabled={busy}
                                     className="p-1 rounded hover:bg-accent-100 text-slate-500 hover:text-accent-700 disabled:opacity-40"
                                   >
@@ -598,13 +644,13 @@ ${printScript}
                       {allSelected ? "Deselect All" : "Select All"}
                     </button>
                     <button type="button"
-                      onClick={() => printOrPreview(selectedOrders, true)}
+                      onClick={() => void printOrPreview(selectedOrders, true)}
                       disabled={selectedOrders.length === 0}
                       className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40">
                       Preview
                     </button>
                     <button type="button"
-                      onClick={() => printOrPreview(selectedOrders, false)}
+                      onClick={() => void printOrPreview(selectedOrders, false)}
                       disabled={selectedOrders.length === 0}
                       className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40">
                       Print
@@ -616,7 +662,7 @@ ${printScript}
                       {busy ? "Processing…" : `Cash Paid · PKR ${cashToPay.toFixed(0)}`}
                     </button>
                     <button type="button"
-                      onClick={async () => { printOrPreview(selectedOrders, false); await recordCashPaid(selectedOrders, discountAmount); }}
+                      onClick={async () => { await printOrPreview(selectedOrders, false); await recordCashPaid(selectedOrders, discountAmount); }}
                       disabled={selectedOrders.length === 0 || busy || (selectedOutstanding <= 0 && discountAmount <= 0)}
                       className="rounded-lg bg-accent-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-accent-700 disabled:opacity-40">
                       Print + Cash Paid
