@@ -84,7 +84,12 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
   const selectedTotal = selectedOrders.reduce((s, o) => s + Number(o.total), 0);
   const selectedOutstanding = selectedOrders.reduce((s, o) => s + Number(o.outstanding), 0);
   const discountAmount = Math.max(0, parseFloat(discountStr) || 0);
-  const cashToPay = Math.max(0, selectedOutstanding - discountAmount);
+  // Cap at account balance — advance payments (no order links) reduce the balance
+  // but leave per-order outstanding untouched, causing apparent double-counting.
+  const accountBal = Math.max(0, Number(accountBalance));
+  const effectiveOutstanding = Math.min(selectedOutstanding, accountBal);
+  const advanceApplied = selectedOutstanding - effectiveOutstanding; // > 0 when advance exists
+  const cashToPay = Math.max(0, effectiveOutstanding - discountAmount);
 
   function toggleOrder(id: string) {
     setSelectedIds((s) => {
@@ -209,7 +214,9 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
 
   async function recordCashPaid(orderList: AccountOrder[], discount = 0) {
     if (!selectedAccount || orderList.length === 0) return;
-    const outstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
+    const rawOutstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
+    // Cap by current account balance so advance payments aren't double-charged.
+    const outstanding = Math.min(rawOutstanding, Math.max(0, Number(accountBalance)));
     const amount = Math.max(0, outstanding - discount);
     if (amount <= 0 && discount <= 0) { setError("All selected orders are already fully paid."); return; }
     setBusy(true); setError(null);
@@ -218,7 +225,11 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
         amount,
         ...(discount > 0 ? { discount } : {}),
         notes: `Cash received for ${orderList.length} order(s): ${orderList.map((o) => o.orderNo).join(", ")}`,
-        orderApplications: orderList.map((o) => ({ orderId: o.id, appliedAmount: Number(o.outstanding) })),
+        // Only pass order links when amounts match — skip when advance payments created a gap
+        // (linking full per-order amounts would show false "overpaid" on individual orders).
+        ...(rawOutstanding === outstanding
+          ? { orderApplications: orderList.map((o) => ({ orderId: o.id, appliedAmount: Number(o.outstanding) })) }
+          : {}),
       });
       setDiscountStr("");
       await loadAccount(selectedAccount);
@@ -472,16 +483,21 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
                         <span className="text-slate-300">·</span>
                         <span className="font-mono">Total: PKR {selectedTotal.toFixed(0)}</span>
                         <span className="text-slate-300">·</span>
-                        <span className="font-mono font-bold text-red-600">Due: PKR {selectedOutstanding.toFixed(0)}</span>
+                        <span className="font-mono font-bold text-red-600">Due: PKR {effectiveOutstanding.toFixed(0)}</span>
+                        {advanceApplied > 0 && (
+                          <span className="text-xs text-cyan-700 font-semibold bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+                            PKR {advanceApplied.toFixed(0)} advance applied
+                          </span>
+                        )}
                         <span className="text-slate-300">·</span>
                         <label className="text-xs text-slate-500 shrink-0">Discount:</label>
                         <input
-                          type="number" min="0" max={selectedOutstanding} placeholder="0"
+                          type="number" min="0" max={effectiveOutstanding} placeholder="0"
                           value={discountStr}
                           onChange={(e) => setDiscountStr(e.target.value)}
                           className="input text-xs px-2 py-1 w-24 font-mono"
                         />
-                        {discountAmount > 0 && (
+                        {(discountAmount > 0 || advanceApplied > 0) && (
                           <span className="text-xs text-orange-600 font-semibold">
                             Cash: PKR {cashToPay.toFixed(0)}
                           </span>
