@@ -3,6 +3,15 @@ import { z } from "zod";
 import { prisma } from "@sjc/db";
 import { requireAuth } from "../lib/guards.js";
 import { toJson } from "../lib/serialize.js";
+import { createWriteStream, mkdirSync, createReadStream, existsSync } from "node:fs";
+import { join, extname, dirname } from "node:path";
+import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { pipeline } from "node:stream/promises";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const UPLOAD_DIR = join(__dirname, "..", "..", "uploads", "ledger");
+mkdirSync(UPLOAD_DIR, { recursive: true });
 
 /**
  * Khatabook / Ledger — 10 named account books per branch.
@@ -39,6 +48,7 @@ const EntryBody = z.object({
   supplierName: z.string().trim().max(120).nullable().optional(),
   cashPaid: z.coerce.number().nonnegative().max(10_000_000),
   description: z.string().trim().max(500).nullable().optional(),
+  attachmentUrl: z.string().max(500).nullable().optional(),
 });
 
 const EntryUpdateBody = z.object({
@@ -51,6 +61,7 @@ const EntryUpdateBody = z.object({
   supplierName: z.string().trim().max(120).nullable().optional(),
   cashPaid: z.coerce.number().nonnegative().max(10_000_000).optional(),
   description: z.string().trim().max(500).nullable().optional(),
+  attachmentUrl: z.string().max(500).nullable().optional(),
 });
 
 const ReportQuery = z.object({
@@ -162,6 +173,36 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
     return toJson({ entries: entries.map(serializeEntry) });
   });
 
+  /** POST /ledger/entries/upload — upload an attachment image, returns { url } */
+  app.post("/entries/upload", async (req, reply) => {
+    if (!req.auth) return reply.code(401).send({ error: "Unauthenticated" });
+    const data = await req.file();
+    if (!data) return reply.code(400).send({ error: "No file uploaded" });
+    const ext = extname(data.filename).toLowerCase() || ".jpg";
+    const allowed = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"];
+    if (!allowed.includes(ext)) return reply.code(400).send({ error: "File type not allowed" });
+    const filename = `${Date.now()}_${randomBytes(6).toString("hex")}${ext}`;
+    const dest = join(UPLOAD_DIR, filename);
+    await pipeline(data.file, createWriteStream(dest));
+    return reply.send({ url: `/api/v1/ledger/uploads/${filename}` });
+  });
+
+  /** GET /ledger/uploads/:filename — serve an uploaded attachment */
+  app.get("/uploads/:filename", async (req, reply) => {
+    const { filename } = req.params as { filename: string };
+    if (filename.includes("..") || filename.includes("/")) return reply.code(400).send();
+    const filePath = join(UPLOAD_DIR, filename);
+    if (!existsSync(filePath)) return reply.code(404).send();
+    const ext = extname(filename).toLowerCase();
+    const mime: Record<string, string> = {
+      ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+      ".webp": "image/webp", ".gif": "image/gif", ".pdf": "application/pdf",
+    };
+    reply.header("Content-Type", mime[ext] ?? "application/octet-stream");
+    reply.header("Cache-Control", "max-age=31536000, immutable");
+    return reply.send(createReadStream(filePath));
+  });
+
   /** POST /ledger/entries — create a new entry. */
   app.post("/entries", async (req, reply) => {
     if (!req.auth) return reply.code(401).send({ error: "Unauthenticated" });
@@ -186,6 +227,7 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
         supplierName: body.data.supplierName ?? null,
         cashPaid: body.data.cashPaid,
         description: body.data.description ?? null,
+        attachmentUrl: body.data.attachmentUrl ?? null,
       },
     });
 
@@ -214,6 +256,7 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
         ...(body.data.supplierName !== undefined ? { supplierName: body.data.supplierName } : {}),
         ...(body.data.cashPaid !== undefined ? { cashPaid: body.data.cashPaid } : {}),
         ...(body.data.description !== undefined ? { description: body.data.description } : {}),
+        ...(body.data.attachmentUrl !== undefined ? { attachmentUrl: body.data.attachmentUrl } : {}),
       },
     });
 
@@ -403,6 +446,7 @@ function serializeEntry(e: {
   quantity: any; rate: any; total: any;
   headName: string | null; supplierName: string | null;
   cashPaid: any; description: string | null;
+  attachmentUrl?: string | null;
   createdAt: Date; updatedAt: Date;
 }) {
   return {
@@ -418,6 +462,7 @@ function serializeEntry(e: {
     supplierName: e.supplierName,
     cashPaid: e.cashPaid.toString(),
     description: e.description,
+    attachmentUrl: e.attachmentUrl ?? null,
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
   };

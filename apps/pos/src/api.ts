@@ -243,6 +243,7 @@ export const api = {
     supplierName?: string | null;
     cashPaid: number;
     description?: string | null;
+    attachmentUrl?: string | null;
   }) => request<{ entry: LedgerEntry }>("POST", "/ledger/entries", body),
 
   updateLedgerEntry: (entryId: string | number, body: Partial<{
@@ -255,10 +256,24 @@ export const api = {
     supplierName: string | null;
     cashPaid: number;
     description: string | null;
+    attachmentUrl: string | null;
   }>) => request<{ entry: LedgerEntry }>("PATCH", `/ledger/entries/${entryId}`, body),
 
   deleteLedgerEntry: (entryId: string | number) =>
     request<void>("DELETE", `/ledger/entries/${entryId}`),
+
+  ledgerUploadAttachment: async (file: File): Promise<{ url: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = localStorage.getItem("sjc_token");
+    const res = await fetch("/api/v1/ledger/entries/upload", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) throw new Error("Upload failed");
+    return res.json();
+  },
 
   ledgerSuggestions: (branchId: string | number, field: "productName" | "supplierName" | "headName", q: string, opts?: { from?: string; to?: string }) => {
     const qs = new URLSearchParams({ branchId: String(branchId), field, q });
@@ -356,6 +371,7 @@ export type LedgerEntry = {
   supplierName: string | null;
   cashPaid: string;
   description: string | null;
+  attachmentUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };

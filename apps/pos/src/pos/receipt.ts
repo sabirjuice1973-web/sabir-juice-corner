@@ -210,10 +210,25 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     font-size: 11.5pt;
     margin-top: 1.5mm;
   }
-  .totals td {
-    padding: 1.5mm 0;
+  .totals tr:last-child td {
     border-top: 2px solid #000;
     border-bottom: 2px solid #000;
+  }
+  .totals tr.discount-row td {
+    font-size: 9.5pt;
+    font-weight: 700;
+    border: none;
+    padding: 0.8mm 0;
+    color: #222;
+  }
+  .totals tr.subtotal-row td {
+    font-size: 9.5pt;
+    font-weight: 600;
+    border: none;
+    padding: 0.8mm 0;
+  }
+  .totals td {
+    padding: 1.5mm 0;
   }
   .totals .label-cell { letter-spacing: 1px; }
   .totals .num {
@@ -283,6 +298,15 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     </tbody>
   </table>
   <table class="totals">
+    ${Number(order.discountAmount) > 0 ? `
+    <tr class="subtotal-row">
+      <td class="label-cell">Subtotal</td>
+      <td class="num">PKR ${formatMoney(Number(order.subtotal))}</td>
+    </tr>
+    <tr class="discount-row">
+      <td class="label-cell">Discount</td>
+      <td class="num">- PKR ${formatMoney(Number(order.discountAmount))}</td>
+    </tr>` : ""}
     <tr>
       <td class="label-cell">TOTAL</td>
       <td class="num">PKR ${formatMoney(Number(order.total))}</td>

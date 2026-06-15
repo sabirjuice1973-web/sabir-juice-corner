@@ -1315,6 +1315,7 @@ model LedgerEntry {
   supplierName    String?
   cashPaid        Decimal  @db.Decimal(12, 2)
   description     String?
+  attachmentUrl   String?  // path to uploaded slip/receipt image
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

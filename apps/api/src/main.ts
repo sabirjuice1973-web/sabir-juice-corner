@@ -40,7 +40,7 @@ async function bootstrap() {
   await app.register(cors, { origin: true, credentials: true });
   // Multipart for menu-xlsx upload (POST /items/import). Limit 5 MB —
   // a menu xlsx is realistically a few KB, this leaves plenty of headroom.
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
   await registerJwt(app);
 
   app.register(registerHealthRoutes,        { prefix: "/api/v1" });

@@ -44,7 +44,9 @@ export type BoxOrder = {
   serverId: string | null;
   localId: string;
   orderNo: string | null;       // assigned by the server on commit
-  total: string;                // PKR, string for precision
+  subtotal: string;             // sum of line totals before discount
+  discountAmount: string;       // "0" when no discount applied
+  total: string;                // PKR after discount, string for precision
   // Partner / shopkeeper / credit-customer name. Required for box 7 (Market Orders),
   // optional for box 6 (Food Panda) and boxes 1-5. Shown FIRST in the row.
   customerName: string | null;
