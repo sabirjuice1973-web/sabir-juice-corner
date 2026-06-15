@@ -109,76 +109,154 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
     const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
-    const grandTotal = orderList.reduce((s, o) => s + Number(o.total), 0);
-    const grandOutstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
 
-    const orderRows = orderList.map((o) => `
-      <div class="order-block">
-        <div class="order-header">
-          <span class="order-no">${o.orderNo}</span>
-          <span class="order-date">${o.businessDate}</span>
-        </div>
-        <div class="items-line">${o.itemsSummary}</div>
-        <div class="order-total">PKR ${Number(o.total).toFixed(0)}</div>
+    const grandTotal       = orderList.reduce((s, o) => s + Number(o.total), 0);
+    const grandPaid        = orderList.reduce((s, o) => s + (Number(o.total) - Number(o.outstanding)), 0);
+    const grandOutstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
+    const balance          = Number(accountBalance); // negative = we owe customer
+
+    const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
+    const fmt = (n: number) => Math.round(n).toLocaleString("en-PK");
+
+    // Parse "4× Mango MEDIUM, 1× Plum MEDIUM" into individual item rows
+    const itemRows = (summary: string) =>
+      summary.split(", ").map((part) => {
+        const m = /^(\d+(?:\.\d+)?)×\s+(.+)$/.exec(part.trim());
+        const qty = m ? m[1] : "";
+        const name = m ? m[2] : part;
+        return `<tr><td class="qty">${esc(qty)}×</td><td class="name">${esc(name)}</td></tr>`;
+      }).join("");
+
+    const orderBlocks = orderList.map((o) => {
+      const t = new Date(o.openedAt);
+      const orderTime = t.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+      return `
+    <div class="order-block">
+      <div class="order-hdr">
+        <span class="order-no">${esc(o.orderNo)}</span>
+        <span class="order-meta">${o.businessDate} ${orderTime}</span>
       </div>
-      <div class="dotted-divider"></div>
-    `).join("");
+      <table class="items">
+        <colgroup><col style="width:7mm"/><col/></colgroup>
+        <tbody>${itemRows(o.itemsSummary)}</tbody>
+      </table>
+      <div class="order-subtotal">PKR ${fmt(Number(o.total))}</div>
+    </div>
+    <hr />`;
+    }).join("");
+
+    // Summary rows — mirrors the receipt's .totals table style
+    const summaryRows = `
+      <tr class="sub-row">
+        <td class="lc">Total Billed (${orderList.length} orders)</td>
+        <td class="num">PKR ${fmt(grandTotal)}</td>
+      </tr>
+      ${grandPaid > 0 ? `<tr class="sub-row">
+        <td class="lc">Amount Paid</td>
+        <td class="num">− PKR ${fmt(grandPaid)}</td>
+      </tr>` : ""}
+      <tr class="total-row">
+        <td class="lc">OUTSTANDING</td>
+        <td class="num">${grandOutstanding > 0 ? `PKR ${fmt(grandOutstanding)}` : "PKR 0"}</td>
+      </tr>
+      ${balance < 0 ? `<tr class="credit-row">
+        <td colspan="2" class="credit-cell">Credit Balance (we owe you): PKR ${fmt(Math.abs(balance))}</td>
+      </tr>` : ""}`;
+
+    // For actual print: use @page thermal size + auto-print script (same as receipt.ts).
+    // For preview: wrap in a centred container so it looks like a slip in the browser.
+    const printScript = forPreview ? "" : `
+<script>
+  (function(){
+    function doPrint(){ try{ window.focus(); window.print(); }catch(e){} }
+    var img = document.querySelector("img.logo");
+    if(img && !img.complete){ img.addEventListener("load",doPrint); img.addEventListener("error",doPrint); setTimeout(doPrint,1500); }
+    else { setTimeout(doPrint, 80); }
+  })();
+</script>`;
 
     return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
+<html><head><meta charset="utf-8"/>
+<title>Credit Statement · ${esc(selectedAccount?.name ?? "")}</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Courier New", monospace; font-size: 11px; width: ${forPreview ? "380px" : "300px"}; margin: 0 auto; padding: 8px; background: white; }
-  .slip-header { text-align: center; padding-bottom: 6px; }
-  .slip-header h2 { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
-  .slip-header .sub { font-size: 11px; color: #333; margin-top: 2px; }
-  .slip-header .account-name { font-size: 13px; font-weight: bold; margin-top: 4px; }
-  .double-line { border-top: 2px solid #000; border-bottom: 1px solid #000; margin: 6px 0; padding: 2px 0; text-align: center; font-size: 10px; letter-spacing: 1px; }
-  .order-block { padding: 4px 0; }
-  .order-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 11px; }
-  .items-line { font-size: 10px; color: #444; margin: 2px 0 2px 8px; }
-  .order-total { text-align: right; font-weight: bold; font-size: 12px; }
-  .dotted-divider { border-top: 1px dashed #666; margin: 4px 0; }
-  .summary { padding-top: 4px; }
-  .summary-row { display: flex; justify-content: space-between; padding: 1px 0; }
-  .summary-row.grand { font-size: 13px; font-weight: bold; border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
-  .outstanding { color: #c00; }
-  .footer { text-align: center; font-size: 10px; color: #666; margin-top: 8px; padding-top: 4px; border-top: 1px dashed #999; }
+  @page { size: 80mm auto; margin: 4mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 500 9pt/1.45 "Segoe UI","Helvetica Neue",Calibri,Arial,sans-serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    ${forPreview ? "background:#f0f0f0;" : ""}
+  }
+  .slip {
+    ${forPreview ? "max-width:320px;margin:20px auto;background:#fff;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);" : ""}
+    page-break-inside: avoid;
+  }
+  .logo { display:block; margin:0 auto 1.5mm; width:27mm; height:auto; }
+  h1 { text-align:center; font-size:15pt; margin:0; letter-spacing:1.5px; font-weight:900; }
+  .tagline { text-align:center; font-size:9.5pt; color:#222; margin:1mm 0 0; font-weight:600; }
+  .branchline { text-align:center; font-size:10pt; margin:1.5mm 0 0; font-weight:700; }
+  hr { border:0; border-top:1px dashed #444; margin:2.5mm 0; }
+  table.meta { width:100%; border-collapse:collapse; font-size:8.5pt; }
+  table.meta td { padding:0.3mm 0; vertical-align:top; }
+  table.meta .lb { font-weight:700; white-space:nowrap; padding-right:1.5mm; }
+  table.meta .lb2 { font-weight:700; white-space:nowrap; padding-left:3mm; padding-right:1.5mm; }
+  .doc-title {
+    text-align:center; font-size:8.5pt; font-weight:900; letter-spacing:1px;
+    border-top:1.5px solid #000; border-bottom:1.5px solid #000;
+    padding:1.5mm 0; margin:2mm 0;
+  }
+  .order-block { margin:0.5mm 0; }
+  .order-hdr { display:flex; justify-content:space-between; font-size:8.5pt; font-weight:700; }
+  .order-meta { font-size:7.5pt; font-weight:500; color:#333; }
+  table.items { width:100%; border-collapse:collapse; font-size:8pt; margin:1mm 0 0.5mm; }
+  table.items td { padding:0.4mm 0.3mm; vertical-align:top; }
+  table.items .qty { font-weight:700; white-space:nowrap; }
+  table.items .name { }
+  .order-subtotal { text-align:right; font-size:8.5pt; font-weight:700; border-top:1px dotted #999; padding-top:0.5mm; }
+  table.totals { width:100%; border-collapse:collapse; font-weight:900; font-size:11pt; margin-top:1.5mm; }
+  table.totals .total-row td { border-top:2px solid #000; border-bottom:2px solid #000; padding:1.5mm 0; }
+  table.totals .sub-row td { font-size:9pt; font-weight:600; padding:0.8mm 0; }
+  table.totals .credit-row td { font-size:8.5pt; font-weight:700; padding:1mm 0; }
+  table.totals .credit-cell { text-align:center; color:#006600; }
+  table.totals .lc { letter-spacing:0.5px; }
+  table.totals .num { text-align:right; white-space:nowrap; }
+  .footer { text-align:center; margin-top:4mm; font-size:10pt; font-style:italic; color:#111; font-weight:600; }
+  .footer .small { display:block; font-style:normal; font-size:9pt; color:#000; margin-top:1mm; font-weight:700; }
 </style>
-</head>
-<body>
-  <div class="slip-header">
-    <h2>${branchName}</h2>
-    <div class="sub">Printed: ${dateStr} ${timeStr}</div>
-    <div class="sub">Cashier: ${cashierName}</div>
-    <div class="account-name">Account: ${selectedAccount?.name ?? ""}</div>
-    ${selectedAccount?.phone ? `<div class="sub">Phone: ${selectedAccount.phone}</div>` : ""}
-  </div>
-  <div class="double-line">CREDIT ACCOUNT STATEMENT</div>
+</head><body>
+<div class="slip">
+  <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner"/>
+  <h1>SABIR JUICE CORNER</h1>
+  <div class="tagline">Est. 1973 · Multan</div>
+  <div class="branchline">${esc(branchName)}</div>
+  <hr/>
+  <table class="meta">
+    <tr>
+      <td class="lb">Date:</td><td>${dateStr}</td>
+      <td class="lb2">Time:</td><td>${timeStr}</td>
+    </tr>
+    <tr><td class="lb">Cashier:</td><td colspan="3">${esc(cashierName)}</td></tr>
+    <tr><td class="lb">Account:</td><td colspan="3">${esc(selectedAccount?.name ?? "")}</td></tr>
+    ${selectedAccount?.phone ? `<tr><td class="lb">Phone:</td><td colspan="3">${esc(selectedAccount.phone)}</td></tr>` : ""}
+  </table>
+  <div class="doc-title">CREDIT ACCOUNT STATEMENT</div>
 
-  ${orderRows}
+  ${orderBlocks}
 
-  <div class="summary">
-    <div class="summary-row">
-      <span>Orders (${orderList.length})</span>
-    </div>
-    <div class="summary-row grand">
-      <span>Total Billed</span>
-      <span>PKR ${grandTotal.toFixed(0)}</span>
-    </div>
-    <div class="summary-row outstanding">
-      <span><b>Outstanding</b></span>
-      <span><b>PKR ${grandOutstanding.toFixed(0)}</b></span>
-    </div>
-  </div>
+  <table class="totals">
+    ${summaryRows}
+  </table>
 
   <div class="footer">
-    Sabir Juice Corner · Thank you
+    Thank you!
+    <span class="small">Sabir Juice Corner · Est. 1973</span>
   </div>
-</body>
-</html>`;
+</div>
+${printScript}
+</body></html>`;
   }
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -187,10 +265,9 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     if (orderList.length === 0) return;
     const html = buildSlipHtml(orderList, preview);
     if (preview) {
-      const w = window.open("", "_blank", "width=440,height=700,resizable=yes");
+      const w = window.open("", "_blank", "width=460,height=800,resizable=yes");
       if (!w) { setError("Browser blocked the preview window — allow popups."); return; }
-      w.document.write(html);
-      w.document.close();
+      w.document.open(); w.document.write(html); w.document.close();
       return;
     }
     if (iframeRef.current) document.body.removeChild(iframeRef.current);
@@ -198,11 +275,11 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     iframe.style.cssText = "position:fixed;width:0;height:0;border:0;visibility:hidden;";
     document.body.appendChild(iframe);
     iframeRef.current = iframe;
+    iframe.contentDocument!.open();
     iframe.contentDocument!.write(html);
     iframe.contentDocument!.close();
-    iframe.contentWindow!.focus();
-    iframe.contentWindow!.print();
-    setTimeout(() => { if (iframeRef.current) { document.body.removeChild(iframeRef.current); iframeRef.current = null; } }, 10_000);
+    // print() is triggered by the embedded script after the logo loads (same pattern as receipt.ts)
+    setTimeout(() => { if (iframeRef.current) { document.body.removeChild(iframeRef.current); iframeRef.current = null; } }, 15_000);
   }
 
   // Single-order print (uses same slip format but just one order)
