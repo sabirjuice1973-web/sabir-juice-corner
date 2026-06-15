@@ -240,34 +240,24 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                     </div>
                   </div>
 
-                  {/* Row 2: late cash + late discount + total cash in hand */}
-                  {isToday && (
-                    <div className="grid grid-cols-4 gap-3">
-                      <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
-                        <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
-                        <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateCashReceived > 0 ? `PKR ${lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-                        <div className="text-[10px] text-cyan-500 mt-0.5">from credit accounts</div>
-                      </div>
-                      <div className="rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2.5 text-center">
-                        <div className="text-[10px] uppercase tracking-wider text-red-500 font-bold">Late Discount</div>
-                        <div className="font-mono font-bold text-red-900 text-base mt-0.5">{lateDiscount > 0 ? `−PKR ${lateDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-                        <div className="text-[10px] text-red-400 mt-0.5">written off</div>
-                      </div>
-                      <div className="col-span-2 rounded-xl border-2 border-teal-300 bg-teal-50 px-3 py-2.5 text-center flex flex-col items-center justify-center">
-                        <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
-                        <div className="font-mono font-bold text-teal-900 text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                        <div className="text-[10px] text-teal-500 mt-0.5">cash − discount + late cash − late discount</div>
-                      </div>
+                  {/* Row 2: late cash + late discount + total cash in hand (always shown; late cash/discount = 0 for historical dates) */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
+                      <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateCashReceived > 0 ? `PKR ${lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                      <div className="text-[10px] text-cyan-500 mt-0.5">{isToday ? "from credit accounts" : "historical not tracked"}</div>
                     </div>
-                  )}
-                  {!isToday && (
-                    <div className="grid grid-cols-4 gap-3">
-                      <div className="col-span-4 rounded-xl border-2 border-teal-200 bg-teal-50 px-3 py-2.5 text-center">
-                        <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
-                        <div className="font-mono font-bold text-teal-900 text-base mt-0.5">PKR {cashSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                      </div>
+                    <div className="rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-red-500 font-bold">Late Discount</div>
+                      <div className="font-mono font-bold text-red-900 text-base mt-0.5">{lateDiscount > 0 ? `−PKR ${lateDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                      <div className="text-[10px] text-red-400 mt-0.5">written off</div>
                     </div>
-                  )}
+                    <div className="col-span-2 rounded-xl border-2 border-teal-300 bg-teal-50 px-3 py-2.5 text-center flex flex-col items-center justify-center">
+                      <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
+                      <div className="font-mono font-bold text-teal-900 text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                      <div className="text-[10px] text-teal-500 mt-0.5">cash − discount + late cash − late discount</div>
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -306,7 +306,7 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
       by: [field],
       where: {
         branchId,
-        ...(accountId ? { accountId } : {}),
+        ...(accountId ? { ledgerAccountId: accountId } : {}),
         ...dateFilter,
         ...(search
           ? { [field]: { contains: search, mode: "insensitive" } }
