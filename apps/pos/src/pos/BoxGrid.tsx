@@ -308,19 +308,20 @@ function BoxPanel({
   }
 
   const urdu = isUrdu(headerLabel);
-  const nameFontStyle = urdu ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "20px", lineHeight: "1", direction: "rtl" as const, color: "#fde047" } : {};
+  const nameFontStyle = urdu ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "17px", lineHeight: "1", direction: "rtl" as const, color: "#fde047" } : {};
 
   return (
     <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Header — data-drag-handle makes this the FloatingPanel drag zone */}
       <div
-        className="px-3 py-2 flex items-center justify-between cursor-move bg-slate-900 border-b border-slate-700"
+        className="px-3 py-2 flex items-center justify-between cursor-move border-b-2 border-blue-400"
+        style={{ background: "linear-gradient(to right, #1e3a5f, #1e40af)" }}
         data-drag-handle="true"
       >
         {/* Left: shortcut + editable name */}
         <div className="flex items-center gap-2 min-w-0">
           {!kitchen && (
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 font-mono text-xs cursor-move flex-shrink-0">
+            <kbd className="px-1.5 py-0.5 rounded bg-blue-900 text-blue-200 font-mono text-xs cursor-move flex-shrink-0 border border-blue-600">
               {shortcut}
             </kbd>
           )}
@@ -332,8 +333,8 @@ function BoxPanel({
               onBlur={commitEdit}
               onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditing(false); }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-700 text-white font-bold rounded px-1.5 py-0.5 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-amber-400"
-              style={isUrdu(editValue) ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "20px", lineHeight: "1", direction: "rtl", color: "#fde047" } : {}}
+              className="bg-blue-900 text-white font-bold rounded px-1.5 py-0.5 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-amber-400 border border-blue-500"
+              style={isUrdu(editValue) ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "17px", lineHeight: "1", direction: "rtl", color: "#fde047" } : {}}
             />
           ) : (
             <span
@@ -355,7 +356,7 @@ function BoxPanel({
             >Today Rs {daySales.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
           )}
           {!kitchen && dayCount !== undefined && dayCount > 0 && (
-            <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-700 text-slate-200" title="Orders completed today (paid or sent to account)">
+            <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-blue-900 text-blue-200 border border-blue-600" title="Orders completed today (paid or sent to account)">
               Done {dayCount}
             </span>
           )}
