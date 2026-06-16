@@ -82,7 +82,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
      line up perfectly in money cells. */
   html, body { margin: 0; padding: 0; }
   body {
-    font: 500 9pt/1.45 "Segoe UI", "Helvetica Neue", Calibri, Arial, sans-serif;
+    font: 500 9pt/1.45 Arial, "Helvetica Neue", sans-serif;
     color: #000;
     font-variant-numeric: tabular-nums;
     -webkit-print-color-adjust: exact;
