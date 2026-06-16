@@ -108,6 +108,9 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     width: 22mm;
     height: auto;
     flex-shrink: 0;
+    /* boost contrast so thin strokes print solid on thermal */
+    filter: contrast(2);
+    -webkit-print-color-adjust: exact;
   }
   h1 {
     font-size: 12pt;
@@ -117,10 +120,13 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   }
   .addr-line {
     font-size: 8pt;
-    font-weight: 600;
-    color: #222;
+    font-weight: 700;
+    color: #000;
     margin-top: 1mm;
     line-height: 1.35;
+  }
+  .addr-line b {
+    font-weight: 900;
   }
   hr {
     border: 0;
@@ -261,7 +267,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     <div class="header-info">
       <h1>SABIR JUICE CORNER</h1>
       <div class="addr-line">Ghaffar Plaza, Multan Cantt.</div>
-      <div class="addr-line">Tel: 0321-6366000</div>
+      <div class="addr-line"><b>Contact</b> 0321-6366000</div>
     </div>
     <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
   </div>
