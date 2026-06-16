@@ -640,12 +640,18 @@ export function Pos({
 
   return (
     <div className="h-full flex flex-col bg-slate-100">
-      <header className={`bg-gradient-to-r from-sjc-500 to-sjc-400 text-slate-900 px-4 py-2 flex items-center gap-2 text-sm shadow-sm border-b-2 ${driftAlert ? "border-red-500" : "border-accent-600"}`}>
+      <header
+        className="px-4 py-2 flex items-center gap-2 text-sm shadow-md"
+        style={{
+          background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",
+          borderBottom: driftAlert ? "2px solid #ef4444" : "2px solid #26d0ce",
+        }}
+      >
         {/* Brand */}
         <BrandLogo size={28} withWordmark={false} />
         <div className="flex flex-col leading-tight mr-1">
-          <span className="font-display font-bold text-sm">Sabir Juice Corner</span>
-          <span className="text-[10px] text-slate-700">Branch #{branchId} · Shift #{shiftId}</span>
+          <span className="font-display font-bold text-sm text-white">Sabir Juice Corner</span>
+          <span className="text-[10px] text-white/50">Branch #{branchId} · Shift #{shiftId}</span>
         </div>
 
         {/* Business date pill */}
@@ -658,12 +664,12 @@ export function Pos({
 
         {/* Drift warnings */}
         {driftDays !== null && driftDays >= 1 && driftDays < 2 && (
-          <span className="text-[11px] text-amber-800 font-medium">
+          <span className="text-[11px] text-amber-300 font-medium">
             Calendar {driftDays}d ahead — update date.
           </span>
         )}
         {driftAlert && (
-          <span className="text-[11px] font-bold text-red-900 bg-red-200/70 px-2 py-0.5 rounded flex items-center gap-1">
+          <span className="text-[11px] font-bold text-white bg-red-500/80 px-2 py-0.5 rounded flex items-center gap-1">
             ⚠ Date {driftDays}d behind — update now!
           </span>
         )}
@@ -672,21 +678,21 @@ export function Pos({
         <div className="ml-auto flex items-center gap-2">
           {/* Zoom */}
           <span className="flex items-center gap-0.5">
-            <button type="button" onClick={zoomOut} disabled={pct <= 50} className="w-5 h-5 flex items-center justify-center rounded bg-black/15 hover:bg-black/25 text-slate-900 font-bold text-sm leading-none disabled:opacity-30">−</button>
-            <span className="font-mono text-[11px] font-bold text-slate-800 min-w-[30px] text-center">{pct}%</span>
-            <button type="button" onClick={zoomIn} disabled={pct >= 150} className="w-5 h-5 flex items-center justify-center rounded bg-black/15 hover:bg-black/25 text-slate-900 font-bold text-sm leading-none disabled:opacity-30">+</button>
+            <button type="button" onClick={zoomOut} disabled={pct <= 50} className="w-5 h-5 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 text-white font-bold text-sm leading-none disabled:opacity-30">−</button>
+            <span className="font-mono text-[11px] font-bold text-white/80 min-w-[30px] text-center">{pct}%</span>
+            <button type="button" onClick={zoomIn} disabled={pct >= 150} className="w-5 h-5 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 text-white font-bold text-sm leading-none disabled:opacity-30">+</button>
           </span>
 
           {/* Merge orders */}
           {mergeMode ? (
-            <span className="text-[11px] text-green-900 font-medium bg-green-200/70 px-2 py-0.5 rounded">
+            <span className="text-[11px] text-emerald-300 font-medium bg-emerald-900/50 px-2 py-0.5 rounded border border-emerald-500/40">
               {mergeSelections.length === 0 ? "Click orders to select" : `${mergeSelections.length} selected`}
             </span>
           ) : (
             <button
               type="button"
               onClick={() => { setMergeMode(true); setMergeSelections([]); }}
-              className="px-2 py-0.5 rounded border border-slate-900/20 bg-black/10 text-slate-800 hover:bg-black/20 font-medium text-xs"
+              className="px-2 py-0.5 rounded border border-white/20 bg-white/10 text-white hover:bg-white/20 font-medium text-xs"
             >
               Merge
             </button>
@@ -697,20 +703,20 @@ export function Pos({
             <button
               type="button"
               onClick={() => { saveZoom(); saveLayout(); }}
-              className="px-2 py-0.5 rounded border border-slate-900/20 bg-black/10 text-slate-800 hover:bg-black/20 font-medium text-xs"
+              className="px-2 py-0.5 rounded border border-cyan-400/50 bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30 font-medium text-xs"
             >
               Save
             </button>
           )}
-          {busy && <span className="text-slate-700 text-[11px]">syncing…</span>}
+          {busy && <span className="text-white/40 text-[11px]">syncing…</span>}
 
-          <span className="border-l border-slate-900/15 self-stretch mx-1" />
+          <span className="border-l border-white/15 self-stretch mx-1" />
 
           {/* Nav buttons */}
           <button
             type="button"
             onClick={() => setSalesOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/40 border border-slate-900/10 text-slate-800 hover:bg-white/70 transition-colors text-xs font-medium"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/15 border border-white/20 text-white hover:bg-white/25 transition-colors text-xs font-medium"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h12M3 18h8" /></svg>
             Sales
@@ -718,7 +724,7 @@ export function Pos({
           <button
             type="button"
             onClick={() => setLedgerOpen(true)}
-            className="text-slate-800 hover:text-leaf-700 font-medium flex items-center gap-1 text-xs"
+            className="text-white/80 hover:text-white font-medium flex items-center gap-1 text-xs"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -730,7 +736,7 @@ export function Pos({
           </button>
           <button
             onClick={() => setCreditorOpen(true)}
-            className="text-slate-800 hover:text-leaf-700 font-medium flex items-center gap-1 text-xs"
+            className="text-white/80 hover:text-white font-medium flex items-center gap-1 text-xs"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 12V8H6a2 2 0 0 1 0-4h12v4" />
@@ -741,7 +747,7 @@ export function Pos({
           </button>
           <button
             onClick={openKitchenScreen}
-            className="text-slate-800 hover:text-leaf-700 font-medium flex items-center gap-1 text-xs"
+            className="text-white/80 hover:text-white font-medium flex items-center gap-1 text-xs"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -755,14 +761,14 @@ export function Pos({
             href="http://localhost:3100"
             target="_blank"
             rel="noreferrer"
-            className="text-slate-800 hover:text-accent-700 font-medium text-xs"
+            className="text-white/80 hover:text-white font-medium text-xs"
             title="Open Admin"
           >
             Admin ↗
           </a>
-          <span className="font-medium text-xs">{user.fullName}</span>
-          <button className="text-slate-800 hover:text-accent-700 font-medium text-xs" onClick={() => setClosingShift(true)}>Close shift</button>
-          <button className="text-slate-700 hover:text-accent-700 text-xs" onClick={onLogout}>Sign out</button>
+          <span className="font-medium text-xs text-white/80">{user.fullName}</span>
+          <button className="text-white/80 hover:text-white font-medium text-xs" onClick={() => setClosingShift(true)}>Close shift</button>
+          <button className="text-white/60 hover:text-white text-xs" onClick={onLogout}>Sign out</button>
         </div>
       </header>
 
