@@ -289,14 +289,12 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   <hr />
   <table class="meta">
     <tr>
-      <td class="label">Cashier:</td><td class="value" colspan="3">${escapeHtml(header.cashier)}</td>
-    </tr>
-    <tr>
       <td class="label">Date:</td><td class="value">${orderDate}</td>
-      <td class="label-r">Ord:</td><td class="value">${orderTime}</td>
+      <td class="label-r">Order:</td><td class="value">${orderTime}</td>
     </tr>
     <tr>
-      <td class="label">Print:</td><td class="value" colspan="3">${printTime}</td>
+      <td class="label">Cashier:</td><td class="value">${escapeHtml(header.cashier)}</td>
+      <td class="label-r">Print:</td><td class="value">${printTime}</td>
     </tr>
   </table>
   <hr />
