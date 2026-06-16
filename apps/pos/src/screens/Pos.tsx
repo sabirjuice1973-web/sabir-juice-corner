@@ -912,6 +912,7 @@ export function Pos({
           boxNumber={pendingPush.boxNumber}
           required={NAME_REQUIRED_BOXES.has(pendingPush.boxNumber)}
           busy={busy}
+          branchId={branchId}
           onCancel={() => setPendingPush(null)}
           onSubmit={(name) => performPushToBox(pendingPush.boxNumber, name)}
         />
@@ -968,14 +969,35 @@ export function Pos({
  * (Food Panda orders come in named on the tablet — sometimes the cashier just
  * wants to push the order and move on).
  */
-function NamePromptModal({ boxNumber, required, busy, onCancel, onSubmit }: {
-  boxNumber: number; required: boolean; busy: boolean;
+function NamePromptModal({ boxNumber, required, busy, branchId, onCancel, onSubmit }: {
+  boxNumber: number; required: boolean; busy: boolean; branchId: string;
   onCancel: () => void; onSubmit: (name: string | null) => void;
 }) {
   const [name, setName] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSugg, setShowSugg] = useState(false);
   const label = BOX_LABELS[boxNumber] ?? `Box ${boxNumber}`;
   const trimmed = name.trim();
   const canSubmit = !busy && (!required || trimmed.length > 0);
+
+  // Fetch matching account names as the user types
+  useEffect(() => {
+    const q = trimmed;
+    if (q.length < 1) { setSuggestions([]); return; }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      api.listAccounts(branchId, "MARKET", q).then((r) => {
+        if (!cancelled) setSuggestions(r.accounts.map((a: any) => a.name as string));
+      }).catch(() => {});
+    }, 150);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [trimmed, branchId]);
+
+  function pick(s: string) {
+    setName(s);
+    setSuggestions([]);
+    setShowSugg(false);
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -997,14 +1019,32 @@ function NamePromptModal({ boxNumber, required, busy, onCancel, onSubmit }: {
               : "Optional. If the Food Panda order has a customer name, type it here so the row is identifiable."}
           </div>
         </div>
-        <input
-          autoFocus
-          className="input w-full text-lg"
-          placeholder={boxNumber === 7 ? "e.g. Ali Shopkeeper, Karim Bhai" : "e.g. Foodpanda customer name"}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={120}
-        />
+        <div className="relative">
+          <input
+            autoFocus
+            className="input w-full text-lg"
+            placeholder={boxNumber === 7 ? "e.g. Ali Shopkeeper, Karim Bhai" : "e.g. Foodpanda customer name"}
+            value={name}
+            onChange={(e) => { setName(e.target.value); setShowSugg(true); }}
+            onFocus={() => setShowSugg(true)}
+            onBlur={() => setTimeout(() => setShowSugg(false), 150)}
+            maxLength={120}
+            autoComplete="off"
+          />
+          {showSugg && suggestions.length > 0 && (
+            <ul className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              {suggestions.map((s) => (
+                <li
+                  key={s}
+                  className="px-4 py-2.5 cursor-pointer hover:bg-accent-50 hover:text-accent-800 text-slate-800 text-sm border-b last:border-0 border-slate-100"
+                  onMouseDown={() => pick(s)}
+                >
+                  {s}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <div className="flex gap-2 pt-2">
           <button type="button" className="btn-secondary flex-1" onClick={onCancel} disabled={busy}>Cancel</button>
           {!required && (
