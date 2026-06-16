@@ -308,20 +308,21 @@ function BoxPanel({
   }
 
   const urdu = isUrdu(headerLabel);
-  const nameFontStyle = urdu ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "17px", lineHeight: "1", direction: "rtl" as const, color: "#fde047" } : {};
+  const urduStyle = { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "14px", lineHeight: "1", direction: "rtl" as const, color: "#fde047", overflow: "hidden" };
+  const nameFontStyle = urdu ? urduStyle : {};
 
   return (
     <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Header — data-drag-handle makes this the FloatingPanel drag zone */}
+      {/* Header */}
       <div
-        className="px-3 py-2 flex items-center justify-between cursor-move border-b-2 border-blue-400"
-        style={{ background: "linear-gradient(to right, #1e3a5f, #1e40af)" }}
+        className="px-3 py-1.5 flex items-center justify-between cursor-move"
+        style={{ background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)", borderBottom: "2px solid #26d0ce" }}
         data-drag-handle="true"
       >
         {/* Left: shortcut + editable name */}
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           {!kitchen && (
-            <kbd className="px-1.5 py-0.5 rounded bg-blue-900 text-blue-200 font-mono text-xs cursor-move flex-shrink-0 border border-blue-600">
+            <kbd className="px-1.5 py-0.5 rounded font-mono text-xs cursor-move flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)", color: "#a5f3fc", border: "1px solid rgba(38,208,206,0.4)" }}>
               {shortcut}
             </kbd>
           )}
@@ -333,34 +334,34 @@ function BoxPanel({
               onBlur={commitEdit}
               onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditing(false); }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-blue-900 text-white font-bold rounded px-1.5 py-0.5 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-amber-400 border border-blue-500"
-              style={isUrdu(editValue) ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "17px", lineHeight: "1", direction: "rtl", color: "#fde047" } : {}}
+              className="font-bold rounded px-1.5 py-0.5 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(38,208,206,0.6)", ...(isUrdu(editValue) ? { ...urduStyle, color: "#fde047" } : {}) }}
             />
           ) : (
             <span
-              className={`font-bold text-white truncate cursor-pointer hover:text-amber-300 transition-colors ${kitchen ? "text-lg" : ""}`}
+              className={`font-bold text-white truncate cursor-pointer transition-colors hover:text-cyan-300 ${kitchen ? "text-lg" : ""}`}
               style={nameFontStyle}
               title="Click to rename"
               onClick={startEdit}
             >{headerLabel}</span>
           )}
-          {isBestSales && !kitchen && <span title="Best sales today!" className="text-yellow-400 text-xs flex-shrink-0">★</span>}
+          {isBestSales && !kitchen && <span title="Best sales today!" className="text-yellow-300 text-xs flex-shrink-0">★</span>}
         </div>
 
-        {/* Right: stats chips + FP button */}
+        {/* Right: stats + FP button */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {!kitchen && daySales !== undefined && daySales > 0 && (
             <span
-              className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded ${isBestSales ? "text-yellow-300" : "text-green-300"}`}
+              className={`text-xs font-bold tabular-nums ${isBestSales ? "text-yellow-300" : "text-emerald-300"}`}
               title="Today's total sales from this box"
             >Today Rs {daySales.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
           )}
           {!kitchen && dayCount !== undefined && dayCount > 0 && (
-            <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-blue-900 text-blue-200 border border-blue-600" title="Orders completed today (paid or sent to account)">
+            <span className="text-xs tabular-nums px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.12)", color: "#a5f3fc", border: "1px solid rgba(38,208,206,0.3)" }} title="Orders completed today">
               Done {dayCount}
             </span>
           )}
-          <span className="text-xs text-slate-300" title="Orders currently in this box">
+          <span className="text-xs font-medium" style={{ color: orders.length === 0 ? "#94a3b8" : "#fde047" }} title="Orders currently in this box">
             {orders.length === 0 ? "empty" : kitchen ? `${orders.length}` : `In ${orders.length}`}
           </span>
           {!kitchen && onPushAllFoodPanda && orders.length > 0 && (
