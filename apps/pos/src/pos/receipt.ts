@@ -61,7 +61,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     const rate = li.qty > 0 ? Number(li.lineTotal) / li.qty : 0;
     const qtyStr = Number.isInteger(li.qty) ? `${li.qty}` : li.qty.toFixed(2).replace(/\.?0+$/, "");
     return `<tr>
-       <td class="qty">${qtyStr}</td>
+       <td class="qty"><span>${qtyStr}</span></td>
        <td class="item">${escapeHtml(displayName)}</td>
        <td class="num">${formatMoney(rate)}</td>
        <td class="num total">${formatMoney(Number(li.lineTotal))}</td>
@@ -191,6 +191,19 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   table.lines td.qty {
     font-weight: 700;
     white-space: nowrap;
+    padding-top: 1.2mm;
+  }
+  table.lines td.qty span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 5mm;
+    height: 5mm;
+    padding: 0 0.8mm;
+    border: 1.5px solid #000;
+    border-radius: 50%;
+    font-size: 8pt;
+    line-height: 1;
   }
   table.lines td.item {
     word-wrap: break-word;
