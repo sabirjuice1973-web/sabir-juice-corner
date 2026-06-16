@@ -267,11 +267,7 @@ function BoxPanel({
   const customLabel = BOX_LABELS[boxNumber];
   const headerLabel = customLabel ?? `Box ${boxNumber}`;
 
-  const headerBg = isBestSales
-    ? "bg-gradient-to-r from-yellow-100 to-amber-50 border-b-2 border-yellow-400"
-    : customLabel
-      ? "bg-gradient-to-r from-leaf-50 to-transparent border-b border-slate-200"
-      : "bg-gradient-to-r from-sjc-50 to-transparent border-b border-slate-200";
+  const headerBg = "bg-slate-900 border-b border-slate-700";
 
   return (
     <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -282,25 +278,25 @@ function BoxPanel({
       >
         <div className="flex items-center gap-2">
           {!kitchen && (
-            <kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-xs cursor-move">
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 font-mono text-xs cursor-move">
               {shortcut}
             </kbd>
           )}
-          <span className={kitchen ? "font-bold text-lg" : "font-bold"}>{headerLabel}</span>
+          <span className={kitchen ? "font-bold text-lg text-white" : "font-bold text-white"}>{headerLabel}</span>
           {isBestSales && !kitchen && (
-            <span title="Best sales today!" className="text-yellow-600 text-xs">★</span>
+            <span title="Best sales today!" className="text-yellow-400 text-xs">★</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {!kitchen && daySales !== undefined && daySales > 0 && (
             <span
-              className={`text-xs font-bold tabular-nums ${isBestSales ? "text-yellow-700" : "text-green-700"}`}
+              className={`text-xs font-bold tabular-nums ${isBestSales ? "text-yellow-300" : "text-green-300"}`}
               title="Today's sales generated from this box"
             >
               Rs {daySales.toFixed(0)}
             </span>
           )}
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-300">
             {orders.length === 0
               ? "empty"
               : kitchen
