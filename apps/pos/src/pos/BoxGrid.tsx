@@ -308,7 +308,7 @@ function BoxPanel({
   }
 
   const urdu = isUrdu(headerLabel);
-  const nameFontStyle = urdu ? { fontFamily: "'Alvi Nastaleeq', 'Jameel Noori Nastaleeq', serif", fontSize: "15px", direction: "rtl" as const } : {};
+  const nameFontStyle = urdu ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "20px", lineHeight: "1", direction: "rtl" as const, color: "#fde047" } : {};
 
   return (
     <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -333,7 +333,7 @@ function BoxPanel({
               onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditing(false); }}
               onClick={(e) => e.stopPropagation()}
               className="bg-slate-700 text-white font-bold rounded px-1.5 py-0.5 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-amber-400"
-              style={isUrdu(editValue) ? { fontFamily: "'Alvi Nastaleeq', serif", direction: "rtl" } : {}}
+              style={isUrdu(editValue) ? { fontFamily: "'Jameel Noori Nastaleeq', 'Alvi Nastaleeq', serif", fontSize: "20px", lineHeight: "1", direction: "rtl", color: "#fde047" } : {}}
             />
           ) : (
             <span
