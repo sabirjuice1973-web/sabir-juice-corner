@@ -11,6 +11,7 @@ import { BoxGrid } from "../pos/BoxGrid";
 import { CreditorModal } from "../pos/CreditorModal";
 import { printReceipt } from "../pos/receipt";
 import { layoutsEqual, loadBoxLayout, POS_LAYOUT_KEY, saveBoxLayout, type BoxLayout } from "../pos/boxLayout";
+import { useZoom } from "../lib/useZoom";
 import {
   BOX_COUNT, BOX_LABELS, NAME_OPTIONAL_BOXES, NAME_REQUIRED_BOXES,
   clearDraft, loadState, newLocalId, saveState,
@@ -431,6 +432,9 @@ export function Pos({
     api.getBranchBusinessDate(branchId).then((r) => { if (r.name) setBranchName(r.name); }).catch(() => {});
   }, [branchId]);
 
+  // Independent zoom for the POS content area (not the header/strips).
+  const { zoom, pct, zoomIn, zoomOut, save: saveZoom, dirty: zoomDirty } = useZoom("sjc.zoom.pos");
+
   // Floating box layout — each window has independent position + size.
   const [layout, setLayout] = useState<BoxLayout>(() => loadBoxLayout(POS_LAYOUT_KEY));
   const [savedLayout, setSavedLayout] = useState<BoxLayout>(() => loadBoxLayout(POS_LAYOUT_KEY));
@@ -762,10 +766,16 @@ export function Pos({
           </button>
         )}
         <span className="ml-auto flex items-center gap-3">
-          {layoutDirty && (
+          {/* Zoom controls */}
+          <span className="flex items-center gap-1">
+            <button type="button" onClick={zoomOut} disabled={pct <= 50} className="w-5 h-5 flex items-center justify-center rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-sm leading-none disabled:opacity-30">−</button>
+            <span className="font-mono text-[11px] font-bold text-slate-600 min-w-[32px] text-center">{pct}%</span>
+            <button type="button" onClick={zoomIn}  disabled={pct >= 150} className="w-5 h-5 flex items-center justify-center rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-sm leading-none disabled:opacity-30">+</button>
+          </span>
+          {(zoomDirty || layoutDirty) && (
             <button
               type="button"
-              onClick={saveLayout}
+              onClick={() => { saveZoom(); saveLayout(); }}
               className="px-3 py-0.5 rounded border border-accent-500 bg-accent-50 text-accent-800 hover:bg-accent-100 font-medium text-xs"
             >
               Save Screen
@@ -811,7 +821,7 @@ export function Pos({
       )}
 
       {/* Main work area — all panels float inside a relative workspace */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative overflow-auto" style={{ zoom }}>
         <BoxGrid
           boxes={state.boxes}
           onToggleDelivered={toggleDelivered}

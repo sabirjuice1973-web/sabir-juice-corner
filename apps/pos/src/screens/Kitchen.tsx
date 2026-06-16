@@ -3,6 +3,7 @@ import { BoxGrid } from "../pos/BoxGrid";
 import { BrandLogo } from "../components/BrandLogo";
 import { loadState, type PosState } from "../pos/posState";
 import { layoutsEqual, loadBoxLayout, KITCHEN_LAYOUT_KEY, saveBoxLayout, type BoxLayout } from "../pos/boxLayout";
+import { useZoom } from "../lib/useZoom";
 
 /**
  * Kitchen Display Screen.
@@ -77,6 +78,8 @@ export function Kitchen() {
   // the BoxGrid prop types.
   const noopXY = (_b: number, _l: string) => {};
 
+  const { zoom, pct, zoomIn, zoomOut, save: saveZoom, dirty: zoomDirty } = useZoom("sjc.zoom.kitchen");
+
   const now = new Date().toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
 
   return (
@@ -90,13 +93,19 @@ export function Kitchen() {
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          {layoutDirty && (
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={zoomOut} disabled={pct <= 50} className="w-6 h-6 flex items-center justify-center rounded bg-white/30 hover:bg-white/50 text-slate-900 font-bold text-base leading-none disabled:opacity-30">−</button>
+            <span className="font-mono text-xs font-bold text-slate-800 min-w-[34px] text-center">{pct}%</span>
+            <button type="button" onClick={zoomIn}  disabled={pct >= 150} className="w-6 h-6 flex items-center justify-center rounded bg-white/30 hover:bg-white/50 text-slate-900 font-bold text-base leading-none disabled:opacity-30">+</button>
+          </div>
+          {(zoomDirty || layoutDirty) && (
             <button
               type="button"
-              onClick={saveLayout}
+              onClick={() => { saveZoom(); saveLayout(); }}
               className="px-3 py-0.5 rounded border border-white/70 bg-white/30 text-slate-900 hover:bg-white/50 font-medium text-xs"
             >
-              Save Screen
+              Save
             </button>
           )}
           <div className="font-mono font-bold text-base">{now}</div>
@@ -105,7 +114,7 @@ export function Kitchen() {
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative overflow-auto" style={{ zoom }}>
         <BoxGrid
           boxes={state.boxes}
           kitchen
