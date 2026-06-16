@@ -138,12 +138,13 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   /* Meta block: 4-column layout — two label/value pairs per row to save paper. */
   .meta {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0 1.5mm;
     font-size: 8.5pt;
   }
   .meta td {
-    padding: 0.3mm 0;
-    vertical-align: top;
+    padding: 0;
+    vertical-align: middle;
   }
   .meta .label,
   .meta .label-r {
@@ -151,10 +152,13 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     white-space: nowrap;
     border: 1.2px solid #000;
     border-radius: 1px;
-    padding: 0.5mm 1.5mm;
+    padding: 0.5mm 2mm;
   }
-  /* extra left cell-gap so the right-side box doesn't crowd the value */
-  .meta .label-r { padding-left: 1.5mm; }
+  .meta .value {
+    font-weight: 500;
+    width: 50%;
+    padding-left: 2mm;
+  }
   .meta .value {
     font-weight: 500;
     width: 50%;
@@ -288,12 +292,12 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   <hr />
   <table class="meta">
     <tr>
-      <td class="label">Date:</td><td class="value">${orderDate}</td>
-      <td class="label-r">Order:</td><td class="value">${orderTime}</td>
+      <td class="label">Date</td><td class="value">${orderDate}</td>
+      <td class="label-r">Order</td><td class="value">${orderTime}</td>
     </tr>
     <tr>
-      <td class="label">Cashier:</td><td class="value">${escapeHtml(header.cashier)}</td>
-      <td class="label-r">Print:</td><td class="value">${printTime}</td>
+      <td class="label">Cashier</td><td class="value">${escapeHtml(header.cashier)}</td>
+      <td class="label-r">Print</td><td class="value">${printTime}</td>
     </tr>
   </table>
   <hr />
