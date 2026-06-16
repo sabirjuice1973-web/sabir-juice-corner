@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, type TodayOrder } from "../api";
 import { ORDERS_CHANGED } from "../lib/events";
-import { displayItemName } from "../pos/posState";
+import { displayItemName, BOX_LABELS, BOX_COUNT } from "../pos/posState";
+
+const LABELS_KEY = "sjc.boxLabels";
+function getBoxLabel(boxNumber: number): string {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LABELS_KEY) ?? "{}") as Record<number, string>;
+    return saved[boxNumber] ?? BOX_LABELS[boxNumber] ?? `Box ${boxNumber}`;
+  } catch { return BOX_LABELS[boxNumber] ?? `Box ${boxNumber}`; }
+}
 
 /**
  * "Today's Sales" panel — invoked from the POS header.
@@ -19,7 +27,7 @@ import { displayItemName } from "../pos/posState";
  * toggle the Orders tab to "All statuses" if they want to see voids/cancels too.
  */
 
-type Tab = "orders" | "items";
+type Tab = "orders" | "items" | "boxes";
 
 type ItemRow = {
   itemId: string; itemCode: number | null; name: string; size: string;
@@ -64,7 +72,7 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
     async function load() {
       setLoading(true); setError(null);
       try {
-        if (tab === "orders") {
+        if (tab === "orders" || tab === "boxes") {
           const r = await api.todayOrders(shiftId, fromDate ?? undefined, toDate ?? undefined);
           if (!cancelled) setOrders(r.orders);
         } else {
@@ -205,6 +213,12 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
           >
             Items sold {items ? <span className="ml-1 text-xs text-slate-400">({items.length})</span> : null}
           </button>
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "boxes" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            onClick={() => setTab("boxes")}
+          >
+            Boxes
+          </button>
         </div>
 
         {/* Body */}
@@ -328,6 +342,68 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
               </table>
             </div>
           )}
+
+          {tab === "boxes" && (() => {
+            // Compute per-box stats from all paid orders
+            type BoxStat = { boxNumber: number; label: string; sale: number; done: number };
+            const boxMap = new Map<number, BoxStat>();
+            for (let i = 1; i <= BOX_COUNT; i++) {
+              boxMap.set(i, { boxNumber: i, label: getBoxLabel(i), sale: 0, done: 0 });
+            }
+            for (const o of paidOrders) {
+              const box = o.waiterBox;
+              if (!box) continue;
+              const stat = boxMap.get(box) ?? { boxNumber: box, label: getBoxLabel(box), sale: 0, done: 0 };
+              stat.sale += Number(o.total);
+              stat.done += 1;
+              boxMap.set(box, stat);
+            }
+            const boxStats = [...boxMap.values()].filter((s) => s.done > 0 || true).sort((a, b) => b.sale - a.sale);
+            const activeBoxes = boxStats.filter((s) => s.done > 0);
+            const totalBoxSale = boxStats.reduce((s, b) => s + b.sale, 0);
+
+            return (
+              <div>
+                {loading && !orders && <div className="text-slate-400 text-sm">Loading…</div>}
+                {orders && activeBoxes.length === 0 && (
+                  <div className="text-slate-400 text-sm text-center py-12">No paid orders yet.</div>
+                )}
+                {orders && activeBoxes.length > 0 && (
+                  <>
+                    <div className="mb-3 flex items-center justify-between bg-sjc-50 border border-sjc-200 rounded-lg p-3">
+                      <div className="text-sm text-slate-700">
+                        <b>{activeBoxes.length}</b> active boxes
+                      </div>
+                      <div className="text-sm">
+                        <span className="text-slate-500">Total: </span>
+                        <span className="font-mono font-bold text-slate-900">PKR {totalBoxSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    </div>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th className="w-8">#</th>
+                          <th>Box Name</th>
+                          <th className="text-right w-32">Sale</th>
+                          <th className="text-right w-24">Orders Done</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {boxStats.map((s) => (
+                          <tr key={s.boxNumber} className={s.done === 0 ? "opacity-35" : ""}>
+                            <td className="font-mono text-xs text-slate-400">{s.boxNumber}</td>
+                            <td className="font-medium">{s.label}</td>
+                            <td className="text-right font-mono">{s.done > 0 ? `PKR ${s.sale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</td>
+                            <td className="text-right font-mono">{s.done > 0 ? s.done : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {tab === "items" && (
             <div>
