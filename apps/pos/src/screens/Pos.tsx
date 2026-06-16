@@ -984,7 +984,7 @@ function NamePromptModal({ boxNumber, required, busy, onCancel, onSubmit }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[600] p-4" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <form onSubmit={submit} className="card w-full max-w-md p-5 space-y-3">
         <div className="border-b pb-3">
           <div className="text-xs uppercase tracking-wider text-accent-700 font-medium">Pushing to {label}</div>
