@@ -442,16 +442,20 @@ export function Pos({
 
   // Per-box today's sales totals — shown in box headers to reward the best waiter.
   const [boxSales, setBoxSales] = useState<number[]>(() => Array(BOX_COUNT).fill(0));
+  const [boxDoneCounts, setBoxDoneCounts] = useState<number[]>(() => Array(BOX_COUNT).fill(0));
   const fetchBoxSales = useCallback(async () => {
     try {
       const { orders } = await api.todayOrders(shiftId);
       const sales = Array<number>(BOX_COUNT).fill(0);
+      const done  = Array<number>(BOX_COUNT).fill(0);
       for (const o of orders) {
         if (o.status === "PAID" && o.waiterBox != null && o.waiterBox >= 1 && o.waiterBox <= BOX_COUNT) {
           sales[o.waiterBox - 1] += Number(o.total);
+          done[o.waiterBox - 1]  += 1;
         }
       }
       setBoxSales(sales);
+      setBoxDoneCounts(done);
     } catch {}
   }, [shiftId]);
   useEffect(() => {
@@ -824,6 +828,7 @@ export function Pos({
           layout={layout}
           onLayoutChange={setLayout}
           boxSales={boxSales}
+          boxDoneCounts={boxDoneCounts}
         />
       </div>
 

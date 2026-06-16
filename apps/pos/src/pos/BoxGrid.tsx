@@ -3,6 +3,17 @@ import { BOX_COUNT, BOX_LABELS, displayItemName, type BoxOrder } from "./posStat
 import { type BoxLayout, type BoxWindowState, MIN_WIN_W, MIN_WIN_H } from "./boxLayout";
 import { AllOrdersPanel } from "../components/AllOrdersPanel";
 
+const LABELS_KEY = "sjc.boxLabels";
+function loadBoxLabels(): Record<number, string> {
+  try { return JSON.parse(localStorage.getItem(LABELS_KEY) ?? "{}"); } catch { return {}; }
+}
+function saveBoxLabels(labels: Record<number, string>) {
+  localStorage.setItem(LABELS_KEY, JSON.stringify(labels));
+}
+function isUrdu(text: string): boolean {
+  return /[؀-ۿ]/.test(text);
+}
+
 type Props = {
   boxes: BoxOrder[][];
   onToggleDelivered: (boxIdx: number, localId: string) => void;
@@ -21,13 +32,21 @@ type Props = {
   onLayoutChange: (next: BoxLayout) => void;
   /** Per-box today-sales totals (index 0 = box 1). Main POS only — omit for kitchen. */
   boxSales?: number[];
+  /** Per-box completed-order counts today (PAID + creditor). Same indexing. */
+  boxDoneCounts?: number[];
 };
 
 export function BoxGrid({
   boxes, onToggleDelivered, onPrint, onSave, onPrintAndSave, onOpenDetails, onSelect,
   onPushAllFoodPanda, selectedKey, mergeMode, mergeSelectedIds, onMergeToggle,
-  kitchen = false, layout, onLayoutChange, boxSales,
+  kitchen = false, layout, onLayoutChange, boxSales, boxDoneCounts,
 }: Props) {
+  const [customLabels, setCustomLabels] = useState<Record<number, string>>(loadBoxLabels);
+  function renameBox(boxNumber: number, name: string) {
+    const next = { ...customLabels, [boxNumber]: name };
+    setCustomLabels(next);
+    saveBoxLabels(next);
+  }
   const workspaceRef = useRef<HTMLDivElement>(null);
   const trimmed = boxes.slice(0, BOX_COUNT);
   const visibleBoxes = kitchen ? trimmed.map((box) => box.filter((o) => !o.deliveredAt)) : trimmed;
@@ -97,6 +116,9 @@ export function BoxGrid({
             mergeSelectedIds={mergeSelectedIds}
             onMergeToggle={onMergeToggle ? (localId) => onMergeToggle(i, localId) : undefined}
             daySales={boxSales?.[i]}
+            dayCount={boxDoneCounts?.[i]}
+            boxLabel={customLabels[i + 1]}
+            onRename={(name) => renameBox(i + 1, name)}
             isBestSales={i === bestBoxIdx && bestBoxIdx >= 0}
           />
         </FloatingPanel>
@@ -254,64 +276,99 @@ type BoxProps = {
   mergeSelectedIds?: Set<string>;
   onMergeToggle?: (localId: string) => void;
   daySales?: number;
+  dayCount?: number;
+  boxLabel?: string;
+  onRename: (name: string) => void;
   isBestSales?: boolean;
 };
 
 function BoxPanel({
   boxNumber, orders, kitchen, onToggleDelivered, onPrint, onSave, onPrintAndSave,
   onOpenDetails, onSelect, onPushAllFoodPanda, selectedLocalId, mergeMode,
-  mergeSelectedIds, onMergeToggle, daySales, isBestSales,
+  mergeSelectedIds, onMergeToggle, daySales, dayCount, boxLabel, onRename, isBestSales,
 }: BoxProps) {
-  const total = orders.reduce((s, o) => s + Number(o.total), 0);
   const shortcut = `Ctrl+${boxNumber}`;
-  const customLabel = BOX_LABELS[boxNumber];
-  const headerLabel = customLabel ?? `Box ${boxNumber}`;
+  const defaultLabel = BOX_LABELS[boxNumber] ?? `Box ${boxNumber}`;
+  const headerLabel = boxLabel || defaultLabel;
 
-  const headerBg = "bg-slate-900 border-b border-slate-700";
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const editRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditValue(headerLabel);
+    setEditing(true);
+    setTimeout(() => editRef.current?.select(), 0);
+  }
+  function commitEdit() {
+    const v = editValue.trim();
+    if (v && v !== headerLabel) onRename(v);
+    setEditing(false);
+  }
+
+  const urdu = isUrdu(headerLabel);
+  const nameFontStyle = urdu ? { fontFamily: "'Alvi Nastaleeq', 'Jameel Noori Nastaleeq', serif", fontSize: "15px", direction: "rtl" as const } : {};
 
   return (
     <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Header — data-drag-handle makes this the FloatingPanel drag zone */}
       <div
-        className={`px-3 py-2 flex items-center justify-between cursor-move ${headerBg}`}
+        className="px-3 py-2 flex items-center justify-between cursor-move bg-slate-900 border-b border-slate-700"
         data-drag-handle="true"
       >
-        <div className="flex items-center gap-2">
+        {/* Left: shortcut + editable name */}
+        <div className="flex items-center gap-2 min-w-0">
           {!kitchen && (
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 font-mono text-xs cursor-move">
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 font-mono text-xs cursor-move flex-shrink-0">
               {shortcut}
             </kbd>
           )}
-          <span className={kitchen ? "font-bold text-lg text-white" : "font-bold text-white"}>{headerLabel}</span>
-          {isBestSales && !kitchen && (
-            <span title="Best sales today!" className="text-yellow-400 text-xs">★</span>
+          {editing ? (
+            <input
+              ref={editRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditing(false); }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-700 text-white font-bold rounded px-1.5 py-0.5 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              style={isUrdu(editValue) ? { fontFamily: "'Alvi Nastaleeq', serif", direction: "rtl" } : {}}
+            />
+          ) : (
+            <span
+              className={`font-bold text-white truncate cursor-pointer hover:text-amber-300 transition-colors ${kitchen ? "text-lg" : ""}`}
+              style={nameFontStyle}
+              title="Click to rename"
+              onClick={startEdit}
+            >{headerLabel}</span>
           )}
+          {isBestSales && !kitchen && <span title="Best sales today!" className="text-yellow-400 text-xs flex-shrink-0">★</span>}
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Right: stats chips + FP button */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {!kitchen && daySales !== undefined && daySales > 0 && (
             <span
-              className={`text-xs font-bold tabular-nums ${isBestSales ? "text-yellow-300" : "text-green-300"}`}
-              title="Today's sales generated from this box"
-            >
-              Rs {daySales.toFixed(0)}
+              className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded ${isBestSales ? "text-yellow-300" : "text-green-300"}`}
+              title="Today's total sales from this box"
+            >Today Rs {daySales.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
+          )}
+          {!kitchen && dayCount !== undefined && dayCount > 0 && (
+            <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-700 text-slate-200" title="Orders completed today (paid or sent to account)">
+              Done {dayCount}
             </span>
           )}
-          <div className="text-xs text-slate-300">
-            {orders.length === 0
-              ? "empty"
-              : kitchen
-                ? <>{orders.length} order{orders.length === 1 ? "" : "s"}</>
-                : <>{orders.length} order{orders.length === 1 ? "" : "s"} · <span className="font-mono font-medium">PKR {total.toFixed(0)}</span></>}
-          </div>
+          <span className="text-xs text-slate-300" title="Orders currently in this box">
+            {orders.length === 0 ? "empty" : kitchen ? `${orders.length}` : `In ${orders.length}`}
+          </span>
           {!kitchen && onPushAllFoodPanda && orders.length > 0 && (
             <button
               type="button"
               title="Push all Food Panda orders to account in one click"
               onClick={(e) => { e.stopPropagation(); onPushAllFoodPanda(); }}
               className="px-2 py-0.5 rounded text-xs font-medium bg-leaf-600 text-white hover:bg-leaf-700 whitespace-nowrap cursor-pointer"
-            >
-              Push all → FP
-            </button>
+            >Push all → FP</button>
           )}
         </div>
       </div>
