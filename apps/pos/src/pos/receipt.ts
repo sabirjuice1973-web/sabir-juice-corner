@@ -43,8 +43,10 @@ export function printReceipt(order: BoxOrder, header: { branchName: string; cash
 
 function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: string }): string {
   const orderedAt = new Date(order.openedAt);
+  const printedAt = new Date();
   const orderDate = orderedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
   const orderTime = orderedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
   // Show just the sequential integer: "B2-20260612-0062" → 62
   const orderSeq = order.orderNo
     ? String(parseInt(/(\d+)$/.exec(order.orderNo)?.[1] ?? "0", 10) || order.orderNo)
@@ -279,7 +281,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   <div class="header-row">
     <div class="header-info">
       <h1>SABIR JUICE CORNER</h1>
-      <div class="addr-line">Ghaffar Plaza, Multan Cantt.</div>
+      <div class="addr-line">Clifton Plaza, Multan Cantt.</div>
       <div class="addr-line"><b>Contact</b> 0321-6366000</div>
     </div>
     <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
@@ -287,12 +289,14 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   <hr />
   <table class="meta">
     <tr>
-      <td class="label">Order:</td><td class="value">#${escapeHtml(orderSeq)}</td>
-      <td class="label-r">Cashier:</td><td class="value">${escapeHtml(header.cashier)}</td>
+      <td class="label">Cashier:</td><td class="value" colspan="3">${escapeHtml(header.cashier)}</td>
     </tr>
     <tr>
       <td class="label">Date:</td><td class="value">${orderDate}</td>
-      <td class="label-r">Time:</td><td class="value">${orderTime}</td>
+      <td class="label-r">Ord:</td><td class="value">${orderTime}</td>
+    </tr>
+    <tr>
+      <td class="label">Print:</td><td class="value" colspan="3">${printTime}</td>
     </tr>
   </table>
   <hr />
