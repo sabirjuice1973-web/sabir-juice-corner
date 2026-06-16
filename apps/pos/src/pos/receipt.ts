@@ -145,17 +145,16 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     padding: 0.3mm 0;
     vertical-align: top;
   }
-  .meta .label {
-    font-weight: 700;
-    white-space: nowrap;
-    padding-right: 1.5mm;
-  }
+  .meta .label,
   .meta .label-r {
     font-weight: 700;
     white-space: nowrap;
-    padding-left: 3mm;
-    padding-right: 1.5mm;
+    border: 1.2px solid #000;
+    border-radius: 1px;
+    padding: 0.5mm 1.5mm;
   }
+  /* extra left cell-gap so the right-side box doesn't crowd the value */
+  .meta .label-r { padding-left: 1.5mm; }
   .meta .value {
     font-weight: 500;
     width: 50%;
