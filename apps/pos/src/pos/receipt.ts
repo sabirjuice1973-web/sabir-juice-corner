@@ -43,10 +43,8 @@ export function printReceipt(order: BoxOrder, header: { branchName: string; cash
 
 function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: string }): string {
   const orderedAt = new Date(order.openedAt);
-  const printedAt = new Date();
   const orderDate = orderedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
   const orderTime = orderedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
   // Show just the sequential integer: "B2-20260612-0062" → 62
   const orderSeq = order.orderNo
     ? String(parseInt(/(\d+)$/.exec(order.orderNo)?.[1] ?? "0", 10) || order.orderNo)
@@ -97,32 +95,32 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     break-inside: avoid !important;
   }
   .receipt { page-break-after: avoid !important; break-after: avoid !important; }
-  .logo {
-    display: block;
-    margin: 0 auto 1.5mm;
-    width: 27mm;
-    height: auto;
+  /* Header: shop info on left, logo on right */
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2mm;
+    margin-bottom: 1.5mm;
   }
-  /* Header stays large — owner-requested. */
+  .header-info { flex: 1; }
+  .logo {
+    width: 22mm;
+    height: auto;
+    flex-shrink: 0;
+  }
   h1 {
-    text-align: center;
-    font-size: 15pt;
+    font-size: 12pt;
     margin: 0;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.5px;
     font-weight: 900;
   }
-  .tagline {
-    text-align: center;
-    font-size: 9.5pt;
-    color: #222;
-    margin: 1mm 0 0;
+  .addr-line {
+    font-size: 8pt;
     font-weight: 600;
-  }
-  .branchline {
-    text-align: center;
-    font-size: 10pt;
-    margin: 1.5mm 0 0;
-    font-weight: 700;
+    color: #222;
+    margin-top: 1mm;
+    line-height: 1.35;
   }
   hr {
     border: 0;
@@ -259,10 +257,14 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
 </style>
 </head><body>
 <div class="receipt">
-  <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
-  <h1>SABIR JUICE CORNER</h1>
-  <div class="tagline">Est. 1973 · Multan</div>
-  <div class="branchline">${escapeHtml(header.branchName)}</div>
+  <div class="header-row">
+    <div class="header-info">
+      <h1>SABIR JUICE CORNER</h1>
+      <div class="addr-line">Ghaffar Plaza, Multan Cantt.</div>
+      <div class="addr-line">Tel: 0321-6366000</div>
+    </div>
+    <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
+  </div>
   <hr />
   <table class="meta">
     <tr>
@@ -270,11 +272,8 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
       <td class="label-r">Cashier:</td><td class="value">${escapeHtml(header.cashier)}</td>
     </tr>
     <tr>
-      <td class="label">Date:</td><td class="value" colspan="3">${orderDate}</td>
-    </tr>
-    <tr>
-      <td class="label">Ord. Time:</td><td class="value">${orderTime}</td>
-      <td class="label-r">Prt. Time:</td><td class="value">${printTime}</td>
+      <td class="label">Date:</td><td class="value">${orderDate}</td>
+      <td class="label-r">Time:</td><td class="value">${orderTime}</td>
     </tr>
   </table>
   <hr />
