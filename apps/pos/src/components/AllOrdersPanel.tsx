@@ -58,13 +58,15 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
 
   const qtyText = (n: number) => Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/\.?0+$/, "");
   const fontSize = largeFont ? "text-base" : "text-sm";
-  const qtyFontSize = largeFont ? "text-xl" : "text-base";
+  const badgeClass = largeFont
+    ? "inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold leading-none px-1 text-[15px] h-6 min-w-[24px]"
+    : "inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold leading-none px-1 text-[14px] h-[22px] min-w-[22px]";
 
   return (
     <aside className={`flex flex-col bg-white border-r-2 border-slate-300 ${className}`}>
-      <div className="px-3 py-2 border-b-2 border-accent-500 bg-gradient-to-r from-accent-50 to-white">
-        <div className="font-bold text-slate-900 tracking-wide">All Orders</div>
-        <div className="text-[10px] uppercase tracking-wider text-slate-500">Undelivered totals</div>
+      <div className="px-3 py-1.5" style={{ background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)", borderBottom: "2px solid #26d0ce" }}>
+        <div className="font-bold tracking-wide" style={{ color: "#ffffff" }}>All Orders</div>
+        <div className="text-[10px] uppercase tracking-wider" style={{ color: "#a5f3fc" }}>Undelivered totals</div>
       </div>
 
       <ul className="flex-1 overflow-y-auto divide-y divide-slate-100">
@@ -73,13 +75,10 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
         ) : rows.map((r) => (
           <li
             key={r.displayName}
-            className={`px-3 py-1.5 flex items-baseline gap-2 ${fontSize}`}
+            className={`px-3 py-1.5 flex items-center gap-2 ${fontSize}`}
             title={`${qtyText(r.qty)} × ${r.displayName}`}
           >
-            <span className={`font-mono font-bold text-accent-700 ${qtyFontSize} min-w-[2ch] text-right`}>
-              {qtyText(r.qty)}
-            </span>
-            <span className="text-slate-400 font-bold">=</span>
+            <span className={badgeClass}>{qtyText(r.qty)}</span>
             <span className="flex-1 truncate font-medium text-slate-900">{r.displayName}</span>
           </li>
         ))}
