@@ -377,7 +377,8 @@ function OrderRow({
     const qty = Number.isInteger(li.qty) ? `${li.qty}` : li.qty.toFixed(2).replace(/\.?0+$/, "");
     return (
       <span key={i}>
-        {i > 0 && " "}{qty}-{bare}{suffix && <b>{suffix}</b>}
+        {i > 0 && " "}
+        <span className="inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold text-[10px] leading-none min-w-[16px] h-4 px-1 mr-0.5">{qty}</span>{bare}{suffix && <b>{suffix}</b>}
       </span>
     );
   });
