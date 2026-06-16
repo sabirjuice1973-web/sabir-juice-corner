@@ -641,92 +641,103 @@ export function Pos({
   return (
     <div className="h-full flex flex-col bg-slate-100">
       <header
-        className="px-4 py-2 flex items-center gap-2 text-sm shadow-md"
+        className="px-5 flex items-center gap-4 shadow-lg"
         style={{
-          background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",
-          borderBottom: driftAlert ? "2px solid #ef4444" : "2px solid #26d0ce",
+          background: "linear-gradient(135deg, #022c22 0%, #064e3b 55%, #065f46 100%)",
+          borderBottom: driftAlert ? "3px solid #ef4444" : "3px solid #10b981",
+          minHeight: "52px",
         }}
       >
         {/* Brand */}
-        <BrandLogo size={28} withWordmark={false} />
-        <div className="flex flex-col leading-tight mr-1">
-          <span className="font-display font-bold text-sm text-white">Sabir Juice Corner</span>
-          <span className="text-[10px] text-white/50">Branch #{branchId} · Shift #{shiftId}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          <BrandLogo size={36} withWordmark={false} />
+          <div className="flex flex-col leading-tight">
+            <span className="font-display font-bold text-base text-white tracking-wide">Sabir Juice Corner</span>
+            <span className="text-[11px] text-emerald-300/70">Branch #{branchId} · Shift #{shiftId}</span>
+          </div>
         </div>
 
-        {/* Business date pill */}
-        <BusinessDatePill
-          branchId={branchId}
-          user={user}
-          onDateLoaded={setBusinessDate}
-          onDateChanged={setBusinessDate}
-        />
+        {/* Divider */}
+        <span className="w-px self-stretch bg-white/10 shrink-0" />
 
-        {/* Drift warnings */}
-        {driftDays !== null && driftDays >= 1 && driftDays < 2 && (
-          <span className="text-[11px] text-amber-300 font-medium">
-            Calendar {driftDays}d ahead — update date.
-          </span>
-        )}
-        {driftAlert && (
-          <span className="text-[11px] font-bold text-white bg-red-500/80 px-2 py-0.5 rounded flex items-center gap-1">
-            ⚠ Date {driftDays}d behind — update now!
-          </span>
-        )}
+        {/* Business date + drift */}
+        <div className="flex items-center gap-3 shrink-0">
+          <BusinessDatePill
+            branchId={branchId}
+            user={user}
+            onDateLoaded={setBusinessDate}
+            onDateChanged={setBusinessDate}
+          />
+          {driftDays !== null && driftDays >= 1 && driftDays < 2 && (
+            <span className="text-xs text-amber-300 font-medium">
+              Calendar {driftDays}d ahead — update date.
+            </span>
+          )}
+          {driftAlert && (
+            <span className="text-xs font-bold text-white bg-red-500/80 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+              ⚠ Date {driftDays}d behind — update now!
+            </span>
+          )}
+        </div>
 
-        {/* Right-side controls */}
-        <div className="ml-auto flex items-center gap-2">
-          {/* Zoom */}
-          <span className="flex items-center gap-0.5">
-            <button type="button" onClick={zoomOut} disabled={pct <= 50} className="w-5 h-5 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 text-white font-bold text-sm leading-none disabled:opacity-30">−</button>
-            <span className="font-mono text-[11px] font-bold text-white/80 min-w-[30px] text-center">{pct}%</span>
-            <button type="button" onClick={zoomIn} disabled={pct >= 150} className="w-5 h-5 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 text-white font-bold text-sm leading-none disabled:opacity-30">+</button>
-          </span>
+        {/* Spacer */}
+        <div className="flex-1" />
 
-          {/* Merge orders */}
+        {/* Utility controls: zoom + merge + save */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 bg-black/20 rounded-lg px-1 py-0.5">
+            <button type="button" onClick={zoomOut} disabled={pct <= 50}
+              className="w-7 h-7 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white font-bold text-base leading-none disabled:opacity-30 transition-colors">−</button>
+            <span className="font-mono text-sm font-bold text-white/90 min-w-[38px] text-center">{pct}%</span>
+            <button type="button" onClick={zoomIn} disabled={pct >= 150}
+              className="w-7 h-7 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white font-bold text-base leading-none disabled:opacity-30 transition-colors">+</button>
+          </div>
+
           {mergeMode ? (
-            <span className="text-[11px] text-emerald-300 font-medium bg-emerald-900/50 px-2 py-0.5 rounded border border-emerald-500/40">
+            <span className="text-xs text-emerald-200 font-semibold bg-emerald-900/60 px-3 py-1.5 rounded-lg border border-emerald-400/30">
               {mergeSelections.length === 0 ? "Click orders to select" : `${mergeSelections.length} selected`}
             </span>
           ) : (
             <button
               type="button"
               onClick={() => { setMergeMode(true); setMergeSelections([]); }}
-              className="px-2 py-0.5 rounded border border-white/20 bg-white/10 text-white hover:bg-white/20 font-medium text-xs"
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/20 font-medium text-sm transition-colors"
             >
               Merge
             </button>
           )}
 
-          {/* Save Screen */}
           {(zoomDirty || layoutDirty) && (
             <button
               type="button"
               onClick={() => { saveZoom(); saveLayout(); }}
-              className="px-2 py-0.5 rounded border border-cyan-400/50 bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30 font-medium text-xs"
+              className="px-3 py-1.5 rounded-lg border border-emerald-400/60 bg-emerald-500/25 text-emerald-200 hover:bg-emerald-500/40 font-semibold text-sm transition-colors"
             >
               Save
             </button>
           )}
-          {busy && <span className="text-white/40 text-[11px]">syncing…</span>}
+          {busy && <span className="text-emerald-400/60 text-xs">syncing…</span>}
+        </div>
 
-          <span className="border-l border-white/15 self-stretch mx-1" />
+        {/* Divider */}
+        <span className="w-px self-stretch bg-white/10 shrink-0" />
 
-          {/* Nav buttons */}
+        {/* Primary nav */}
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setSalesOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/15 border border-white/20 text-white hover:bg-white/25 transition-colors text-xs font-medium"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 border border-white/25 text-white hover:bg-white/30 font-semibold text-sm transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h12M3 18h8" /></svg>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h12M3 18h8" /></svg>
             Sales
           </button>
           <button
             type="button"
             onClick={() => setLedgerOpen(true)}
-            className="text-white/80 hover:text-white font-medium flex items-center gap-1 text-xs"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
               <line x1="8" y1="8" x2="16" y2="8" />
@@ -736,9 +747,9 @@ export function Pos({
           </button>
           <button
             onClick={() => setCreditorOpen(true)}
-            className="text-white/80 hover:text-white font-medium flex items-center gap-1 text-xs"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 12V8H6a2 2 0 0 1 0-4h12v4" />
               <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
               <circle cx="16" cy="14" r="2" />
@@ -747,9 +758,9 @@ export function Pos({
           </button>
           <button
             onClick={openKitchenScreen}
-            className="text-white/80 hover:text-white font-medium flex items-center gap-1 text-xs"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="3" width="20" height="14" rx="2" />
               <line x1="8" y1="21" x2="16" y2="21" />
               <line x1="12" y1="17" x2="12" y2="21" />
@@ -757,18 +768,29 @@ export function Pos({
             Kitchen
           </button>
           <SyncStatus />
+        </div>
+
+        {/* Divider */}
+        <span className="w-px self-stretch bg-white/10 shrink-0" />
+
+        {/* Account / session */}
+        <div className="flex items-center gap-3 shrink-0 text-sm">
           <a
             href="http://localhost:3100"
             target="_blank"
             rel="noreferrer"
-            className="text-white/80 hover:text-white font-medium text-xs"
-            title="Open Admin"
+            className="text-white/70 hover:text-white font-medium transition-colors"
           >
             Admin ↗
           </a>
-          <span className="font-medium text-xs text-white/80">{user.fullName}</span>
-          <button className="text-white/80 hover:text-white font-medium text-xs" onClick={() => setClosingShift(true)}>Close shift</button>
-          <button className="text-white/60 hover:text-white text-xs" onClick={onLogout}>Sign out</button>
+          <span className="font-semibold text-white">{user.fullName}</span>
+          <button
+            className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/20 font-medium text-sm transition-colors"
+            onClick={() => setClosingShift(true)}
+          >
+            Close shift
+          </button>
+          <button className="text-white/60 hover:text-white text-sm transition-colors" onClick={onLogout}>Sign out</button>
         </div>
       </header>
 
