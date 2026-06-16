@@ -98,10 +98,10 @@ export function BusinessDatePill({ branchId, user, onDateLoaded, onDateChanged }
         type="button"
         onClick={() => canEdit && date && setOpen(!open)}
         disabled={!canEdit || !date}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-sm font-medium transition-colors shadow-sm ${
           canEdit
-            ? "border-leaf-500 bg-leaf-50 text-leaf-900 hover:bg-leaf-100 cursor-pointer"
-            : "border-slate-300 bg-slate-100 text-slate-600 cursor-default"
+            ? "border-emerald-400 bg-white text-slate-800 hover:bg-slate-50 cursor-pointer"
+            : "border-white/30 bg-white/20 text-white cursor-default"
         }`}
         title={canEdit
           ? "Click to change the branch's business date — all new orders/shifts/expenses will use it"
@@ -113,9 +113,9 @@ export function BusinessDatePill({ branchId, user, onDateLoaded, onDateChanged }
           <line x1="8" y1="2" x2="8" y2="6" />
           <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
-        <span className="text-[10px] uppercase tracking-wider text-leaf-700">Business date</span>
-        <span className="font-mono font-bold">{displayText}</span>
-        {canEdit && <span className="text-leaf-700">▾</span>}
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">Business date</span>
+        <span className="font-mono font-bold text-slate-900">{displayText}</span>
+        {canEdit && <span className="text-emerald-600">▾</span>}
       </button>
 
       {open && canEdit && date && (
