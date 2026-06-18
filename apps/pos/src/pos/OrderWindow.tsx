@@ -73,11 +73,42 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
   const [mixPreview, setMixPreview] = useState<MixPreview | null>(null);
   const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<Item[]>([]);
-  // Two-step ENTER: first press arms the preview (visual highlight + "press
-  // again" hint), second press commits to the draft. Any keystroke that changes
-  // the code input resets armed back to false, so the cashier can't accidentally
-  // commit a stale preview that no longer matches what's typed.
   const [armed, setArmed] = useState(false);
+
+  // Drag state: null = default centered position; {x,y} = dragged to coords
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dragOrigin = useRef<{ mouseX: number; mouseY: number; cardX: number; cardY: number } | null>(null);
+
+  function onHeaderMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const rect = cardRef.current!.getBoundingClientRect();
+    dragOrigin.current = { mouseX: e.clientX, mouseY: e.clientY, cardX: rect.left, cardY: rect.top };
+    setDragging(true);
+
+    function onMove(e: MouseEvent) {
+      if (!dragOrigin.current) return;
+      const x = dragOrigin.current.cardX + (e.clientX - dragOrigin.current.mouseX);
+      const y = dragOrigin.current.cardY + (e.clientY - dragOrigin.current.mouseY);
+      // Clamp so the card can't be dragged fully off-screen
+      const cardW = cardRef.current?.offsetWidth ?? 600;
+      const cardH = cardRef.current?.offsetHeight ?? 400;
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth  - cardW,  x)),
+        y: Math.max(0, Math.min(window.innerHeight - cardH, y)),
+      });
+    }
+    function onUp() {
+      dragOrigin.current = null;
+      setDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   // Focus qty input on mount
   useEffect(() => { qtyRef.current?.focus(); qtyRef.current?.select(); }, []);
@@ -248,11 +279,21 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[500] p-4"
+      className="fixed inset-0 bg-black/50 z-[500]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={`card w-full max-w-3xl flex flex-col max-h-[90vh] ${editTarget ? "border-2 border-accent-500" : ""}`}>
-        <div className={`px-5 py-3 border-b border-slate-200 flex items-center justify-between ${editTarget ? "bg-accent-50" : "bg-gradient-to-r from-sjc-100 to-white"}`}>
+      <div
+        ref={cardRef}
+        className={`card absolute w-full max-w-3xl flex flex-col max-h-[90vh] ${editTarget ? "border-2 border-accent-500" : ""} ${dragging ? "shadow-2xl" : ""}`}
+        style={pos
+          ? { left: pos.x, top: pos.y }
+          : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }
+        }
+      >
+        <div
+          className={`px-5 py-3 border-b border-slate-200 flex items-center justify-between select-none ${editTarget ? "bg-accent-50" : "bg-gradient-to-r from-sjc-100 to-white"} ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+          onMouseDown={onHeaderMouseDown}
+        >
           <div>
             <div className="font-bold text-lg">
               {editTarget ? (<>Editing order <span className="font-mono text-accent-700">{editTarget.orderNo ?? "(local)"}</span></>) : "Order Window"}
@@ -269,7 +310,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+          <button onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="text-slate-400 hover:text-slate-700 text-xl leading-none cursor-pointer">×</button>
         </div>
 
         <div className="p-5 grid grid-cols-12 gap-3">
