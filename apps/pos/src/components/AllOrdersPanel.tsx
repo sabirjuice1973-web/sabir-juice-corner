@@ -37,7 +37,7 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
     // includes the size word for single items) — this naturally keeps
     // "Mango Medium" and "Mango Jumbo" as separate rows even though the
     // underlying `name` is just "Mango" for both.
-    const acc = new Map<string, { displayName: string; qty: number }>();
+    const acc = new Map<string, { displayName: string; baseName: string; qty: number }>();
     let undeliveredOrderCount = 0;
     for (const box of boxes) {
       for (const order of box) {
@@ -45,13 +45,23 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
         undeliveredOrderCount++;
         for (const li of order.lines) {
           const displayName = displayItemName(li.name, li.size);
-          const slot = acc.get(displayName) ?? { displayName, qty: 0 };
+          const slot = acc.get(displayName) ?? { displayName, baseName: li.name, qty: 0 };
           slot.qty += li.qty;
           acc.set(displayName, slot);
         }
       }
     }
-    const rows = [...acc.values()].sort((a, b) => b.qty - a.qty);
+    // Compute total glasses per base name so Medium + Jumbo of the same fruit
+    // are sorted together — e.g. "Mango Jumbo 5, Mango Medium 3" appear
+    // consecutively, ordered by the group's combined total (8), not individually.
+    const groupTotal = new Map<string, number>();
+    for (const { baseName, qty } of acc.values()) {
+      groupTotal.set(baseName, (groupTotal.get(baseName) ?? 0) + qty);
+    }
+    const rows = [...acc.values()].sort((a, b) => {
+      const gDiff = (groupTotal.get(b.baseName) ?? 0) - (groupTotal.get(a.baseName) ?? 0);
+      return gDiff !== 0 ? gDiff : b.qty - a.qty;
+    });
     const totalGlasses = rows.reduce((s, r) => s + r.qty, 0);
     return { rows, totalGlasses, totalOrders: undeliveredOrderCount };
   }, [boxes]);
