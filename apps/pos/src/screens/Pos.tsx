@@ -352,6 +352,15 @@ export function Pos({
     return typeof e?.message === "string" && /failed to fetch|network|load failed/i.test(e.message);
   }
 
+  /** True when the server says the order is already closed (PAID/VOIDED/CANCELLED).
+   *  This happens when payment succeeded server-side but the page refreshed before
+   *  the box cleared — the order is a stale ghost in localStorage. Safe to remove. */
+  function isOrderClosed(e: any): boolean {
+    if (e?.status !== 409) return false;
+    const msg: string = e?.body?.error ?? "";
+    return /^Order is (PAID|VOIDED|CANCELLED)|already fully paid/i.test(msg);
+  }
+
   // ─── Global keyboard handler ─────────────────────────────────────────────
   useEffect(() => {
     const isTypingInInput = (): boolean => {
@@ -491,6 +500,16 @@ export function Pos({
       });
       void fetchBoxSales();
     } catch (e: any) {
+      // If the server says the order is already closed, it's been recorded — remove
+      // the stale ghost entry from the box so the cashier isn't stuck with it.
+      if (isOrderClosed(e)) {
+        setState((s) => {
+          const nextBoxes = s.boxes.map((arr, i) => i === boxIdx ? arr.filter((o) => o.localId !== localId) : arr);
+          return { ...s, boxes: nextBoxes };
+        });
+        void fetchBoxSales();
+        return;
+      }
       setError(e.body?.error || e.message);
     } finally {
       setBusy(false);

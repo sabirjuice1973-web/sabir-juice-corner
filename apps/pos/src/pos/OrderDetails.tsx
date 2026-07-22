@@ -146,6 +146,11 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
       emitOrdersChanged();
       return true;
     } catch (e: any) {
+      // Order is already closed on the server — stale ghost in the box. Treat as success.
+      if (e?.status === 409 && /^Order is (PAID|VOIDED|CANCELLED)|already fully paid/i.test(e?.body?.error ?? "")) {
+        emitOrdersChanged();
+        return true;
+      }
       setError(e.body?.error || e.message || "Could not save");
       return false;
     }
