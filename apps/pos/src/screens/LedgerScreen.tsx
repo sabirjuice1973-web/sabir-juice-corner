@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LedgerAccount, type LedgerEntry } from "../api";
+import { printLedgerEntry } from "../pos/receipt";
 
 // ─── Window state ─────────────────────────────────────────────────────────────
 
@@ -365,6 +366,8 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                           </td>
                           <td className="px-2 py-1.5">
                             <div className="flex gap-1">
+                              <button type="button" onClick={() => printLedgerEntry(e, selectedAccount?.name ?? "")}
+                                className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-green-200 text-green-700 text-[10px]" title="Print voucher">🖨</button>
                               <button type="button" onClick={() => { setEditingEntry(e); setShowForm(true); }}
                                 className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-blue-200 text-slate-700 text-[10px]">Edit</button>
                               <button type="button" onClick={() => void handleDelete(e.id)}

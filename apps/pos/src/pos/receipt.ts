@@ -359,6 +359,130 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
 </body></html>`;
 }
 
+// ─── Ledger Voucher print ─────────────────────────────────────────────────────
+
+type LedgerPrintEntry = {
+  entryDate: string;
+  productName: string;
+  quantity: string | null;
+  rate: string | null;
+  total: string;
+  headName: string | null;
+  supplierName: string | null;
+  cashPaid: string;
+  description: string | null;
+  balance: number;
+};
+
+export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
+  const html = ledgerVoucherHtml(entry, accountName);
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument!;
+  doc.open(); doc.write(html); doc.close();
+  iframe.contentWindow!.focus();
+  setTimeout(() => iframe.remove(), 5000);
+}
+
+function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string {
+  const printedAt = new Date();
+  const printDate = printedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const total = parseFloat(entry.total) || 0;
+  const cashPaid = parseFloat(entry.cashPaid) || 0;
+  const docType =
+    total > 0 && cashPaid === 0 ? "PURCHASE ENTRY" :
+    total === 0 && cashPaid > 0 ? "PAYMENT VOUCHER" :
+    total > 0 && cashPaid > 0   ? "PURCHASE &amp; PAYMENT" :
+    "LEDGER VOUCHER";
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>${docType} — ${escapeHtml(accountName)}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 500 9pt/1.45 "Arial Narrow", Arial, sans-serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt, .receipt * { page-break-inside: avoid !important; break-inside: avoid !important; }
+  .receipt { page-break-after: avoid !important; break-after: avoid !important; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 2mm; margin-bottom: 1.5mm; }
+  .header-info { flex: 1; }
+  .logo { width: 22mm; height: auto; flex-shrink: 0; filter: contrast(2); -webkit-print-color-adjust: exact; }
+  h1 { font-size: 12pt; margin: 0; letter-spacing: 0.5px; font-weight: 900; }
+  .addr-line { font-size: 8pt; font-weight: 700; color: #000; margin-top: 1mm; line-height: 1.35; }
+  .addr-line b { font-weight: 900; }
+  hr { border: 0; border-top: 1px dashed #444; margin: 2.5mm 0; }
+  .doc-title { text-align: center; font-size: 11pt; font-weight: 900; letter-spacing: 1px; margin: 1mm 0 0.5mm; }
+  .account-name { text-align: center; font-size: 8.5pt; font-weight: 700; margin-bottom: 0.5mm; }
+  table.fields { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  table.fields td { padding: 1mm 0; vertical-align: top; }
+  table.fields td.lbl { font-weight: 700; white-space: nowrap; width: 32%; padding-right: 2mm; }
+  .section-hdr { font-size: 8pt; font-weight: 900; letter-spacing: 0.5px; margin: 1mm 0 0.5mm; }
+  table.totals { width: 100%; border-collapse: collapse; margin-top: 1mm; }
+  table.totals td { padding: 1.2mm 0; font-size: 9.5pt; font-weight: 700; }
+  table.totals .num { text-align: right; }
+  table.totals tr.balance-row td { font-size: 11.5pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.5mm 0; }
+  .notes { font-size: 8pt; margin-top: 1.5mm; font-style: italic; }
+  .footer-line { text-align: center; font-size: 8pt; font-weight: 700; margin-top: 1.5mm; }
+</style>
+</head><body>
+<div class="receipt">
+  <div class="header-row">
+    <div class="header-info">
+      <h1>SABIR JUICE CORNER</h1>
+      <div class="addr-line">Clifton Plaza, Multan Cantt.</div>
+      <div class="addr-line"><b>Contact</b> 0321-6366000</div>
+    </div>
+    <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
+  </div>
+  <hr />
+  <div class="doc-title">${docType}</div>
+  <div class="account-name">${escapeHtml(accountName)}</div>
+  <hr />
+  <table class="fields">
+    <tr><td class="lbl">Date</td><td>${escapeHtml(entry.entryDate)}</td></tr>
+    ${entry.supplierName ? `<tr><td class="lbl">Supplier</td><td>${escapeHtml(entry.supplierName)}</td></tr>` : ""}
+    ${entry.headName ? `<tr><td class="lbl">Head</td><td>${escapeHtml(entry.headName)}</td></tr>` : ""}
+  </table>
+  <hr />
+  <div class="section-hdr">ITEM DETAILS</div>
+  <table class="fields">
+    <tr><td class="lbl">Product</td><td>${escapeHtml(entry.productName)}</td></tr>
+    ${entry.quantity ? `<tr><td class="lbl">Qty</td><td>${escapeHtml(entry.quantity)}</td></tr>` : ""}
+    ${entry.rate ? `<tr><td class="lbl">Rate</td><td>PKR ${formatMoney(parseFloat(entry.rate))}</td></tr>` : ""}
+  </table>
+  <hr />
+  <table class="totals">
+    ${total > 0 ? `<tr><td>Total Amount</td><td class="num">PKR ${formatMoney(total)}</td></tr>` : ""}
+    ${cashPaid > 0 ? `<tr><td>Cash Paid</td><td class="num">PKR ${formatMoney(cashPaid)}</td></tr>` : ""}
+    <tr class="balance-row"><td>BALANCE</td><td class="num">PKR ${formatMoney(entry.balance)}</td></tr>
+  </table>
+  ${entry.description ? `<div class="notes">Notes: ${escapeHtml(entry.description)}</div>` : ""}
+  <hr />
+  <div class="footer-line">Printed: ${printDate} ${printTime}</div>
+  <div class="footer-line" style="font-weight:600;font-style:italic;margin-top:1mm;">Serving fresh Juices since 1973</div>
+</div>
+<script>
+  (function () {
+    function doPrint() { try { window.focus(); window.print(); } catch (e) {} }
+    var img = document.querySelector('img.logo');
+    if (img && !img.complete) {
+      img.addEventListener('load', doPrint);
+      img.addEventListener('error', doPrint);
+      setTimeout(doPrint, 1500);
+    } else { doPrint(); }
+  })();
+</script>
+</body></html>`;
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
