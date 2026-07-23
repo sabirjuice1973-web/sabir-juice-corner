@@ -431,6 +431,16 @@ export function Pos({
     });
   }, []);
 
+  const togglePrepaid = useCallback((boxIdx: number, localId: string) => {
+    setState((s) => {
+      const nextBoxes = s.boxes.map((arr, i) => {
+        if (i !== boxIdx) return arr;
+        return arr.map((o) => o.localId === localId ? { ...o, prepaid: !o.prepaid } : o);
+      });
+      return { ...s, boxes: nextBoxes };
+    });
+  }, []);
+
   // Branch name — fetched from the API (getBranchBusinessDate returns it) because
   // OWNER roles have branchId=null so the role-array lookup always fails for owners.
   const [branchName, setBranchName] = useState<string>(() => {
@@ -858,6 +868,7 @@ export function Pos({
           onPrintAndSave={printAndSave}
           onOpenDetails={openDetails}
           onSelect={(boxIdx, localId) => setSelectedRow({ boxIdx, localId })}
+          onTogglePrepaid={togglePrepaid}
           onPushAllFoodPanda={pushAllFoodPandaOrders}
           selectedKey={mergeMode ? null : selectedRow}
           mergeMode={mergeMode}

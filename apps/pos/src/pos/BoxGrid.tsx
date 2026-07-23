@@ -22,6 +22,7 @@ type Props = {
   onPrintAndSave: (boxIdx: number, localId: string) => void;
   onOpenDetails: (boxIdx: number, localId: string) => void;
   onSelect: (boxIdx: number, localId: string) => void;
+  onTogglePrepaid?: (boxIdx: number, localId: string) => void;
   onPushAllFoodPanda?: () => void;
   selectedKey: { boxIdx: number; localId: string } | null;
   mergeMode?: boolean;
@@ -38,7 +39,7 @@ type Props = {
 
 export function BoxGrid({
   boxes, onToggleDelivered, onPrint, onSave, onPrintAndSave, onOpenDetails, onSelect,
-  onPushAllFoodPanda, selectedKey, mergeMode, mergeSelectedIds, onMergeToggle,
+  onTogglePrepaid, onPushAllFoodPanda, selectedKey, mergeMode, mergeSelectedIds, onMergeToggle,
   kitchen = false, layout, onLayoutChange, boxSales, boxDoneCounts,
 }: Props) {
   const [customLabels, setCustomLabels] = useState<Record<number, string>>(loadBoxLabels);
@@ -110,6 +111,7 @@ export function BoxGrid({
             onPrintAndSave={(localId) => onPrintAndSave(i, localId)}
             onOpenDetails={(localId) => onOpenDetails(i, localId)}
             onSelect={(localId) => onSelect(i, localId)}
+            onTogglePrepaid={onTogglePrepaid ? (localId) => onTogglePrepaid(i, localId) : undefined}
             onPushAllFoodPanda={i === 5 ? onPushAllFoodPanda : undefined}
             selectedLocalId={selectedKey?.boxIdx === i ? selectedKey.localId : null}
             mergeMode={mergeMode}
@@ -270,6 +272,7 @@ type BoxProps = {
   onPrintAndSave: (localId: string) => void;
   onOpenDetails: (localId: string) => void;
   onSelect: (localId: string) => void;
+  onTogglePrepaid?: (localId: string) => void;
   onPushAllFoodPanda?: () => void;
   selectedLocalId: string | null;
   mergeMode?: boolean;
@@ -284,7 +287,7 @@ type BoxProps = {
 
 function BoxPanel({
   boxNumber, orders, kitchen, onToggleDelivered, onPrint, onSave, onPrintAndSave,
-  onOpenDetails, onSelect, onPushAllFoodPanda, selectedLocalId, mergeMode,
+  onOpenDetails, onSelect, onTogglePrepaid, onPushAllFoodPanda, selectedLocalId, mergeMode,
   mergeSelectedIds, onMergeToggle, daySales, dayCount, boxLabel, onRename, isBestSales,
 }: BoxProps) {
   const shortcut = `Ctrl+${boxNumber}`;
@@ -393,6 +396,7 @@ function BoxPanel({
                 onPrintAndSave={() => onPrintAndSave(o.localId)}
                 onOpenDetails={() => onOpenDetails(o.localId)}
                 onSelect={() => onSelect(o.localId)}
+                onTogglePrepaid={onTogglePrepaid ? () => onTogglePrepaid(o.localId) : undefined}
                 mergeMode={mergeMode}
                 onMergeToggle={onMergeToggle ? () => onMergeToggle(o.localId) : undefined}
               />
@@ -417,13 +421,14 @@ type RowProps = {
   onPrintAndSave: () => void;
   onOpenDetails: () => void;
   onSelect: () => void;
+  onTogglePrepaid?: () => void;
   mergeMode?: boolean;
   onMergeToggle?: () => void;
 };
 
 function OrderRow({
   order, kitchen, selected, selectedForMerge, onToggleDelivered, onPrint,
-  onSave, onPrintAndSave, onOpenDetails, onSelect, mergeMode, onMergeToggle,
+  onSave, onPrintAndSave, onOpenDetails, onSelect, onTogglePrepaid, mergeMode, onMergeToggle,
 }: RowProps) {
   // Build JSX for the items summary so (M) and (J) can be bold
   const itemsJsx = order.lines.map((li, i) => {
@@ -547,7 +552,21 @@ function OrderRow({
           </div>
         </div>
       )}
-      <span className="font-mono font-semibold text-sm text-slate-900 w-20 text-right">Rs {Number(order.total).toFixed(0)}</span>
+      <span
+        className={`font-mono font-semibold text-sm w-20 text-right rounded px-1 transition-all select-none ${
+          order.prepaid
+            ? "bg-emerald-50 ring-2 ring-emerald-400 text-emerald-700 cursor-pointer"
+            : "text-slate-900 cursor-default"
+        }`}
+        title={order.prepaid ? "Advance paid — double-click to unmark" : "Double-click to mark advance payment"}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => { e.stopPropagation(); onTogglePrepaid?.(); }}
+      >
+        {order.prepaid
+          ? <span className="flex flex-col items-end leading-tight"><span className="text-[10px] font-bold tracking-wide">✓ PAID</span><span>{Number(order.total).toFixed(0)}</span></span>
+          : Number(order.total).toFixed(0)
+        }
+      </span>
       <RowIcons
         elapsedMin={elapsedMin}
         onPrint={onPrint}

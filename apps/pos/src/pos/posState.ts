@@ -60,6 +60,7 @@ export type BoxOrder = {
   }[];
   openedAt: string;             // ISO timestamp captured when committed to box
   deliveredAt: string | null;   // single-click toggles this — UI-only
+  prepaid?: boolean;            // advance-payment indicator — visual only, no server action
 };
 
 // Seven waiter boxes — arranged 2-2-3 in the grid (rows of 2, 2, then 3).
