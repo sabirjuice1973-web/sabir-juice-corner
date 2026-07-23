@@ -127,29 +127,39 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
     })();
   }, [branchId]);
 
-  const loadEntries = useCallback(async (accountId: string, date: string) => {
+  const loadEntries = useCallback(async (accountId: string) => {
     setLoadingEntries(true);
     try {
-      const { entries: es } = await api.ledgerEntries(accountId, { from: date, to: date, limit: 5000, sort: "asc" });
+      // Fetch ALL entries (all time, no date filter) so per-supplier running
+      // balance can be computed from the very first entry of each supplier.
+      const { entries: es } = await api.ledgerEntries(accountId, { limit: 5000, sort: "asc" });
       setAllEntries(es);
     } catch {}
     setLoadingEntries(false);
   }, []);
 
   useEffect(() => {
-    if (selectedId) void loadEntries(selectedId, viewDate);
-  }, [selectedId, viewDate, loadEntries]);
+    if (selectedId) void loadEntries(selectedId);
+  }, [selectedId, loadEntries]);
 
-  // Entries sorted desc for display, with running balance (computed on ASC order).
-  // Balance = cumulative (Total − CashPaid): positive means money still owed/receivable,
-  // negative means more paid out than received.
-  const entriesWithBalance = (() => {
-    let running = 0;
-    return allEntries.map((e) => {
-      running += parseFloat(e.total) - parseFloat(e.cashPaid);
-      return { ...e, balance: running };
-    });
+  // Per-supplier running balance across ALL entries (all time, sorted ASC).
+  // Key = supplierName (lowercased, trimmed). Empty string groups entries with no supplier.
+  // Balance for each entry = sum of (total − cashPaid) for all entries of the same
+  // supplier from the very first entry of that supplier up to and including this entry.
+  const supplierBalanceMap = (() => {
+    const running: Record<string, number> = {};
+    const map: Record<string, number> = {};
+    for (const e of allEntries) {
+      const key = (e.supplierName ?? "").toLowerCase().trim();
+      running[key] = (running[key] ?? 0) + parseFloat(e.total) - parseFloat(e.cashPaid);
+      map[e.id] = running[key];
+    }
+    return map;
   })();
+
+  // Entries for the selected date only (for display and footer totals).
+  const viewEntries = allEntries.filter((e) => e.entryDate === viewDate);
+  const entriesWithBalance = viewEntries.map((e) => ({ ...e, balance: supplierBalanceMap[e.id] ?? 0 }));
   const displayEntries = [...entriesWithBalance].reverse(); // newest first
 
   // ── Rename ─────────────────────────────────────────────────────────────────
@@ -280,7 +290,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
               <div className="flex items-center justify-between px-4 py-1.5 border-b bg-white shrink-0 gap-2">
                 <div className="min-w-0">
                   <span className="font-semibold text-slate-800 text-sm">{selectedAccount?.name ?? "—"}</span>
-                  <span className="ml-2 text-slate-400 text-xs">{allEntries.length} entries</span>
+                  <span className="ml-2 text-slate-400 text-xs">{viewEntries.length} on this date · {allEntries.length} total</span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -366,16 +376,16 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                     </tbody>
                     <tfoot className="sticky bottom-0">
                       <tr className="bg-slate-800 text-white">
-                        <td colSpan={4} className="px-3 py-2 text-sm font-bold tracking-wide">TOTAL</td>
+                        <td colSpan={4} className="px-3 py-2 text-sm font-bold tracking-wide">TODAY</td>
                         <td className="px-3 py-2 text-right tabular-nums text-sm font-bold text-white">
-                          {fmtPKR(allEntries.reduce((s, e) => s + parseFloat(e.total), 0).toFixed(2))}
+                          {fmtPKR(viewEntries.reduce((s, e) => s + parseFloat(e.total), 0).toFixed(2))}
                         </td>
                         <td colSpan={2}></td>
                         <td className="px-3 py-2 text-right tabular-nums text-sm font-bold text-red-300">
-                          {fmtPKR(allEntries.reduce((s, e) => s + parseFloat(e.cashPaid), 0).toFixed(2))}
+                          {fmtPKR(viewEntries.reduce((s, e) => s + parseFloat(e.cashPaid), 0).toFixed(2))}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-sm font-bold text-yellow-300">
-                          {fmtPKR((entriesWithBalance[entriesWithBalance.length - 1]?.balance ?? 0).toFixed(2))}
+                          {fmtPKR((viewEntries.reduce((s, e) => s + parseFloat(e.total) - parseFloat(e.cashPaid), 0)).toFixed(2))}
                         </td>
                         <td colSpan={3}></td>
                       </tr>
@@ -411,7 +421,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
           onSave={() => {
             setShowForm(false);
             setEditingEntry(null);
-            if (selectedId) void loadEntries(selectedId, viewDate);
+            if (selectedId) void loadEntries(selectedId);
           }}
           onCancel={() => { setShowForm(false); setEditingEntry(null); }}
         />
