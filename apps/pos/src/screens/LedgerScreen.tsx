@@ -58,7 +58,6 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
   // Date filter for the main entry view — defaults to business date (not calendar date)
   const [viewDate, setViewDate] = useState<string>(businessDate ?? todayIso());
 
-  const [showForm, setShowForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -270,7 +269,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                     </div>
                   ) : (
                     <button type="button"
-                      onClick={() => { setSelectedId(acc.id); setShowForm(false); setEditingEntry(null); }}
+                      onClick={() => { setSelectedId(acc.id); setEditingEntry(null); }}
                       onDoubleClick={() => startRename(acc)}
                       title="Double-click to rename"
                       className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${
@@ -307,12 +306,25 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                     onChange={(e) => setViewDate(e.target.value)}
                     className="border border-slate-300 rounded px-1.5 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
                   />
-                  <button type="button" onClick={() => { setEditingEntry(null); setShowForm(true); }}
-                    className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs">
-                    + Add Entry
+                  <button type="button" onClick={() => setEditingEntry(null)}
+                    className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs"
+                    title="Clear form and start a new entry">
+                    + New
                   </button>
                 </div>
               </div>
+
+              {/* Inline entry form — always visible, replaces the modal */}
+              {selectedId && (
+                <InlineEntryForm
+                  key={editingEntry?.id ?? "new"}
+                  branchId={branchId}
+                  ledgerAccountId={selectedId}
+                  editing={editingEntry}
+                  onSave={() => { setEditingEntry(null); void loadEntries(selectedId); }}
+                  onCancel={() => setEditingEntry(null)}
+                />
+              )}
 
               {/* Entry table — pr-3 keeps Edit/Del buttons clear of the right-edge resize handle */}
               <div className="flex-1 min-h-0 overflow-y-auto pr-3">
@@ -368,7 +380,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                             <div className="flex gap-1">
                               <button type="button" onClick={() => printLedgerEntry(e, selectedAccount?.name ?? "")}
                                 className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-green-200 text-green-700 text-[10px]" title="Print voucher">🖨</button>
-                              <button type="button" onClick={() => { setEditingEntry(e); setShowForm(true); }}
+                              <button type="button" onClick={() => setEditingEntry(e)}
                                 className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-blue-200 text-slate-700 text-[10px]">Edit</button>
                               <button type="button" onClick={() => void handleDelete(e.id)}
                                 className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-red-200 text-red-700 text-[10px]">Del</button>
@@ -413,23 +425,6 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
         </>}
       </div>
 
-      {/* Entry form modal — hidden while minimized so clicking POS backdrop is unblocked */}
-      {showForm && selectedId && !win.minimized && (
-        <EntryFormModal
-          key={editingEntry?.id ?? "new"}
-          branchId={branchId}
-          ledgerAccountId={selectedId}
-          editing={editingEntry}
-          onMinimize={toggleMinimize}
-          onSave={() => {
-            setShowForm(false);
-            setEditingEntry(null);
-            if (selectedId) void loadEntries(selectedId);
-          }}
-          onCancel={() => { setShowForm(false); setEditingEntry(null); }}
-        />
-      )}
-
       {showReport && !win.minimized && (
         <ReportModal branchId={branchId} accounts={accounts} onMinimize={toggleMinimize} onClose={() => setShowReport(false)} />
       )}
@@ -448,12 +443,278 @@ function rh(type: string, cls: string, _t: string, startDrag: (e: React.PointerE
   );
 }
 
-// ─── Entry Form Modal ─────────────────────────────────────────────────────────
+// ─── Inline Entry Form ────────────────────────────────────────────────────────
+// Always-visible row form (like admin Daily Hisaab), replaces the modal.
 
 const FIELD_ORDER: (keyof EntryFormData)[] = [
   "entryDate", "productName", "quantity", "rate", "total",
   "headName", "supplierName", "cashPaid", "description",
 ];
+
+function InlineEntryForm({
+  branchId, ledgerAccountId, editing, onSave, onCancel,
+}: {
+  branchId: string; ledgerAccountId: string;
+  editing: LedgerEntry | null;
+  onSave: (e: LedgerEntry) => void;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState<EntryFormData>(() =>
+    editing
+      ? { entryDate: editing.entryDate, productName: editing.productName,
+          quantity: editing.quantity ?? "", rate: editing.rate ?? "",
+          total: editing.total, headName: editing.headName ?? "",
+          supplierName: editing.supplierName ?? "", cashPaid: editing.cashPaid,
+          description: editing.description ?? "" }
+      : EMPTY_FORM()
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(editing?.attachmentUrl ?? null);
+  const [uploading, setUploading] = useState(false);
+
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  function focusNext(current: keyof EntryFormData) {
+    const idx = FIELD_ORDER.indexOf(current);
+    const next = FIELD_ORDER[idx + 1];
+    if (next) inputRefs.current[next]?.focus();
+  }
+  function onFieldEnter(e: React.KeyboardEvent, field: keyof EntryFormData) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (FIELD_ORDER.indexOf(field) === FIELD_ORDER.length - 1) void handleSubmit();
+    else focusNext(field);
+  }
+
+  type SuggField = "productName" | "supplierName" | "headName";
+  const [sugg, setSugg] = useState<Record<SuggField, string[]>>({ productName: [], supplierName: [], headName: [] });
+  const [activeSugg, setActiveSugg] = useState<SuggField | null>(null);
+  const [suggIdx, setSuggIdx] = useState(-1);
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function fetchSugg(field: SuggField, q: string) {
+    if (debRef.current) clearTimeout(debRef.current);
+    debRef.current = setTimeout(async () => {
+      try {
+        const { suggestions } = await api.ledgerSuggestions(branchId, field, q, { accountId: ledgerAccountId });
+        setSugg((p) => ({ ...p, [field]: suggestions }));
+        setSuggIdx(-1);
+      } catch {}
+    }, 180);
+  }
+  function openSugg(field: SuggField, q: string) { setActiveSugg(field); fetchSugg(field, q); }
+  function pickSugg(field: SuggField, value: string) {
+    setForm((p) => ({ ...p, [field]: value }));
+    setSugg((p) => ({ ...p, [field]: [] }));
+    setActiveSugg(null); setSuggIdx(-1);
+    focusNext(field);
+  }
+  function handleSuggKeyDown(e: React.KeyboardEvent, field: SuggField) {
+    const list = sugg[field];
+    if (!list.length || activeSugg !== field) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setSuggIdx((i) => Math.min(i + 1, list.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSuggIdx((i) => Math.max(i - 1, -1)); if (suggIdx <= 0) setActiveSugg(null); }
+    else if (e.key === "Enter" && suggIdx >= 0) { e.preventDefault(); pickSugg(field, list[suggIdx]); }
+    else if (e.key === "Escape") setActiveSugg(null);
+  }
+
+  const prevTotal = useRef(form.total);
+  function handleQtyRate(field: "quantity" | "rate", value: string) {
+    const next = { ...form, [field]: value };
+    const qty = parseFloat(next.quantity), rate = parseFloat(next.rate);
+    if (!isNaN(qty) && !isNaN(rate)) {
+      const computed = (qty * rate).toFixed(2);
+      const cashWasMirror = form.cashPaid === form.total || form.cashPaid === prevTotal.current;
+      next.total = computed;
+      if (cashWasMirror) next.cashPaid = computed;
+    }
+    prevTotal.current = next.total;
+    setForm(next);
+  }
+  function handleTotalChange(value: string) {
+    setForm((p) => { const sync = p.cashPaid === p.total; return { ...p, total: value, cashPaid: sync ? value : p.cashPaid }; });
+    prevTotal.current = value;
+  }
+
+  async function handleSubmit() {
+    setError("");
+    if (!form.productName.trim()) { setError("Product name is required"); return; }
+    const totalVal = parseFloat(form.total) || 0;
+    const cashVal = parseFloat(form.cashPaid) || 0;
+    setBusy(true);
+    try {
+      if (editing) {
+        const { entry } = await api.updateLedgerEntry(editing.id, {
+          entryDate: form.entryDate, productName: form.productName.trim(),
+          quantity: form.quantity ? parseFloat(form.quantity) : null,
+          rate: form.rate ? parseFloat(form.rate) : null,
+          total: totalVal, headName: form.headName.trim() || null,
+          supplierName: form.supplierName.trim() || null, cashPaid: cashVal,
+          description: form.description.trim() || null, attachmentUrl,
+        });
+        onSave(entry);
+      } else {
+        const { entry } = await api.createLedgerEntry({
+          ledgerAccountId, entryDate: form.entryDate,
+          productName: form.productName.trim(),
+          quantity: form.quantity ? parseFloat(form.quantity) : null,
+          rate: form.rate ? parseFloat(form.rate) : null,
+          total: totalVal, headName: form.headName.trim() || null,
+          supplierName: form.supplierName.trim() || null, cashPaid: cashVal,
+          description: form.description.trim() || null, attachmentUrl,
+        });
+        onSave(entry);
+      }
+    } catch (err: any) {
+      setError(err.message || "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const iCls = "w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400";
+
+  function suggBox(field: SuggField, placeholder: string, extraCls = "") {
+    const isActive = activeSugg === field;
+    const list = sugg[field];
+    return (
+      <div className={`relative ${extraCls}`}>
+        <input
+          ref={(el) => { inputRefs.current[field] = el; }}
+          type="text" value={form[field]} placeholder={placeholder}
+          onChange={(e) => { setForm((p) => ({ ...p, [field]: e.target.value })); openSugg(field, e.target.value); }}
+          onFocus={() => openSugg(field, form[field])}
+          onBlur={() => setTimeout(() => { setActiveSugg(null); setSuggIdx(-1); }, 160)}
+          onKeyDown={(e) => { handleSuggKeyDown(e, field); if (e.key === "Enter" && suggIdx < 0) onFieldEnter(e, field); }}
+          className={iCls} autoComplete="off"
+        />
+        {isActive && list.length > 0 && (
+          <ul className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-slate-200 rounded shadow-lg max-h-32 overflow-y-auto min-w-[140px]">
+            {list.map((item, i) => (
+              <li key={item}>
+                <button type="button" onMouseDown={() => pickSugg(field, item)}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${i === suggIdx ? "bg-blue-100" : ""}`}>
+                  {item}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-emerald-200 bg-emerald-50/40 px-3 py-2 shrink-0">
+      <div className={`border-2 rounded-lg px-3 py-2 bg-white ${editing ? "border-blue-400" : "border-emerald-400"}`}>
+        {editing && (
+          <div className="text-[10px] text-blue-600 font-semibold mb-1.5">
+            ✎ Editing — {editing.entryDate} · {editing.productName}
+          </div>
+        )}
+        {/* Row 1: Date · Product · Qty · Rate · Total · Head */}
+        <div className="flex gap-2 items-end flex-wrap">
+          <div className="shrink-0">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Date</label>
+            <input ref={(el) => { inputRefs.current.entryDate = el; }} type="date" value={form.entryDate}
+              onChange={(e) => setForm((p) => ({ ...p, entryDate: e.target.value }))}
+              onKeyDown={(e) => onFieldEnter(e, "entryDate")}
+              className={iCls + " w-28"} />
+          </div>
+          <div className="flex-1 min-w-[120px]">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Product Name *</label>
+            {suggBox("productName", "e.g. Petrol, Sugar, Labour", "w-full")}
+          </div>
+          <div className="shrink-0">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Qty</label>
+            <input ref={(el) => { inputRefs.current.quantity = el; }} type="number" value={form.quantity}
+              onChange={(e) => handleQtyRate("quantity", e.target.value)}
+              onKeyDown={(e) => onFieldEnter(e, "quantity")}
+              placeholder="0" min="0" step="any" className={iCls + " w-16 text-right"} />
+          </div>
+          <div className="shrink-0">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Rate</label>
+            <input ref={(el) => { inputRefs.current.rate = el; }} type="number" value={form.rate}
+              onChange={(e) => handleQtyRate("rate", e.target.value)}
+              onKeyDown={(e) => onFieldEnter(e, "rate")}
+              placeholder="0" min="0" step="any" className={iCls + " w-20 text-right"} />
+          </div>
+          <div className="shrink-0">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Total</label>
+            <input ref={(el) => { inputRefs.current.total = el; }} type="number" value={form.total}
+              onChange={(e) => handleTotalChange(e.target.value)}
+              onKeyDown={(e) => onFieldEnter(e, "total")}
+              placeholder="0" min="0" step="any" className={iCls + " w-24 text-right font-semibold"} />
+          </div>
+          <div className="shrink-0 min-w-[110px]">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Head Account</label>
+            {suggBox("headName", "Shop Expense…", "w-full")}
+          </div>
+        </div>
+        {/* Row 2: Supplier · Cash Paid · Description · Attachment · Buttons */}
+        <div className="flex gap-2 items-end mt-2 flex-wrap">
+          <div className="flex-1 min-w-[110px]">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Supplier</label>
+            {suggBox("supplierName", "e.g. Ahmed Bhai", "w-full")}
+          </div>
+          <div className="shrink-0">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Cash Paid</label>
+            <input ref={(el) => { inputRefs.current.cashPaid = el; }} type="number" value={form.cashPaid}
+              onChange={(e) => setForm((p) => ({ ...p, cashPaid: e.target.value }))}
+              onKeyDown={(e) => onFieldEnter(e, "cashPaid")}
+              placeholder="0" min="0" step="any" className={iCls + " w-24 text-right font-semibold text-red-700"} />
+          </div>
+          <div className="flex-1 min-w-[80px]">
+            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Description</label>
+            <input ref={(el) => { inputRefs.current.description = el; }} type="text" value={form.description}
+              onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+              onKeyDown={(e) => onFieldEnter(e, "description")}
+              placeholder="optional — Enter to save" className={iCls} />
+          </div>
+          {/* Attachment icon */}
+          <div className="shrink-0 self-end">
+            <label
+              className={`flex items-center justify-center w-7 h-7 rounded border cursor-pointer transition-colors text-sm ${uploading ? "bg-slate-100 text-slate-400 border-slate-200" : attachmentUrl ? "bg-emerald-50 border-emerald-400 text-emerald-700" : "bg-white border-slate-300 text-slate-400 hover:bg-slate-50"}`}
+              title={attachmentUrl ? "Attachment saved — click to replace" : "Attach slip / image"}>
+              📎
+              <input type="file" accept="image/*,.pdf" className="hidden" disabled={uploading}
+                onChange={async (ev) => {
+                  const file = ev.target.files?.[0]; if (!file) return;
+                  setUploading(true);
+                  try { const { url } = await api.ledgerUploadAttachment(file); setAttachmentUrl(url); }
+                  catch { setError("Upload failed"); }
+                  finally { setUploading(false); ev.target.value = ""; }
+                }} />
+            </label>
+          </div>
+          {/* Clear + Save */}
+          <div className="flex gap-1 shrink-0 self-end">
+            <button type="button" onClick={onCancel}
+              className="px-3 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs">
+              Clear
+            </button>
+            <button type="button" onClick={() => void handleSubmit()} disabled={busy}
+              className="px-4 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-semibold text-xs disabled:opacity-50">
+              {busy ? "Saving…" : editing ? "Update" : "Save"}
+            </button>
+          </div>
+        </div>
+        {error && <div className="text-xs text-red-600 mt-1.5">{error}</div>}
+        {attachmentUrl && (
+          <div className="flex items-center gap-2 mt-1.5">
+            {attachmentUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+              ? <a href={attachmentUrl} target="_blank" rel="noreferrer"><img src={attachmentUrl} alt="slip" className="h-10 w-10 object-cover rounded border border-slate-200 hover:opacity-80" /></a>
+              : <a href={attachmentUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">View attachment</a>}
+            <button type="button" onClick={() => setAttachmentUrl(null)} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+          </div>
+        )}
+        <div className="text-[10px] text-slate-400 mt-1">
+          <span className="font-mono bg-slate-100 px-1 rounded">ENTER</span> moves to next field · last ENTER (on Description) saves
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function EntryFormModal({
   branchId, ledgerAccountId, editing, onSave, onCancel, onMinimize,
