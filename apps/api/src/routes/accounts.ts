@@ -254,10 +254,21 @@ export async function registerAccountRoutes(app: FastifyInstance) {
       if (a.branchId !== order.branchId) return reply.code(400).send({ error: "Account does not belong to this branch" });
       accountId = a.id;
     } else if (parsed.data.type && parsed.data.name) {
-      // Find-or-create by (branch, name, type)
-      const found = await prisma.account.findUnique({
-        where: { branchId_name_type: { branchId: order.branchId, name: parsed.data.name, type: parsed.data.type } },
-      });
+      // FOODPANDA: strict name+type match (one FP account per branch).
+      // All others: find by name only (case-insensitive) so "AB Jewller" pushed from
+      // Box 7 (MARKET) and from a regular box (CUSTOMER) land on the same account.
+      const found = parsed.data.type === "FOODPANDA"
+        ? await prisma.account.findUnique({
+            where: { branchId_name_type: { branchId: order.branchId, name: parsed.data.name, type: "FOODPANDA" } },
+          })
+        : await prisma.account.findFirst({
+            where: {
+              branchId: order.branchId,
+              name: { equals: parsed.data.name, mode: "insensitive" },
+              isActive: true,
+              deletedAt: null,
+            },
+          });
       if (found) {
         accountId = found.id;
       } else {
