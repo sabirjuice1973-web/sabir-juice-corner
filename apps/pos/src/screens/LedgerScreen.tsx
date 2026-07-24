@@ -60,6 +60,8 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
   const [viewDate, setViewDate] = useState<string>(businessDate ?? todayIso());
 
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
+  const [formResetKey, setFormResetKey] = useState(0);
+  const resetForm = () => { setEditingEntry(null); setFormResetKey((k) => k + 1); };
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [showReport, setShowReport] = useState(false);
@@ -319,7 +321,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                     onChange={(e) => setViewDate(e.target.value)}
                     className="border border-slate-300 rounded px-1.5 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
                   />
-                  <button type="button" onClick={() => setEditingEntry(null)}
+                  <button type="button" onClick={resetForm}
                     className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs"
                     title="Clear form and start a new entry">
                     + New
@@ -330,12 +332,13 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
               {/* Inline entry form — always visible, replaces the modal */}
               {selectedId && (
                 <InlineEntryForm
-                  key={editingEntry?.id ?? "new"}
+                  key={editingEntry?.id ?? `new-${formResetKey}`}
                   branchId={branchId}
                   ledgerAccountId={selectedId}
                   editing={editingEntry}
-                  onSave={() => { setEditingEntry(null); void loadEntries(selectedId); }}
-                  onCancel={() => setEditingEntry(null)}
+                  defaultDate={viewDate}
+                  onSave={() => { resetForm(); void loadEntries(selectedId); }}
+                  onCancel={resetForm}
                 />
               )}
 
@@ -465,12 +468,13 @@ const FIELD_ORDER: (keyof EntryFormData)[] = [
 ];
 
 function InlineEntryForm({
-  branchId, ledgerAccountId, editing, onSave, onCancel,
+  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate,
 }: {
   branchId: string; ledgerAccountId: string;
   editing: LedgerEntry | null;
   onSave: (e: LedgerEntry) => void;
   onCancel: () => void;
+  defaultDate: string;
 }) {
   const [form, setForm] = useState<EntryFormData>(() =>
     editing
@@ -479,7 +483,7 @@ function InlineEntryForm({
           total: editing.total, headName: editing.headName ?? "",
           supplierName: editing.supplierName ?? "", cashPaid: editing.cashPaid,
           description: editing.description ?? "" }
-      : EMPTY_FORM()
+      : { ...EMPTY_FORM(), entryDate: defaultDate }
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
