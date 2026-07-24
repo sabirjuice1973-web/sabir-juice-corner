@@ -4,6 +4,7 @@ import { LedgerScreen } from "./LedgerScreen";
 import { BrandLogo } from "../components/BrandLogo";
 import { SyncStatus } from "../components/SyncStatus";
 import { TodaySalesModal } from "../components/TodaySalesModal";
+import { StatsScreen } from "../components/StatsScreen";
 import { BusinessDatePill } from "../components/BusinessDatePill";
 import { OrderWindow } from "../pos/OrderWindow";
 import { OrderDetails } from "../pos/OrderDetails";
@@ -74,6 +75,7 @@ export function Pos({
   const [salesOpen, setSalesOpen] = useState(false);
   const [creditorOpen, setCreditorOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   // Row selection state — Shift+click on a row sets this; Shift+C reads it.
   const [selectedRow, setSelectedRow] = useState<{ boxIdx: number; localId: string } | null>(null);
   // Active branch business date (YYYY-MM-DD), loaded from /branches/:id/business-date.
@@ -763,6 +765,18 @@ export function Pos({
           </button>
           <button
             type="button"
+            onClick={() => setStatsOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4"  />
+              <line x1="6"  y1="20" x2="6"  y2="14" />
+            </svg>
+            Stats
+          </button>
+          <button
+            type="button"
             onClick={() => setLedgerOpen(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
           >
@@ -934,6 +948,9 @@ export function Pos({
 
       {/* Today's Sales panel */}
       {salesOpen && <TodaySalesModal shiftId={shiftId} onClose={() => setSalesOpen(false)} />}
+
+      {/* Statistics & Insights */}
+      {statsOpen && <StatsScreen shiftId={shiftId} branchId={branchId} onClose={() => setStatsOpen(false)} />}
 
       {/* Hisaab Kitaab — expense ledger */}
       {ledgerOpen && (
