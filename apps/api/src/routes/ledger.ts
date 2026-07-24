@@ -90,35 +90,40 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
     const q = z.object({ branchId: z.coerce.bigint() }).safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "branchId required" });
 
-    const existing = await prisma.ledgerAccount.findMany({
-      where: { branchId: q.data.branchId },
-      orderBy: { position: "asc" },
-    });
-
-    // Idempotent init: create any missing slots (1-10)
-    if (existing.length < 10) {
-      const existingPositions = new Set(existing.map((a) => a.position));
-      const toCreate = [];
-      for (let pos = 1; pos <= 10; pos++) {
-        if (!existingPositions.has(pos)) {
-          toCreate.push({
-            branchId: q.data.branchId,
-            position: pos,
-            name: DEFAULT_ACCOUNT_NAMES[pos - 1] ?? `Account ${pos}`,
-          });
-        }
-      }
-      if (toCreate.length > 0) {
-        await prisma.ledgerAccount.createMany({ data: toCreate });
-      }
-      const all = await prisma.ledgerAccount.findMany({
+    try {
+      const existing = await prisma.ledgerAccount.findMany({
         where: { branchId: q.data.branchId },
         orderBy: { position: "asc" },
       });
-      return toJson({ accounts: all.map(serializeAccount) });
-    }
 
-    return toJson({ accounts: existing.map(serializeAccount) });
+      // Idempotent init: create any missing slots (1-10)
+      if (existing.length < 10) {
+        const existingPositions = new Set(existing.map((a) => a.position));
+        const toCreate = [];
+        for (let pos = 1; pos <= 10; pos++) {
+          if (!existingPositions.has(pos)) {
+            toCreate.push({
+              branchId: q.data.branchId,
+              position: pos,
+              name: DEFAULT_ACCOUNT_NAMES[pos - 1] ?? `Account ${pos}`,
+            });
+          }
+        }
+        if (toCreate.length > 0) {
+          await prisma.ledgerAccount.createMany({ data: toCreate });
+        }
+        const all = await prisma.ledgerAccount.findMany({
+          where: { branchId: q.data.branchId },
+          orderBy: { position: "asc" },
+        });
+        return toJson({ accounts: all.map(serializeAccount) });
+      }
+
+      return toJson({ accounts: existing.map(serializeAccount) });
+    } catch (e: any) {
+      req.log.error({ branchId: String(q.data.branchId), err: e?.message }, "ledger/accounts failed");
+      return reply.code(500).send({ error: `DB error: ${e?.message ?? "unknown"}` });
+    }
   });
 
   /**
