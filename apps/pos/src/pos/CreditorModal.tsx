@@ -93,9 +93,18 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     }
   }, []);
 
-  // Settled orders hidden by default; user can reveal with the toggle
-  const settledCount = orders.filter((o) => Number(o.outstanding) <= 0).length;
-  const activeOrders = orders.filter((o) => showSettled || Number(o.outstanding) > 0);
+  // Settled orders hidden by default; user can reveal with the toggle.
+  // Orders paid via advance ("Add Payment") keep per-order outstanding > 0 in the DB
+  // but the account balance drops to 0. Treat all orders as settled when balance ≤ 0.
+  const allCoveredByAdvance = Number(accountBalance) <= 0 && orders.some((o) => Number(o.outstanding) > 0);
+  const settledCount = allCoveredByAdvance
+    ? orders.length
+    : orders.filter((o) => Number(o.outstanding) <= 0).length;
+  const activeOrders = orders.filter((o) => {
+    if (showSettled) return true;
+    if (allCoveredByAdvance) return false;
+    return Number(o.outstanding) > 0;
+  });
 
   const filteredOrders = activeOrders.filter((o) => {
     if (fromDate && o.businessDate < fromDate) return false;
@@ -139,14 +148,13 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     const dateStr = now.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
     const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-    const grandTotal   = orderList.reduce((s, o) => s + Number(o.total), 0);
-    // Use real account payment totals (from all AccountPayment rows, incl. advances)
-    // so the slip correctly reflects what was actually paid and discounted.
-    const totalCashPaid  = accountTotals?.totalPaid    ?? 0;
-    const totalDiscount  = accountTotals?.totalDiscount ?? 0;
-    // Outstanding = Total Billed − Cash Paid − Discount
-    // Positive → customer owes us; Negative → we owe customer (credit)
-    const outstanding = grandTotal - totalCashPaid - totalDiscount;
+    const grandTotal = orderList.reduce((s, o) => s + Number(o.total), 0);
+    // Per-order outstanding (DB level, ignoring advances not linked to orders)
+    const totalOrderOutstanding = orderList.reduce((s, o) => s + Number(o.outstanding), 0);
+    // Live account balance caps the outstanding: if advance covers all, outstanding = 0
+    const liveBalance = Math.max(0, Number(accountBalance));
+    const outstanding = Math.min(totalOrderOutstanding, liveBalance);
+    const effectivePaid = grandTotal - outstanding;
 
     const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
     const fmt = (n: number) => {
@@ -199,27 +207,18 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     }).join("");
 
     // Summary rows — mirrors the receipt's .totals table style
-    const outstandingDisplay = outstanding > 0
-      ? `PKR ${fmt(outstanding)}`
-      : outstanding < 0
-        ? `− PKR ${fmt(Math.abs(outstanding))}`
-        : "PKR 0";
     const summaryRows = `
       <tr class="sub-row">
         <td class="lc">Total Billed (${orderList.length} orders)</td>
         <td class="num">PKR ${fmt(grandTotal)}</td>
       </tr>
-      ${totalCashPaid > 0 ? `<tr class="sub-row">
-        <td class="lc">Amount Paid</td>
-        <td class="num">− PKR ${fmt(totalCashPaid)}</td>
-      </tr>` : ""}
-      ${totalDiscount > 0 ? `<tr class="sub-row">
-        <td class="lc">Discount</td>
-        <td class="num">− PKR ${fmt(totalDiscount)}</td>
+      ${effectivePaid > 0 ? `<tr class="sub-row">
+        <td class="lc">Amount Settled</td>
+        <td class="num">− PKR ${fmt(effectivePaid)}</td>
       </tr>` : ""}
       <tr class="total-row">
         <td class="lc">OUTSTANDING</td>
-        <td class="num ${outstanding < 0 ? "credit" : ""}">${outstandingDisplay}</td>
+        <td class="num">${outstanding > 0 ? `PKR ${fmt(outstanding)}` : "PKR 0"}</td>
       </tr>`;
 
     // For actual print: use @page thermal size + auto-print script (same as receipt.ts).
@@ -620,7 +619,7 @@ ${printScript}
                     {orders.length === 0
                       ? "No orders on this account yet"
                       : settledCount > 0 && !showSettled
-                        ? `All ${settledCount} order(s) are fully settled — check "Show settled" to see them`
+                        ? `All ${settledCount} order(s) are settled — check "Show settled" to see them`
                         : "No orders in selected date range"}
                   </div>
                 )}
