@@ -54,6 +54,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
   // All entries for selected account (sorted ASC for balance calc)
   const [allEntries, setAllEntries] = useState<LedgerEntry[]>([]);
   const [loadingAcc, setLoadingAcc] = useState(true);
+  const [accError, setAccError] = useState<string | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(false);
   // Date filter for the main entry view — defaults to business date (not calendar date)
   const [viewDate, setViewDate] = useState<string>(businessDate ?? todayIso());
@@ -116,16 +117,20 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
   }
 
   // ── Data loading ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const { accounts: accs } = await api.ledgerAccounts(branchId);
-        setAccounts(accs);
-        if (accs.length > 0) setSelectedId(accs[0].id);
-      } catch {}
-      setLoadingAcc(false);
-    })();
-  }, [branchId]);
+  const loadAccounts = useCallback(async () => {
+    setLoadingAcc(true);
+    setAccError(null);
+    try {
+      const { accounts: accs } = await api.ledgerAccounts(branchId);
+      setAccounts(accs);
+      if (accs.length > 0 && !selectedId) setSelectedId(accs[0].id);
+    } catch (e: any) {
+      setAccError(e?.body?.error || e?.message || "Could not load accounts — check server connection");
+    }
+    setLoadingAcc(false);
+  }, [branchId, selectedId]);
+
+  useEffect(() => { void loadAccounts(); }, [branchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadEntries = useCallback(async (accountId: string) => {
     setLoadingEntries(true);
@@ -256,6 +261,14 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
             <aside className="w-48 shrink-0 bg-slate-800 text-white flex flex-col overflow-y-auto">
               {loadingAcc ? (
                 <div className="text-xs text-slate-400 p-3">Loading…</div>
+              ) : accError ? (
+                <div className="p-3 space-y-2">
+                  <div className="text-[10px] text-red-400 leading-snug">{accError}</div>
+                  <button type="button" onClick={() => void loadAccounts()}
+                    className="w-full text-[10px] px-2 py-1 rounded bg-slate-600 hover:bg-slate-500 text-white">
+                    Retry
+                  </button>
+                </div>
               ) : accounts.map((acc) => (
                 <div key={acc.id}>
                   {renamingId === acc.id ? (
