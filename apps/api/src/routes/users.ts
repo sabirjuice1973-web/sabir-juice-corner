@@ -5,9 +5,10 @@ import { hashPassword } from "../lib/password.js";
 import { requireAuth, assertAuth } from "../lib/guards.js";
 import { toJson } from "../lib/serialize.js";
 
-function ownerOnly(req: any, reply: any) {
+function ownerOnly(req: any, reply: any): true | undefined {
   if (!req.auth?.roles?.some((r: any) => r.code === "OWNER")) {
-    return reply.code(403).send({ error: "Owner access required" });
+    reply.code(403).send({ error: "Owner access required" });
+    return true;
   }
 }
 
@@ -27,7 +28,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
   // List all users
   app.get("/", { preHandler: requireAuth }, async (req, reply) => {
     assertAuth(req);
-    const blocked = ownerOnly(req, reply); if (blocked) return blocked;
+    if (ownerOnly(req, reply)) return;
 
     const users = await prisma.user.findMany({
       where: { deletedAt: null },
@@ -49,17 +50,24 @@ export async function registerUserRoutes(app: FastifyInstance) {
   // Create a new user
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     assertAuth(req);
-    const blocked = ownerOnly(req, reply); if (blocked) return blocked;
+    if (ownerOnly(req, reply)) return;
 
     const parsed = CreateBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "Invalid body" });
     const { username, fullName, password, roleCode, branchId } = parsed.data;
 
+    // Inherit organizationId from the creating owner's record
+    const creator = await prisma.user.findUnique({
+      where: { id: BigInt(req.auth.sub) },
+      select: { organizationId: true },
+    });
+    if (!creator) return reply.code(500).send({ error: "Could not find your user record" });
+
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) return reply.code(409).send({ error: "Username already taken" });
 
     const role = await prisma.role.findUnique({ where: { code: roleCode } });
-    if (!role) return reply.code(400).send({ error: `Role '${roleCode}' not found in database` });
+    if (!role) return reply.code(400).send({ error: `Role '${roleCode}' not found. Run the database seed.` });
 
     const passwordHash = await hashPassword(password);
     const user = await prisma.user.create({
@@ -68,6 +76,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
         fullName,
         passwordHash,
         status: "ACTIVE",
+        organizationId: creator.organizationId,
         userRoles: {
           create: [{
             roleId: role.id,
@@ -91,7 +100,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
   // Change a user's password
   app.patch("/:id/password", { preHandler: requireAuth }, async (req: any, reply) => {
     assertAuth(req);
-    const blocked = ownerOnly(req, reply); if (blocked) return blocked;
+    if (ownerOnly(req, reply)) return;
 
     const parsed = PasswordBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "Password must be at least 4 characters" });
@@ -103,20 +112,20 @@ export async function registerUserRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // Deactivate a user (soft — sets status=INACTIVE so they can no longer log in)
+  // Suspend a user so they can no longer log in
   app.patch("/:id/deactivate", { preHandler: requireAuth }, async (req: any, reply) => {
     assertAuth(req);
-    const blocked = ownerOnly(req, reply); if (blocked) return blocked;
+    if (ownerOnly(req, reply)) return;
     if (req.auth.sub === req.params.id) return reply.code(400).send({ error: "Cannot deactivate your own account" });
 
-    await prisma.user.update({ where: { id: BigInt(req.params.id) }, data: { status: "INACTIVE" } });
+    await prisma.user.update({ where: { id: BigInt(req.params.id) }, data: { status: "SUSPENDED" } });
     return { ok: true };
   });
 
-  // Re-activate a deactivated user
+  // Re-activate a suspended user
   app.patch("/:id/activate", { preHandler: requireAuth }, async (req: any, reply) => {
     assertAuth(req);
-    const blocked = ownerOnly(req, reply); if (blocked) return blocked;
+    if (ownerOnly(req, reply)) return;
 
     await prisma.user.update({ where: { id: BigInt(req.params.id) }, data: { status: "ACTIVE" } });
     return { ok: true };

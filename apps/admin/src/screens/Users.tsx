@@ -231,7 +231,7 @@ export function Users() {
                             className={`text-xs px-2 py-1 rounded ${u.status === "ACTIVE" ? "bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700" : "bg-slate-100 hover:bg-green-100 text-slate-700 hover:text-green-700"}`}
                             onClick={() => void toggleStatus(u)}
                           >
-                            {u.status === "ACTIVE" ? "Deactivate" : "Re-activate"}
+                            {u.status === "ACTIVE" ? "Deactivate" : "Re-activate (Suspended)"}
                           </button>
                         </>
                       )}
