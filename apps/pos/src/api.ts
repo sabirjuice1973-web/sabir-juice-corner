@@ -359,6 +359,7 @@ export type Order = {
   subtotal: string;
   discountAmount: string;
   total: string;
+  customerName: string | null;
   items: OrderItem[];
   payments: { method: string; amount: string }[];
   openedAt: string;

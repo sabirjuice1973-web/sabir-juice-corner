@@ -492,6 +492,55 @@ export function Pos({
     return () => clearInterval(id);
   }, [fetchBoxSales]);
 
+  // On mount: fetch all OPEN orders for this shift from the server and rebuild
+  // the boxes from that authoritative list. This ensures a cashier or manager
+  // logging in mid-shift immediately sees every order already in the boxes,
+  // regardless of which browser session placed them.
+  useEffect(() => {
+    async function hydrateFromServer() {
+      try {
+        const { orders } = await api.listOpenOrders(branchId, shiftId);
+        setState((prev) => {
+          // Preserve any offline-queue orders (no serverId) — not yet synced.
+          const offline = prev.boxes.map((box) => box.filter((o) => !o.serverId));
+
+          // Rebuild box arrays from the server list.
+          const serverBoxes: BoxOrder[][] = Array.from({ length: BOX_COUNT }, () => []);
+          for (const o of orders) {
+            const boxIdx = (o.waiterBox ?? 1) - 1;
+            if (boxIdx < 0 || boxIdx >= BOX_COUNT) continue;
+            // Carry forward local UI state (deliveredAt toggle, prepaid flag).
+            const local = prev.boxes.flat().find((b) => b.serverId === o.id);
+            serverBoxes[boxIdx].push({
+              serverId: o.id,
+              localId: local?.localId ?? newLocalId(),
+              orderNo: o.orderNo,
+              subtotal: o.subtotal,
+              discountAmount: o.discountAmount,
+              total: o.total,
+              customerName: local?.customerName ?? o.customerName ?? null,
+              lines: buildBoxOrderLines((o as any).items),
+              openedAt: o.openedAt,
+              deliveredAt: local?.deliveredAt ?? null,
+              ...(local?.prepaid ? { prepaid: true } : {}),
+            });
+          }
+
+          // Merge: server orders fill the boxes; offline-only orders go after.
+          const merged: BoxOrder[][] = serverBoxes.map((sBox, i) => [
+            ...sBox,
+            ...(offline[i] ?? []),
+          ]);
+
+          return { ...prev, boxes: merged };
+        });
+      } catch {
+        // Server unreachable — keep whatever is in localStorage (offline mode).
+      }
+    }
+    void hydrateFromServer();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const printOnly = useCallback((boxIdx: number, localId: string) => {
     const order = state.boxes[boxIdx].find((o) => o.localId === localId);
     if (!order) return;
