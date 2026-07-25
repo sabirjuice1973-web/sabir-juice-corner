@@ -78,14 +78,21 @@ async function request<T = unknown>(method: string, path: string, body?: unknown
     // 5's default JSON parser rejects "Content-Type: application/json" with
     // an empty body (FST_ERR_CTP_EMPTY_JSON_BODY), which breaks DELETE / body-less POST.
     const hasBody = body !== undefined && body !== null;
-    return fetch(`/api/v1${path}`, {
-      method,
-      headers: {
-        ...(hasBody ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: hasBody ? JSON.stringify(body) : undefined,
-    });
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 20_000);
+    try {
+      return await fetch(`/api/v1${path}`, {
+        method,
+        headers: {
+          ...(hasBody ? { "Content-Type": "application/json" } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: hasBody ? JSON.stringify(body) : undefined,
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(tid);
+    }
   };
 
   let res = await fire(getToken());

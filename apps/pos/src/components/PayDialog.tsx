@@ -68,6 +68,7 @@ export function PayDialog({
    * rejections (4xx/5xx with a JSON body). Only transport failures should queue.
    */
   function isNetworkError(e: any): boolean {
+    if (e?.name === "AbortError") return true; // 20 s fetch timeout
     if (e?.status) return false;            // API client populated .status → server responded
     if (e instanceof TypeError) return true; // fetch throws TypeError when offline
     return typeof e?.message === "string" && /failed to fetch|network|load failed/i.test(e.message);

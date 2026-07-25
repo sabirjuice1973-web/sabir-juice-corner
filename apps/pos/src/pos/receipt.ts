@@ -21,24 +21,21 @@ import { displayItemName, type BoxOrder } from "./posState";
 
 export function printReceipt(order: BoxOrder, header: { branchName: string; cashier: string }, onDone?: () => void) {
   const html = receiptHtml(order, header);
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
-  const doc = iframe.contentDocument!;
-  doc.open();
-  doc.write(html);
-  doc.close();
-  iframe.contentWindow!.focus();
-  // afterprint fires when the print dialog closes (whether printed or cancelled).
-  if (onDone) {
-    iframe.contentWindow!.addEventListener("afterprint", () => onDone(), { once: true });
+  // Open in a separate window so window.print() inside it never blocks the main
+  // POS tab. An iframe's window.print() call on Windows Chrome/Edge synchronously
+  // freezes the parent tab's JS event loop until the print dialog is dismissed.
+  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999,noopener");
+  if (!win) {
+    // Popup blocked — still call onDone so the POS doesn't get stuck waiting.
+    onDone?.();
+    return;
   }
-  setTimeout(() => iframe.remove(), 5000);
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  if (onDone) {
+    win.addEventListener("afterprint", () => onDone(), { once: true });
+  }
 }
 
 function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: string }): string {
@@ -376,13 +373,11 @@ type LedgerPrintEntry = {
 
 export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   const html = ledgerVoucherHtml(entry, accountName);
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-  document.body.appendChild(iframe);
-  const doc = iframe.contentDocument!;
-  doc.open(); doc.write(html); doc.close();
-  iframe.contentWindow!.focus();
-  setTimeout(() => iframe.remove(), 5000);
+  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999,noopener");
+  if (!win) return;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
 }
 
 function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string {

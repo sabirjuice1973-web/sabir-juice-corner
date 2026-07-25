@@ -349,6 +349,7 @@ export function Pos({
 
   /** Distinguish transport failures (queue + replay) from server-side rejections (surface). */
   function isNetworkError(e: any): boolean {
+    if (e?.name === "AbortError") return true; // 20 s fetch timeout
     if (e?.status) return false;
     if (e instanceof TypeError) return true;
     return typeof e?.message === "string" && /failed to fetch|network|load failed/i.test(e.message);

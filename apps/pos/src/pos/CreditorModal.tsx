@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { displayItemName } from "./posState";
 
@@ -319,8 +319,6 @@ ${printScript}
 </body></html>`;
   }
 
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
   async function printOrPreview(orderList: AccountOrder[], preview: boolean) {
     if (orderList.length === 0) return;
     // Fetch full item details for all orders in parallel so we can show Qty|Name|Rate|Total
@@ -343,22 +341,12 @@ ${printScript}
       })
     );
     const html = buildSlipHtml(enriched, preview);
-    if (preview) {
-      const w = window.open("", "_blank", "width=460,height=800,resizable=yes");
-      if (!w) { setError("Browser blocked the preview window — allow popups."); return; }
-      w.document.open(); w.document.write(html); w.document.close();
-      return;
-    }
-    if (iframeRef.current) document.body.removeChild(iframeRef.current);
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;width:0;height:0;border:0;visibility:hidden;";
-    document.body.appendChild(iframe);
-    iframeRef.current = iframe;
-    iframe.contentDocument!.open();
-    iframe.contentDocument!.write(html);
-    iframe.contentDocument!.close();
-    // print() is triggered by the embedded script after the logo loads (same pattern as receipt.ts)
-    setTimeout(() => { if (iframeRef.current) { document.body.removeChild(iframeRef.current); iframeRef.current = null; } }, 15_000);
+    // Both preview and print use window.open() — a popup window's window.print()
+    // never blocks the parent tab, unlike an iframe's print() on Windows Chrome.
+    const opts = preview ? "width=460,height=800,resizable=yes" : "width=1,height=1,left=-9999,top=-9999,noopener";
+    const w = window.open("", "_blank", opts);
+    if (!w) { setError("Browser blocked the popup — allow popups for this page."); return; }
+    w.document.open(); w.document.write(html); w.document.close();
   }
 
   // Single-order print (uses same slip format but just one order)

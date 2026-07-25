@@ -80,6 +80,7 @@ export async function runDrain(): Promise<{ replayed: number; failed: number }> 
 }
 
 function isNetworkError(e: any): boolean {
+  if (e?.name === "AbortError") return true; // 20 s fetch timeout
   // fetch throws TypeError on offline / DNS failure / CORS preflight failure.
   return e instanceof TypeError || (typeof e?.message === "string" && /failed to fetch|network/i.test(e.message));
 }
