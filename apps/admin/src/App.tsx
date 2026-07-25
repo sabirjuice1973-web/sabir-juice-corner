@@ -19,6 +19,7 @@ import { Yields } from "./screens/Yields";
 import { Participations } from "./screens/Participations";
 import { DailyClose } from "./screens/DailyClose";
 import { Accounts } from "./screens/Accounts";
+import { Backup } from "./screens/Backup";
 
 export type Screen =
   | "dashboard"
@@ -37,7 +38,8 @@ export type Screen =
   | "yields"
   | "participations"
   | "dailyClose"
-  | "accounts";
+  | "accounts"
+  | "backup";
 
 export function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -126,6 +128,7 @@ export function App() {
       {screen === "participations" && <Participations />}
       {screen === "dailyClose"    && <DailyClose />}
       {screen === "accounts"      && <Accounts />}
+      {screen === "backup"        && <Backup />}
     </Layout>
   );
 }

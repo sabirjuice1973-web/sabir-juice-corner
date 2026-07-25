@@ -21,6 +21,7 @@ const NAV: { code: Screen; label: string; group?: string }[] = [
   { code: "purchases",     label: "Purchase orders",  group: "Procurement" },
   { code: "products",      label: "Products  (F2)",   group: "Catalog" },
   { code: "recipes",       label: "Recipes",          group: "Catalog" },
+  { code: "backup",        label: "Backup & Restore", group: "System" },
 ];
 
 export function Layout({

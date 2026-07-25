@@ -32,6 +32,16 @@ function canChangeBusinessDate(roleCodes: string[]): boolean {
 export async function registerBranchRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
+  /** GET /branches — list all active (non-deleted) branches. */
+  app.get("/", async (_req, reply) => {
+    const branches = await prisma.branch.findMany({
+      where: { deletedAt: null, status: { not: "CLOSED" } },
+      select: { id: true, code: true, name: true, isCentralKitchen: true, status: true, city: true },
+      orderBy: { id: "asc" },
+    });
+    return toJson({ branches });
+  });
+
   /** GET /branches/:id/business-date — current business date for this branch. */
   app.get("/:id/business-date", async (req, reply) => {
     const id = BigInt((req.params as { id: string }).id);

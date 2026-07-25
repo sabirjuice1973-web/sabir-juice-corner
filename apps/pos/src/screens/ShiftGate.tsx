@@ -2,21 +2,16 @@ import { useEffect, useState } from "react";
 import { api, type AuthUser } from "../api";
 
 /**
- * After login, the cashier picks (or confirms) the branch and opens a shift.
- * If a shift is already open for that branch, we attach to it instead.
+ * Auto-connect gate: after login, silently attaches to the existing open shift
+ * for the single active branch, or opens a new one (0 opening cash) if none is
+ * running. The cashier never sees a branch picker or shift form — they log in
+ * and land directly on the POS.
  *
- * Branches available to the user:
- *   • OWNER → any branch (we just hard-list 1..4 from the seed for now;
- *     the admin app will manage this list properly)
- *   • Otherwise → only branches the user has a role at
+ * If more than one non-kitchen branch exists the user still gets a compact
+ * branch picker, but no opening-cash prompt (shift opens with 0 automatically).
+ *
+ * Falls back to a manual error screen if the API is unreachable.
  */
-const KNOWN_BRANCHES = [
-  { id: 1, code: "CK", name: "Central Kitchen" },
-  { id: 2, code: "B1", name: "Branch 1" },
-  { id: 3, code: "B2", name: "Branch 2" },
-  { id: 4, code: "B3", name: "Branch 3" },
-];
-
 export function ShiftGate({
   user,
   onShiftReady,
@@ -26,95 +21,127 @@ export function ShiftGate({
   onShiftReady: (branchId: string, shiftId: string) => void;
   onLogout: () => void;
 }) {
-  const allowedBranches = user.roles.some((r) => r.code === "OWNER")
-    ? KNOWN_BRANCHES
-    : KNOWN_BRANCHES.filter((b) =>
-        user.roles.some((r) => r.branch?.id === String(b.id)),
-      );
+  type Phase =
+    | { kind: "loading"; msg: string }
+    | { kind: "pick"; branches: { id: number; code: string; name: string }[] }
+    | { kind: "error"; msg: string };
 
-  const [branchId, setBranchId] = useState<string>(String(allowedBranches[0]?.id ?? ""));
-  const [openingCash, setOpeningCash] = useState("0");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [openShift, setOpenShift] = useState<any | null>(null);
+  const [phase, setPhase] = useState<Phase>({ kind: "loading", msg: "Connecting to branch…" });
 
-  useEffect(() => {
-    setError(null);
-    setOpenShift(null);
-    if (!branchId) return;
-    api.currentShift(branchId).then((r) => setOpenShift(r.shift)).catch(() => {});
-  }, [branchId]);
-
-  async function open() {
-    setBusy(true); setError(null);
+  async function connectTo(branchId: string) {
+    setPhase({ kind: "loading", msg: "Checking shift…" });
     try {
-      const r = await api.openShift(branchId, Number(openingCash) || 0);
-      onShiftReady(branchId, String(r.shift.id));
+      const { shift } = await api.currentShift(branchId);
+      if (shift) {
+        onShiftReady(branchId, String(shift.id));
+        return;
+      }
+      setPhase({ kind: "loading", msg: "Starting shift…" });
+      const { shift: opened } = await api.openShift(branchId, 0);
+      onShiftReady(branchId, String(opened.id));
     } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
+      setPhase({ kind: "error", msg: e?.message ?? "Could not connect to branch" });
     }
   }
 
-  function attach() {
-    if (openShift) onShiftReady(branchId, String(openShift.id));
+  useEffect(() => {
+    (async () => {
+      try {
+        const { branches } = await api.listBranches();
+        // Only offer non-kitchen branches.
+        const outlets = branches.filter((b: any) => !b.isCentralKitchen);
+        if (outlets.length === 0) {
+          setPhase({ kind: "error", msg: "No active branch found. Please check the server." });
+          return;
+        }
+        if (outlets.length === 1) {
+          // Single branch — auto-proceed, no user interaction needed.
+          await connectTo(String(outlets[0].id));
+          return;
+        }
+        // Multiple branches — show a compact picker.
+        setPhase({ kind: "pick", branches: outlets });
+      } catch (e: any) {
+        setPhase({ kind: "error", msg: e?.message ?? "Could not load branches" });
+      }
+    })();
+    // connectTo is defined inside the component but its identity doesn't change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Loading ─────────────────────────────────────────────────────────────
+  if (phase.kind === "loading") {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-100">
+        <div className="card p-8 text-center space-y-4 max-w-xs w-full">
+          <svg className="animate-spin w-8 h-8 text-sjc-600 mx-auto" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="text-slate-600 text-sm">{phase.msg}</p>
+          <p className="text-xs text-slate-400">Signed in as <b>{user.fullName}</b></p>
+          <button className="text-xs text-slate-400 hover:text-slate-600" onClick={onLogout}>Sign out</button>
+        </div>
+      </div>
+    );
   }
 
+  // ── Error ────────────────────────────────────────────────────────────────
+  if (phase.kind === "error") {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-100">
+        <div className="card p-8 text-center space-y-4 max-w-xs w-full">
+          <div className="text-red-600 font-semibold">Connection failed</div>
+          <p className="text-sm text-slate-600">{phase.msg}</p>
+          <button
+            className="btn-primary w-full"
+            onClick={() => {
+              setPhase({ kind: "loading", msg: "Reconnecting…" });
+              // Re-run the whole effect by re-mounting isn't easy, so we just retry
+              // the last step — load branches again.
+              api.listBranches()
+                .then(async ({ branches }) => {
+                  const outlets = branches.filter((b: any) => !b.isCentralKitchen);
+                  if (outlets.length === 1) {
+                    await connectTo(String(outlets[0].id));
+                  } else {
+                    setPhase({ kind: "pick", branches: outlets });
+                  }
+                })
+                .catch((e: any) => setPhase({ kind: "error", msg: e?.message ?? "Still offline" }));
+            }}
+          >
+            Retry
+          </button>
+          <button className="text-xs text-slate-400 hover:text-slate-600" onClick={onLogout}>Sign out</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Branch picker (only when multiple outlets) ───────────────────────────
   return (
-    <div className="flex h-full items-center justify-center p-4 bg-slate-100">
-      <div className="card w-full max-w-md p-8 space-y-5">
+    <div className="flex h-full items-center justify-center bg-slate-100">
+      <div className="card p-8 space-y-5 max-w-xs w-full">
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-xl font-bold text-sjc-700">Open Shift</div>
+            <div className="text-lg font-bold text-sjc-700">Select Branch</div>
             <div className="text-sm text-slate-500">Signed in as <b>{user.fullName}</b></div>
           </div>
           <button className="text-xs text-slate-500 hover:text-slate-700" onClick={onLogout}>Sign out</button>
         </div>
-
-        <label className="block">
-          <span className="text-sm text-slate-600">Branch</span>
-          <select
-            className="input w-full mt-1"
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
-          >
-            {allowedBranches.map((b) => (
-              <option key={b.id} value={b.id}>{b.code} — {b.name}</option>
-            ))}
-          </select>
-        </label>
-
-        {openShift ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
-            <div className="text-sm font-medium text-amber-800">
-              A shift is already open for this branch.
-            </div>
-            <div className="text-xs text-amber-700">
-              Opened by <b>{openShift.openedBy?.fullName}</b> at {new Date(openShift.openedAt).toLocaleString()}
-              <br />Opening cash: PKR {openShift.openingCash}
-            </div>
-            <button className="btn-primary w-full" onClick={attach}>
-              Continue with this shift
+        <div className="space-y-2">
+          {phase.branches.map((b) => (
+            <button
+              key={b.id}
+              className="w-full text-left rounded-lg border border-slate-200 hover:border-sjc-400 hover:bg-sjc-50 px-4 py-3 transition-colors"
+              onClick={() => void connectTo(String(b.id))}
+            >
+              <div className="font-semibold text-slate-800">{b.name}</div>
+              <div className="text-xs text-slate-500">{b.code}</div>
             </button>
-          </div>
-        ) : (
-          <>
-            <label className="block">
-              <span className="text-sm text-slate-600">Opening cash (PKR)</span>
-              <input
-                className="input w-full mt-1 font-mono"
-                inputMode="numeric"
-                value={openingCash}
-                onChange={(e) => setOpeningCash(e.target.value.replace(/[^0-9.]/g, ""))}
-              />
-            </label>
-            {error && <div className="text-sm text-red-600">{error}</div>}
-            <button className="btn-primary w-full" disabled={busy} onClick={open}>
-              {busy ? "Opening…" : "Open shift"}
-            </button>
-          </>
-        )}
+          ))}
+        </div>
       </div>
     </div>
   );

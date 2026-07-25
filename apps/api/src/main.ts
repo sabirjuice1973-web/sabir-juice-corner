@@ -24,6 +24,7 @@ import { registerReportsRoutes } from "./routes/reports.js";
 import { registerAlertRoutes } from "./routes/alerts.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
+import { registerBackupRoutes } from "./routes/backup.js";
 
 async function bootstrap() {
   const app = Fastify({
@@ -63,6 +64,7 @@ async function bootstrap() {
   app.register(registerAlertRoutes,         { prefix: "/api/v1/alerts" });
   app.register(registerAiRoutes,            { prefix: "/api/v1/ai" });
   app.register(registerLedgerRoutes,        { prefix: "/api/v1/ledger" });
+  app.register(registerBackupRoutes,        { prefix: "/api/v1/backup" });
 
   try {
     await app.listen({ port: env.API_PORT, host: "0.0.0.0" });

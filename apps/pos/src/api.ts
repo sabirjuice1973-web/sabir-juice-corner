@@ -122,6 +122,10 @@ export const api = {
   logout: () => request<void>("POST", "/auth/logout"),
   me: () => request<{ user: AuthUser; roles: any[] }>("GET", "/auth/me"),
 
+  // branches
+  listBranches: () =>
+    request<{ branches: { id: number; code: string; name: string; isCentralKitchen: boolean; status: string; city: string | null }[] }>("GET", "/branches"),
+
   // branch business date (per-branch manual clock for all entries)
   getBranchBusinessDate: (branchId: string | number) =>
     request<{ branchId: string; code: string; name: string; businessDate: string }>("GET", `/branches/${branchId}/business-date`),
