@@ -42,9 +42,9 @@ const EMPTY_FORM = (): EntryFormData => ({
 
 // ─── Main floating window ────────────────────────────────────────────────────
 
-type Props = { branchId: string; shiftId: string; businessDate: string | null; onClose: () => void };
+type Props = { branchId: string; shiftId: string; businessDate: string | null; canViewReports?: boolean; onClose: () => void };
 
-export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props) {
+export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports = true, onClose }: Props) {
   const [win, setWin] = useState<WinState>(defaultWin);
   const winRef = useRef(win);
   useEffect(() => { winRef.current = win; });
@@ -229,10 +229,12 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
                   className="px-2.5 py-0.5 rounded bg-green-500 hover:bg-green-400 text-white text-xs font-semibold">
                   Cash Today
                 </button>
-                <button type="button" onClick={() => setShowReport(true)}
-                  className="px-2.5 py-0.5 rounded bg-blue-400 hover:bg-blue-300 text-white text-xs font-semibold">
-                  Report
-                </button>
+                {canViewReports && (
+                  <button type="button" onClick={() => setShowReport(true)}
+                    className="px-2.5 py-0.5 rounded bg-blue-400 hover:bg-blue-300 text-white text-xs font-semibold">
+                    Report
+                  </button>
+                )}
               </>
             )}
             {/* Minimize */}
@@ -441,7 +443,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, onClose }: Props
         </>}
       </div>
 
-      {showReport && !win.minimized && (
+      {showReport && !win.minimized && canViewReports && (
         <ReportModal branchId={branchId} accounts={accounts} onMinimize={toggleMinimize} onClose={() => setShowReport(false)} />
       )}
       {showCashToday && !win.minimized && (

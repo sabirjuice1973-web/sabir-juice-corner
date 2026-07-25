@@ -63,6 +63,8 @@ export function Pos({
   onEndShift: () => void;
   onLogout: () => void;
 }) {
+  const isOwner = user.roles.some((r) => r.code === "OWNER");
+
   const [state, setState] = useState<PosState>(() => loadState());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -756,26 +758,30 @@ export function Pos({
 
         {/* Primary nav */}
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => setSalesOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 border border-white/25 text-white hover:bg-white/30 font-semibold text-sm transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h12M3 18h8" /></svg>
-            Sales
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatsOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="20" x2="18" y2="10" />
-              <line x1="12" y1="20" x2="12" y2="4"  />
-              <line x1="6"  y1="20" x2="6"  y2="14" />
-            </svg>
-            Stats
-          </button>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setSalesOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 border border-white/25 text-white hover:bg-white/30 font-semibold text-sm transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h12M3 18h8" /></svg>
+              Sales
+            </button>
+          )}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setStatsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4"  />
+                <line x1="6"  y1="20" x2="6"  y2="14" />
+              </svg>
+              Stats
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setLedgerOpen(true)}
@@ -959,6 +965,7 @@ export function Pos({
           branchId={branchId}
           shiftId={shiftId}
           businessDate={businessDate}
+          canViewReports={isOwner}
           onClose={() => setLedgerOpen(false)}
         />
       )}
