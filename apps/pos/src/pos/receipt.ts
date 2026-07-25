@@ -27,9 +27,11 @@ export function printReceipt(order: BoxOrder, header: { branchName: string; cash
   // Note: do NOT include "noopener" in the features string — when noopener is
   // present the browser opens the window but window.open() returns null (per
   // spec), so every print silently falls through to the onDone-only path.
-  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999");
+  // Open at a usable size — Edge shows the print-preview panel INSIDE the popup
+  // window, so a 1x1 px window makes the preview panel tiny and unusable.
+  // Do NOT use "noopener" — that flag makes window.open() return null (per spec).
+  const win = window.open("", "_blank", "width=900,height=680");
   if (!win) {
-    // Genuinely blocked by popup blocker — still call onDone so POS doesn't hang.
     onDone?.();
     return;
   }
@@ -342,15 +344,16 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
 </div>
   <script>
     (function () {
+      // Auto-close the window after the print dialog is dismissed (Enter or click).
+      window.addEventListener('afterprint', function () { window.close(); }, { once: true });
       // Wait for the logo to load (or error out) before opening the print dialog —
-      // otherwise the printed receipt has a broken-image placeholder where the logo
-      // should be.
+      // otherwise the printed receipt has a broken-image placeholder.
       function doPrint() { try { window.focus(); window.print(); } catch (e) {} }
       var img = document.querySelector('img.logo');
       if (img && !img.complete) {
         img.addEventListener('load', doPrint);
         img.addEventListener('error', doPrint);
-        setTimeout(doPrint, 1500);   // hard fallback so we never block forever
+        setTimeout(doPrint, 1500);
       } else {
         doPrint();
       }
@@ -376,7 +379,7 @@ type LedgerPrintEntry = {
 
 export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   const html = ledgerVoucherHtml(entry, accountName);
-  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999");
+  const win = window.open("", "_blank", "width=900,height=680");
   if (!win) return;
   win.document.open();
   win.document.write(html);
@@ -469,6 +472,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
 </div>
 <script>
   (function () {
+    window.addEventListener('afterprint', function () { window.close(); }, { once: true });
     function doPrint() { try { window.focus(); window.print(); } catch (e) {} }
     var img = document.querySelector('img.logo');
     if (img && !img.complete) {

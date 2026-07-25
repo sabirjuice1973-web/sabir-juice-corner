@@ -226,6 +226,7 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     const printScript = forPreview ? "" : `
 <script>
   (function(){
+    window.addEventListener("afterprint", function(){ window.close(); }, { once: true });
     function doPrint(){ try{ window.focus(); window.print(); }catch(e){} }
     var img = document.querySelector("img.logo");
     if(img && !img.complete){ img.addEventListener("load",doPrint); img.addEventListener("error",doPrint); setTimeout(doPrint,1500); }
@@ -325,7 +326,7 @@ ${printScript}
     // After an await the browser's user-gesture token expires and popup blockers
     // kick in regardless of site permissions. Do NOT use "noopener" — when that
     // flag is present, window.open() returns null even when the window opened.
-    const opts = preview ? "width=460,height=800,resizable=yes" : "width=1,height=1,left=-9999,top=-9999";
+    const opts = preview ? "width=460,height=800,resizable=yes" : "width=900,height=680";
     const w = window.open("", "_blank", opts);
     if (!w) { setError("Browser blocked the popup — allow popups for this page and reload."); return; }
     w.document.open();

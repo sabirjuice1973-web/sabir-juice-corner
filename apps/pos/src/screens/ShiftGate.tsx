@@ -48,24 +48,41 @@ export function ShiftGate({
     (async () => {
       try {
         const { branches } = await api.listBranches();
-        // Only offer non-kitchen branches.
         const outlets = branches.filter((b: any) => !b.isCentralKitchen);
         if (outlets.length === 0) {
           setPhase({ kind: "error", msg: "No active branch found. Please check the server." });
           return;
         }
         if (outlets.length === 1) {
-          // Single branch — auto-proceed, no user interaction needed.
           await connectTo(String(outlets[0].id));
           return;
         }
-        // Multiple branches — show a compact picker.
+        // Multiple branches — check which one has an open shift and auto-select it.
+        // This covers the common case where the server has several seeded branches
+        // but only one is actually in use (has an active shift running).
+        setPhase({ kind: "loading", msg: "Detecting active branch…" });
+        const checks = await Promise.all(
+          outlets.map(async (b: any) => {
+            try {
+              const { shift } = await api.currentShift(String(b.id));
+              return { branch: b, hasShift: !!shift };
+            } catch {
+              return { branch: b, hasShift: false };
+            }
+          })
+        );
+        const withShift = checks.filter((x) => x.hasShift);
+        if (withShift.length === 1) {
+          // Exactly one branch has an open shift — connect to it silently.
+          await connectTo(String(withShift[0].branch.id));
+          return;
+        }
+        // Zero or multiple active branches — show a compact picker.
         setPhase({ kind: "pick", branches: outlets });
       } catch (e: any) {
         setPhase({ kind: "error", msg: e?.message ?? "Could not load branches" });
       }
     })();
-    // connectTo is defined inside the component but its identity doesn't change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
