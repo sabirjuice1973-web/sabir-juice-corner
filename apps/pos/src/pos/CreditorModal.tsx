@@ -321,32 +321,45 @@ ${printScript}
 
   async function printOrPreview(orderList: AccountOrder[], preview: boolean) {
     if (orderList.length === 0) return;
-    // Fetch full item details for all orders in parallel so we can show Qty|Name|Rate|Total
-    const enriched: EnrichedOrder[] = await Promise.all(
-      orderList.map(async (o): Promise<EnrichedOrder> => {
-        try {
-          const { order } = await api.getOrder(o.id);
-          const fullItems: FullItem[] = (order.items as any[]).map((it) => {
-            const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents as any[] : null;
-            const name = mix && mix.length >= 2
-              ? mix.map((m: any) => m.name).join("+")
-              : (it.item?.name ?? "");
-            const size = mix ? (mix[0]?.size ?? "NA") : (it.item?.size ?? "NA");
-            return { name, size, qty: it.qty, unitPrice: it.unitPrice, lineTotal: it.lineTotal };
-          });
-          return { ...o, fullItems };
-        } catch {
-          return { ...o, fullItems: null };
-        }
-      })
-    );
-    const html = buildSlipHtml(enriched, preview);
-    // Both preview and print use window.open() — a popup window's window.print()
-    // never blocks the parent tab, unlike an iframe's print() on Windows Chrome.
-    const opts = preview ? "width=460,height=800,resizable=yes" : "width=1,height=1,left=-9999,top=-9999,noopener";
+    // Open the popup window SYNCHRONOUSLY here, before any await.
+    // After an await the browser's user-gesture token expires and popup blockers
+    // kick in regardless of site permissions. Do NOT use "noopener" — when that
+    // flag is present, window.open() returns null even when the window opened.
+    const opts = preview ? "width=460,height=800,resizable=yes" : "width=1,height=1,left=-9999,top=-9999";
     const w = window.open("", "_blank", opts);
-    if (!w) { setError("Browser blocked the popup — allow popups for this page."); return; }
-    w.document.open(); w.document.write(html); w.document.close();
+    if (!w) { setError("Browser blocked the popup — allow popups for this page and reload."); return; }
+    w.document.open();
+    w.document.write("<html><body style='font-family:sans-serif;padding:24px;color:#555'>Loading…</body></html>");
+    w.document.close();
+
+    try {
+      // Fetch full item details for all orders in parallel so we can show Qty|Name|Rate|Total
+      const enriched: EnrichedOrder[] = await Promise.all(
+        orderList.map(async (o): Promise<EnrichedOrder> => {
+          try {
+            const { order } = await api.getOrder(o.id);
+            const fullItems: FullItem[] = (order.items as any[]).map((it) => {
+              const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents as any[] : null;
+              const name = mix && mix.length >= 2
+                ? mix.map((m: any) => m.name).join("+")
+                : (it.item?.name ?? "");
+              const size = mix ? (mix[0]?.size ?? "NA") : (it.item?.size ?? "NA");
+              return { name, size, qty: it.qty, unitPrice: it.unitPrice, lineTotal: it.lineTotal };
+            });
+            return { ...o, fullItems };
+          } catch {
+            return { ...o, fullItems: null };
+          }
+        })
+      );
+      const html = buildSlipHtml(enriched, preview);
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    } catch (e: any) {
+      w.close();
+      setError(e?.message ?? "Failed to load print data");
+    }
   }
 
   // Single-order print (uses same slip format but just one order)

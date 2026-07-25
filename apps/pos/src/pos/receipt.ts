@@ -24,9 +24,12 @@ export function printReceipt(order: BoxOrder, header: { branchName: string; cash
   // Open in a separate window so window.print() inside it never blocks the main
   // POS tab. An iframe's window.print() call on Windows Chrome/Edge synchronously
   // freezes the parent tab's JS event loop until the print dialog is dismissed.
-  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999,noopener");
+  // Note: do NOT include "noopener" in the features string — when noopener is
+  // present the browser opens the window but window.open() returns null (per
+  // spec), so every print silently falls through to the onDone-only path.
+  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999");
   if (!win) {
-    // Popup blocked — still call onDone so the POS doesn't get stuck waiting.
+    // Genuinely blocked by popup blocker — still call onDone so POS doesn't hang.
     onDone?.();
     return;
   }
@@ -373,7 +376,7 @@ type LedgerPrintEntry = {
 
 export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   const html = ledgerVoucherHtml(entry, accountName);
-  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999,noopener");
+  const win = window.open("", "_blank", "width=1,height=1,left=-9999,top=-9999");
   if (!win) return;
   win.document.open();
   win.document.write(html);
