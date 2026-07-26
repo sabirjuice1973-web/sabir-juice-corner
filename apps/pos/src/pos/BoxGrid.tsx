@@ -487,7 +487,7 @@ function OrderRow({
 
   if (kitchen) {
     return (
-      <li className={`px-2 py-2 flex items-center gap-2 text-base select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${isOverdue ? "bg-red-100 ring-1 ring-inset ring-red-400" : "bg-white"}`}>
+      <li className={`px-2 py-0.5 flex items-center gap-2 text-base select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${isOverdue ? "bg-red-100 ring-1 ring-inset ring-red-400" : "bg-white"}`}>
         <span className={`flex-1 ${isOverdue ? "text-red-900 font-semibold" : "text-slate-900"}`}>
           {order.customerName && <b className="text-accent-700 mr-2">{order.customerName}:</b>}
           {itemsJsx}
@@ -504,7 +504,7 @@ function OrderRow({
 
   return (
     <li
-      className={`px-2 py-1.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${
+      className={`px-2 py-0.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${
         selectedForMerge ? "ring-2 ring-inset ring-green-500 bg-green-50" :
         selected && isDelivered ? "ring-2 ring-inset ring-red-500 bg-yellow-200/70" :
         selected ? "ring-2 ring-inset ring-red-500 bg-white" :
