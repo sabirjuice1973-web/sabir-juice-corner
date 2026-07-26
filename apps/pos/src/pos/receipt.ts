@@ -1,36 +1,49 @@
 import { displayItemName, type BoxOrder } from "./posState";
+import { LOGO_MONO_DATA_URI } from "./logoMonoDataUri";
 
 /**
  * Render a receipt for a BoxOrder and open the browser's print dialog.
  *
  * Layout: 80mm-wide thermal-receipt format, Segoe UI (with sans-serif fallbacks
- * for non-Windows printers). Line-art logo at the top (uses /logo-mono.png —
- * the line-art version prints sharper on thermal than a solid fill),
- * bold metadata labels, generous spacing on the items table, heavy TOTAL line.
+ * for non-Windows printers). Line-art logo at the top (line-art prints sharper
+ * on thermal than a solid fill), bold metadata labels, generous spacing on the
+ * items table, heavy TOTAL line.
  *
  * Image loading:
- *   The receipt embeds <img src="/logo-mono.png"> from the app's origin. We
- *   inject a tiny script that waits for the logo to load (or fail) before
- *   triggering window.print() — without it, the print dialog can fire before
- *   the logo is ready and the printed receipt has a broken image placeholder.
+ *   The logo is inlined as a base64 data URI (LOGO_MONO_DATA_URI) rather than
+ *   an <img src="/logo-mono.png"> network request. A network-loaded image
+ *   fires its "load" event asynchronously, and win.print() was firing before
+ *   that completed — Chromium then waits on the pending image before it can
+ *   render the print preview, so the popup sat fully visible for a beat before
+ *   the print dialog appeared. Inlining removes that wait entirely.
  *
  * For ESC/POS thermal printers later: the same HTML is structured so a Node
  * service (or WebUSB-based driver) can pick it up and translate to printer
  * commands. The logo would be re-rasterised by the printer driver.
  */
 
-export function printReceipt(order: BoxOrder, header: { branchName: string; cashier: string }, onDone?: () => void) {
-  const html = receiptHtml(order, header);
-  // Open in a separate window so window.print() inside it never blocks the main
-  // POS tab. An iframe's window.print() call on Windows Chrome/Edge synchronously
-  // freezes the parent tab's JS event loop until the print dialog is dismissed.
+// Reused across every print instead of opening + closing a fresh popup each
+// time. Spinning up a brand-new browsing context (renderer process, layout,
+// print pipeline) is what was costing ~1-1.5s per print on Windows/Edge —
+// reusing the same window pays that startup cost once per shift instead of
+// once per receipt. The window is never explicitly closed by us; if the user
+// closes it themselves, the next print just opens a new one.
+let sharedPrintWindow: Window | null = null;
+
+function getPrintWindow(): Window | null {
+  if (sharedPrintWindow && !sharedPrintWindow.closed) return sharedPrintWindow;
   // Note: do NOT include "noopener" in the features string — when noopener is
   // present the browser opens the window but window.open() returns null (per
-  // spec), so every print silently falls through to the onDone-only path.
+  // spec), so every print would silently fall through to the null-check below.
   // Open at a usable size — Edge shows the print-preview panel INSIDE the popup
   // window, so a 1x1 px window makes the preview panel tiny and unusable.
-  // Do NOT use "noopener" — that flag makes window.open() return null (per spec).
-  const win = window.open("", "_blank", "width=900,height=680");
+  sharedPrintWindow = window.open("", "_blank", "width=900,height=680");
+  return sharedPrintWindow;
+}
+
+export function printReceipt(order: BoxOrder, header: { branchName: string; cashier: string }, onDone?: () => void) {
+  const html = receiptHtml(order, header);
+  const win = getPrintWindow();
   if (!win) {
     onDone?.();
     return;
@@ -84,6 +97,12 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
      combo of margin:0 + body padding was making Chrome generate a 2nd blank
      "page" for tall receipts, which the printer then cut as an empty strip. */
   @page { size: 80mm auto; margin: 4mm; }
+  /* The popup window paints once before the print dialog takes over (the
+     window/renderer needs a moment to spin up) — without this the cashier
+     briefly sees the fully rendered receipt sitting there before the dialog
+     appears. Hiding it on screen (but not @media print) means that moment
+     is just a blank window instead. */
+  @media screen { .receipt { visibility: hidden; } }
   * { box-sizing: border-box; }
   /* Heavier base weight (500) keeps thermal print crisp — the printer rasterises
      at ~203 dpi so thin strokes turn blurry. Tabular-nums everywhere so columns
@@ -295,7 +314,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
       <div class="addr-line">Clifton Plaza, Multan Cantt.</div>
       <div class="addr-line"><b>Contact</b> 0321-6366000</div>
     </div>
-    <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
+    <img class="logo" src="${LOGO_MONO_DATA_URI}" alt="Sabir Juice Corner" />
   </div>
   <hr />
   <table class="meta">
@@ -349,9 +368,14 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   </div>
 </div>
   <script>
-    // Auto-close after the print dialog is dismissed.
-    // window.print() is called from the parent tab (which holds the user gesture).
-    window.addEventListener('afterprint', function () { window.close(); }, { once: true });
+    // Hand focus back to the POS tab once the print dialog closes. The window
+    // itself is left open and reused for the next print (see getPrintWindow()
+    // in receipt.ts) instead of closing — reopening a fresh popup every print
+    // was the main source of the ~1.5s delay before the dialog appeared.
+    window.addEventListener('afterprint', function () {
+      if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+      window.blur();
+    }, { once: true });
   </script>
 </body></html>`;
 }
@@ -373,7 +397,7 @@ type LedgerPrintEntry = {
 
 export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   const html = ledgerVoucherHtml(entry, accountName);
-  const win = window.open("", "_blank", "width=900,height=680");
+  const win = getPrintWindow();
   if (!win) return;
   win.document.open();
   win.document.write(html);
@@ -398,6 +422,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
 <html><head><meta charset="utf-8" /><title>${docType} — ${escapeHtml(accountName)}</title>
 <style>
   @page { size: 80mm auto; margin: 4mm; }
+  @media screen { .receipt { visibility: hidden; } }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
@@ -437,7 +462,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
       <div class="addr-line">Clifton Plaza, Multan Cantt.</div>
       <div class="addr-line"><b>Contact</b> 0321-6366000</div>
     </div>
-    <img class="logo" src="/logo-mono.png" alt="Sabir Juice Corner" />
+    <img class="logo" src="${LOGO_MONO_DATA_URI}" alt="Sabir Juice Corner" />
   </div>
   <hr />
   <div class="doc-title">${docType}</div>
@@ -467,7 +492,10 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   <div class="footer-line" style="font-weight:600;font-style:italic;margin-top:1mm;">Serving fresh Juices since 1973</div>
 </div>
 <script>
-  window.addEventListener('afterprint', function () { window.close(); }, { once: true });
+  window.addEventListener('afterprint', function () {
+    if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+    window.blur();
+  }, { once: true });
 </script>
 </body></html>`;
 }
