@@ -77,6 +77,29 @@ const ReportQuery = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(500),
 });
 
+/**
+ * Non-OWNER cashiers may only use a product/supplier name that's already
+ * "known" for this account — either bulk-seeded (LedgerNameSuggestion) or
+ * previously used in a real entry. OWNER can always introduce a new one.
+ * Empty/blank values are always allowed (supplierName is optional).
+ */
+async function nameIsKnown(ledgerAccountId: bigint, field: "productName" | "supplierName", value: string): Promise<boolean> {
+  const v = value.trim();
+  if (!v) return true;
+
+  const [manual, used] = await Promise.all([
+    prisma.ledgerNameSuggestion.findFirst({
+      where: { ledgerAccountId, field, value: { equals: v, mode: "insensitive" } },
+      select: { id: true },
+    }),
+    (prisma.ledgerEntry as any).findFirst({
+      where: { ledgerAccountId, [field]: { equals: v, mode: "insensitive" } },
+      select: { id: true },
+    }),
+  ]);
+  return !!manual || !!used;
+}
+
 export async function registerLedgerRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
@@ -224,6 +247,19 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
     });
     if (!account) return reply.code(404).send({ error: "Ledger account not found" });
 
+    if (!req.auth.roles.some((r) => r.code === "OWNER")) {
+      const [productKnown, supplierKnown] = await Promise.all([
+        nameIsKnown(body.data.ledgerAccountId, "productName", body.data.productName),
+        nameIsKnown(body.data.ledgerAccountId, "supplierName", body.data.supplierName ?? ""),
+      ]);
+      if (!productKnown) {
+        return reply.code(403).send({ error: `"${body.data.productName}" isn't in the list yet — pick an existing product or ask the owner to add it.` });
+      }
+      if (!supplierKnown) {
+        return reply.code(403).send({ error: `"${body.data.supplierName}" isn't in the list yet — pick an existing supplier or ask the owner to add it.` });
+      }
+    }
+
     const entry = await prisma.ledgerEntry.create({
       data: {
         branchId: account.branchId,
@@ -253,6 +289,23 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
 
     const existing = await prisma.ledgerEntry.findUnique({ where: { id } });
     if (!existing) return reply.code(404).send({ error: "Entry not found" });
+
+    if (!req.auth.roles.some((r) => r.code === "OWNER")) {
+      const [productKnown, supplierKnown] = await Promise.all([
+        body.data.productName !== undefined
+          ? nameIsKnown(existing.ledgerAccountId, "productName", body.data.productName)
+          : Promise.resolve(true),
+        body.data.supplierName !== undefined
+          ? nameIsKnown(existing.ledgerAccountId, "supplierName", body.data.supplierName ?? "")
+          : Promise.resolve(true),
+      ]);
+      if (!productKnown) {
+        return reply.code(403).send({ error: `"${body.data.productName}" isn't in the list yet — pick an existing product or ask the owner to add it.` });
+      }
+      if (!supplierKnown) {
+        return reply.code(403).send({ error: `"${body.data.supplierName}" isn't in the list yet — pick an existing supplier or ask the owner to add it.` });
+      }
+    }
 
     const updated = await prisma.ledgerEntry.update({
       where: { id },
@@ -364,11 +417,15 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
    * POST /ledger/accounts/:id/name-suggestions
    * Bulk-add product/supplier names to an account's suggestion list — e.g.
    * paste 200 supplier names at once so they all show up in the Hisaab
-   * dropdown before anyone has typed a single entry for them. Same access
-   * level as creating a normal entry (no extra role check): this only seeds
-   * autocomplete data, it never touches money.
+   * dropdown before anyone has typed a single entry for them. OWNER-only:
+   * introducing brand-new names is an owner decision, same as typing one
+   * directly into a new entry (see nameIsKnown / the POST /entries guard).
    */
   app.post("/accounts/:id/name-suggestions", async (req, reply) => {
+    if (!req.auth) return reply.code(401).send({ error: "Unauthenticated" });
+    if (!req.auth.roles.some((r) => r.code === "OWNER")) {
+      return reply.code(403).send({ error: "Only OWNER can add new product/supplier names" });
+    }
     const id = BigInt((req.params as any).id);
     const body = z.object({
       field: z.enum(["productName", "supplierName"]),

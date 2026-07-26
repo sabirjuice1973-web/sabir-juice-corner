@@ -365,6 +365,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   ledgerAccountId={selectedId}
                   editing={editingEntry}
                   defaultDate={viewDate}
+                  isOwner={canViewReports}
                   onSave={() => { resetForm(); void loadEntries(selectedId); }}
                   onCancel={resetForm}
                 />
@@ -495,14 +496,30 @@ const FIELD_ORDER: (keyof EntryFormData)[] = [
   "headName", "supplierName", "cashPaid", "description",
 ];
 
+// Bolds the portion of `text` that matches `query` (case-insensitive), for the
+// suggestion dropdown — makes it obvious at a glance why an item matched.
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <b className="font-semibold text-blue-700">{text.slice(idx, idx + query.length)}</b>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 function InlineEntryForm({
-  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate,
+  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner,
 }: {
   branchId: string; ledgerAccountId: string;
   editing: LedgerEntry | null;
   onSave: (e: LedgerEntry) => void;
   onCancel: () => void;
   defaultDate: string;
+  isOwner: boolean;
 }) {
   const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
   const [form, setForm] = useState<EntryFormData>(() =>
@@ -620,31 +637,63 @@ function InlineEntryForm({
 
   const iCls = "w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400";
 
+  // productName/supplierName are the "curated vocabulary" fields — non-owner
+  // cashiers may only pick an existing value (see the backend's nameIsKnown
+  // guard); headName stays free-text for everyone.
+  const RESTRICTED_FIELDS: SuggField[] = ["productName", "supplierName"];
+  function isRestricted(field: SuggField) { return !isOwner && RESTRICTED_FIELDS.includes(field); }
+
   function suggBox(field: SuggField, placeholder: string, extraCls = "") {
     const isActive = activeSugg === field;
     const list = sugg[field];
+    const query = form[field].trim();
+    const exactMatch = list.some((v) => v.toLowerCase() === query.toLowerCase());
+    const showUnknownHint = isRestricted(field) && query.length > 0 && !exactMatch;
+
     return (
       <div className={`relative ${extraCls}`}>
-        <input
-          ref={(el) => { inputRefs.current[field] = el; }}
-          type="text" value={form[field]} placeholder={placeholder}
-          onChange={(e) => { setForm((p) => ({ ...p, [field]: e.target.value })); openSugg(field, e.target.value); }}
-          onFocus={() => openSugg(field, form[field])}
-          onBlur={() => setTimeout(() => { setActiveSugg(null); setSuggIdx(-1); }, 160)}
-          onKeyDown={(e) => { handleSuggKeyDown(e, field); if (e.key === "Enter" && suggIdx < 0) onFieldEnter(e, field); }}
-          className={iCls} autoComplete="off"
-        />
-        {isActive && list.length > 0 && (
-          <ul className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-slate-200 rounded shadow-lg max-h-32 overflow-y-auto min-w-[140px]">
-            {list.map((item, i) => (
-              <li key={item}>
-                <button type="button" onMouseDown={() => pickSugg(field, item)}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${i === suggIdx ? "bg-blue-100" : ""}`}>
-                  {item}
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className="relative">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+            <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            ref={(el) => { inputRefs.current[field] = el; }}
+            type="text" value={form[field]} placeholder={placeholder}
+            onChange={(e) => { setForm((p) => ({ ...p, [field]: e.target.value })); openSugg(field, e.target.value); }}
+            onFocus={() => openSugg(field, form[field])}
+            onBlur={() => setTimeout(() => { setActiveSugg(null); setSuggIdx(-1); }, 160)}
+            onKeyDown={(e) => { handleSuggKeyDown(e, field); if (e.key === "Enter" && suggIdx < 0) onFieldEnter(e, field); }}
+            className={iCls + " pl-6"} autoComplete="off"
+          />
+        </div>
+        {isActive && (list.length > 0 || query.length > 0) && (
+          <div className="absolute z-50 left-0 top-full mt-1 w-full min-w-[200px] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+            {list.length > 0 ? (
+              <ul className="max-h-40 overflow-y-auto py-1 divide-y divide-slate-50">
+                {list.map((item, i) => (
+                  <li key={item}>
+                    <button type="button" onMouseDown={() => pickSugg(field, item)}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                        i === suggIdx ? "bg-blue-50 border-l-2 border-blue-500" : "border-l-2 border-transparent hover:bg-slate-50"
+                      }`}>
+                      <span className="text-slate-800">{highlightMatch(item, query)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="px-3 py-2.5 text-xs text-slate-400">
+                No matches for "{query}"
+              </div>
+            )}
+            {showUnknownHint && (
+              <div className="px-3 py-2 text-[11px] text-amber-700 bg-amber-50 border-t border-amber-100">
+                Not in the list — ask the owner to add "{query}" as a new {field === "productName" ? "product" : "supplier"}.
+              </div>
+            )}
+          </div>
         )}
       </div>
     );
@@ -670,10 +719,12 @@ function InlineEntryForm({
           <div className="flex-1 min-w-[120px]">
             <div className="flex items-center justify-between mb-0.5">
               <label className="block text-[10px] font-medium text-slate-500">Product Name *</label>
-              <button type="button" onClick={() => setBulkField("productName")}
-                className="text-[10px] font-medium text-blue-600 hover:text-blue-800" title="Paste a list of product names to add them all at once">
-                + Bulk add
-              </button>
+              {isOwner && (
+                <button type="button" onClick={() => setBulkField("productName")}
+                  className="text-[10px] font-medium text-blue-600 hover:text-blue-800" title="Paste a list of product names to add them all at once">
+                  + Bulk add
+                </button>
+              )}
             </div>
             {suggBox("productName", "e.g. Petrol, Sugar, Labour", "w-full")}
           </div>
@@ -708,10 +759,12 @@ function InlineEntryForm({
           <div className="flex-1 min-w-[110px]">
             <div className="flex items-center justify-between mb-0.5">
               <label className="block text-[10px] font-medium text-slate-500">Supplier</label>
-              <button type="button" onClick={() => setBulkField("supplierName")}
-                className="text-[10px] font-medium text-blue-600 hover:text-blue-800" title="Paste a list of supplier names to add them all at once">
-                + Bulk add
-              </button>
+              {isOwner && (
+                <button type="button" onClick={() => setBulkField("supplierName")}
+                  className="text-[10px] font-medium text-blue-600 hover:text-blue-800" title="Paste a list of supplier names to add them all at once">
+                  + Bulk add
+                </button>
+              )}
             </div>
             {suggBox("supplierName", "e.g. Ahmed Bhai", "w-full")}
           </div>
