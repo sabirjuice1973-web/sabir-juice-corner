@@ -382,7 +382,7 @@ function BoxPanel({
         {orders.length === 0 ? (
           <div className="text-center text-slate-300 text-xs py-6">empty</div>
         ) : (
-          <ul className="p-0.5">
+          <ul>
             {orders.map((o, i) => (
               <OrderRow
                 key={o.localId}
@@ -487,7 +487,7 @@ function OrderRow({
 
   if (kitchen) {
     return (
-      <li className={`px-2 py-0.5 flex items-center gap-2 text-base select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${isOverdue ? "bg-red-100 ring-1 ring-inset ring-red-400" : "bg-white"}`}>
+      <li className={`px-2 py-0.5 flex items-center gap-2 text-base select-none border-x border-b ${first ? "border-t" : ""} ${isOverdue ? "border-red-400 bg-red-100" : "border-blue-900 bg-white"}`}>
         <span className={`flex-1 ${isOverdue ? "text-red-900 font-semibold" : "text-slate-900"}`}>
           {order.customerName && <b className="text-accent-700 mr-2">{order.customerName}:</b>}
           {itemsJsx}
@@ -504,13 +504,13 @@ function OrderRow({
 
   return (
     <li
-      className={`px-2 py-0.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${
-        selectedForMerge ? "ring-2 ring-inset ring-green-500 bg-green-50" :
-        selected && isDelivered ? "ring-2 ring-inset ring-red-500 bg-yellow-200/70" :
-        selected ? "ring-2 ring-inset ring-red-500 bg-white" :
-        isDelivered ? "bg-yellow-200/70 hover:bg-yellow-200" :
-        isOverdue ? "bg-red-100 hover:bg-red-200 ring-1 ring-inset ring-red-400" :
-        "bg-white hover:bg-slate-50"
+      className={`px-2 py-0.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-x border-b ${first ? "border-t" : ""} ${
+        selectedForMerge ? "border-green-500 bg-green-50" :
+        selected && isDelivered ? "border-red-500 bg-yellow-200/70" :
+        selected ? "border-red-500 bg-white" :
+        isDelivered ? "border-blue-900 bg-yellow-200/70 hover:bg-yellow-200" :
+        isOverdue ? "border-red-400 bg-red-100 hover:bg-red-200" :
+        "border-blue-900 bg-white hover:bg-slate-50"
       }`}
       onClick={handleClick}
       title={mergeMode ? "Click to select/deselect for merge" : "Click: select (red border) + mark delivered (yellow) · Double-click: details · Shift+C: edit selected"}
