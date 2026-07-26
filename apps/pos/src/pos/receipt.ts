@@ -38,6 +38,12 @@ export function printReceipt(order: BoxOrder, header: { branchName: string; cash
   win.document.open();
   win.document.write(html);
   win.document.close();
+  // Trigger print from the PARENT window — this is still within the user-gesture
+  // activation from the button click, so Edge/Chrome allow it. Calling
+  // window.print() from inside the popup's own <script> has no user gesture and
+  // can be silently blocked on Windows Edge.
+  win.focus();
+  win.print();
   if (onDone) {
     win.addEventListener("afterprint", () => onDone(), { once: true });
   }
@@ -343,21 +349,9 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   </div>
 </div>
   <script>
-    (function () {
-      // Auto-close the window after the print dialog is dismissed (Enter or click).
-      window.addEventListener('afterprint', function () { window.close(); }, { once: true });
-      // Wait for the logo to load (or error out) before opening the print dialog —
-      // otherwise the printed receipt has a broken-image placeholder.
-      function doPrint() { try { window.focus(); window.print(); } catch (e) {} }
-      var img = document.querySelector('img.logo');
-      if (img && !img.complete) {
-        img.addEventListener('load', doPrint);
-        img.addEventListener('error', doPrint);
-        setTimeout(doPrint, 1500);
-      } else {
-        doPrint();
-      }
-    })();
+    // Auto-close after the print dialog is dismissed.
+    // window.print() is called from the parent tab (which holds the user gesture).
+    window.addEventListener('afterprint', function () { window.close(); }, { once: true });
   </script>
 </body></html>`;
 }
@@ -384,6 +378,8 @@ export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   win.document.open();
   win.document.write(html);
   win.document.close();
+  win.focus();
+  win.print();
 }
 
 function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string {
@@ -471,16 +467,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   <div class="footer-line" style="font-weight:600;font-style:italic;margin-top:1mm;">Serving fresh Juices since 1973</div>
 </div>
 <script>
-  (function () {
-    window.addEventListener('afterprint', function () { window.close(); }, { once: true });
-    function doPrint() { try { window.focus(); window.print(); } catch (e) {} }
-    var img = document.querySelector('img.logo');
-    if (img && !img.complete) {
-      img.addEventListener('load', doPrint);
-      img.addEventListener('error', doPrint);
-      setTimeout(doPrint, 1500);
-    } else { doPrint(); }
-  })();
+  window.addEventListener('afterprint', function () { window.close(); }, { once: true });
 </script>
 </body></html>`;
 }

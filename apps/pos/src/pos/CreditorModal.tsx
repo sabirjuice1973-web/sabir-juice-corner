@@ -225,13 +225,7 @@ export function CreditorModal({ branchId, branchName, cashierName, onClose }: Pr
     // For preview: wrap in a centred container so it looks like a slip in the browser.
     const printScript = forPreview ? "" : `
 <script>
-  (function(){
-    window.addEventListener("afterprint", function(){ window.close(); }, { once: true });
-    function doPrint(){ try{ window.focus(); window.print(); }catch(e){} }
-    var img = document.querySelector("img.logo");
-    if(img && !img.complete){ img.addEventListener("load",doPrint); img.addEventListener("error",doPrint); setTimeout(doPrint,1500); }
-    else { setTimeout(doPrint, 80); }
-  })();
+  window.addEventListener("afterprint", function(){ window.close(); }, { once: true });
 </script>`;
 
     return `<!DOCTYPE html>
@@ -357,6 +351,12 @@ ${printScript}
       w.document.open();
       w.document.write(html);
       w.document.close();
+      if (!preview) {
+        // Call print from the parent window. The popup was opened with a user
+        // gesture so the browser permits print() on it even after the await.
+        w.focus();
+        w.print();
+      }
     } catch (e: any) {
       w.close();
       setError(e?.message ?? "Failed to load print data");
