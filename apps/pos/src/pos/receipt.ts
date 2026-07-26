@@ -41,8 +41,13 @@ function getPrintWindow(): Window | null {
   return sharedPrintWindow;
 }
 
-export function printReceipt(order: BoxOrder, header: { branchName: string; cashier: string }, onDone?: () => void) {
-  const html = receiptHtml(order, header);
+export function printReceipt(
+  order: BoxOrder,
+  header: { branchName: string; cashier: string },
+  payment?: { amountReceived: number; cashReturn: number },
+  onDone?: () => void,
+) {
+  const html = receiptHtml(order, header, payment);
   const win = getPrintWindow();
   if (!win) {
     onDone?.();
@@ -62,7 +67,7 @@ export function printReceipt(order: BoxOrder, header: { branchName: string; cash
   }
 }
 
-function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: string }): string {
+function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: string }, payment?: { amountReceived: number; cashReturn: number }): string {
   const orderedAt = new Date(order.openedAt);
   const printedAt = new Date();
   const orderDate = orderedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -259,7 +264,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     font-size: 11.5pt;
     margin-top: 1.5mm;
   }
-  .totals tr:last-child td {
+  .totals tr.total-row td {
     border-top: 2px solid #000;
     border-bottom: 2px solid #000;
   }
@@ -275,6 +280,22 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     font-weight: 600;
     border: none;
     padding: 0.8mm 0;
+  }
+  /* Amount received / cash return — printed only when the cashier used those
+     optional fields. Cash return gets its own dashed rule + heavier weight
+     since that's the number the cashier hands back to the customer. */
+  .totals tr.payment-row td {
+    font-size: 9.5pt;
+    font-weight: 600;
+    border: none;
+    padding: 0.8mm 0;
+  }
+  .totals tr.cash-return-row td {
+    font-size: 10.5pt;
+    font-weight: 900;
+    border: none;
+    border-top: 1.5px dashed #000;
+    padding: 1.2mm 0 0.8mm;
   }
   .totals td {
     padding: 1.5mm 0;
@@ -357,10 +378,19 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
       <td class="label-cell">Discount</td>
       <td class="num">- PKR ${formatMoney(Number(order.discountAmount))}</td>
     </tr>` : ""}
-    <tr>
+    <tr class="total-row">
       <td class="label-cell">TOTAL</td>
       <td class="num">PKR ${formatMoney(Number(order.total))}</td>
     </tr>
+    ${payment ? `
+    <tr class="payment-row">
+      <td class="label-cell">Amount Received</td>
+      <td class="num">PKR ${formatMoney(payment.amountReceived)}</td>
+    </tr>
+    <tr class="cash-return-row">
+      <td class="label-cell">Cash Return</td>
+      <td class="num">PKR ${formatMoney(payment.cashReturn)}</td>
+    </tr>` : ""}
   </table>
   <div class="footer">
     Thank you!

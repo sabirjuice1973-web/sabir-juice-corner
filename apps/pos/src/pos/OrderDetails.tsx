@@ -7,12 +7,19 @@ import { printReceipt } from "./receipt";
 /**
  * Order Details modal — opens when the cashier double-clicks an order row.
  *
- * Shows the order's items read-only, lets the cashier apply a flat PKR discount
- * (any value > 0), and offers three actions on the bottom row that mirror the
+ * Shows the order's items read-only, and offers two optional cash-handling
+ * fields (amount received, then a flat PKR discount below it), the computed
+ * sub total, and — once an amount received is entered — the cash return owed
+ * to the customer. Neither field is required; both only affect the printed
+ * receipt when actually used. Three actions on the bottom row mirror the
  * inline icons in the box row:
  *   • Print only         → reprint the bill, no state change
  *   • Save               → apply discount (if any), mark paid as CASH, remove from box
  *   • Print + Save       → both
+ *
+ * The amount-received field is autofocused on open, and Enter there submits
+ * Print + Save directly — the cashier types the note/cash value the customer
+ * handed over and hits Enter without touching the mouse.
  *
  * For discounts >10% of subtotal, the backend requires POS_DISCOUNT_LARGE
  * permission. The error message surfaces if the cashier lacks it.
@@ -32,6 +39,7 @@ type Props = {
 };
 
 export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumber, cashierName, onClose, onPrintOnly, onSaved, onPrintAndSaved, onPushedToAccount }: Props) {
+  const [amountReceivedStr, setAmountReceivedStr] = useState("");
   const [discountStr, setDiscountStr] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +114,8 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
   const subtotal = Number(order.total) + appliedDiscount;        // server total already reflects past discounts
   const discountInput = Math.max(0, parseFloat(discountStr) || 0);
   const newTotal = Math.max(0, subtotal - appliedDiscount - discountInput);
+  const amountReceived = Math.max(0, parseFloat(amountReceivedStr) || 0);
+  const cashReturn = amountReceived - newTotal;
 
   // Build the BoxOrder with correct discount values for the receipt. Must be
   // captured BEFORE async operations clear discountStr / update appliedDiscount.
@@ -166,20 +176,22 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
   }
   async function handlePrintAndSave() {
     const toPrint = effectiveOrderForPrint(); // capture before async ops change discountStr
+    const payment = amountReceived > 0 ? { amountReceived, cashReturn } : undefined;
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
       if (!(await payAsCash())) return;
-      printReceipt(toPrint, { branchName, cashier: cashierName });
+      printReceipt(toPrint, { branchName, cashier: cashierName }, payment);
       onPrintAndSaved();
     } finally { setBusy(false); }
   }
   async function handlePrintOnly() {
     const toPrint = effectiveOrderForPrint(); // capture before async ops change discountStr
+    const payment = amountReceived > 0 ? { amountReceived, cashReturn } : undefined;
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
-      printReceipt(toPrint, { branchName, cashier: cashierName });
+      printReceipt(toPrint, { branchName, cashier: cashierName }, payment);
       onPrintOnly();
       onClose();
     } finally { setBusy(false); }
@@ -218,10 +230,10 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
           </ul>
         </div>
 
-        {/* Totals + discount input */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 space-y-2">
+        {/* Totals + amount received + discount */}
+        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 space-y-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">Subtotal (before discount)</span>
+            <span className="text-slate-600">Order total</span>
             <span className="font-mono">PKR {subtotal.toFixed(2)}</span>
           </div>
           {appliedDiscount > 0 && (
@@ -230,24 +242,49 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
               <span className="font-mono">− PKR {appliedDiscount.toFixed(2)}</span>
             </div>
           )}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-slate-600 flex-1">
-              Add discount (PKR)
-              <input
-                className="input w-full mt-1 font-mono text-lg"
-                inputMode="decimal"
-                value={discountStr}
-                onChange={(e) => setDiscountStr(e.target.value.replace(/[^0-9.]/g, ""))}
-                placeholder="0"
-                autoFocus
-              />
-              <div className="text-[11px] text-slate-400 mt-0.5">Any positive amount. Above 10% of subtotal requires manager permission.</div>
-            </label>
-            <div className="text-right">
-              <div className="text-xs text-slate-500">New total</div>
-              <div className="text-3xl font-mono font-bold">PKR {newTotal.toFixed(0)}</div>
-            </div>
+
+          <label className="block text-sm text-slate-600">
+            Amount received (PKR)
+            <input
+              className="input w-full mt-1 font-mono text-lg"
+              inputMode="decimal"
+              value={amountReceivedStr}
+              onChange={(e) => setAmountReceivedStr(e.target.value.replace(/[^0-9.]/g, ""))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !busy) { e.preventDefault(); handlePrintAndSave(); }
+              }}
+              placeholder="0"
+              autoFocus
+            />
+            <div className="text-[11px] text-slate-400 mt-0.5">Optional — cash the customer handed over. Press Enter to Print + Save.</div>
+          </label>
+
+          <label className="block text-sm text-slate-600">
+            Add discount (PKR)
+            <input
+              className="input w-full mt-1 font-mono text-lg"
+              inputMode="decimal"
+              value={discountStr}
+              onChange={(e) => setDiscountStr(e.target.value.replace(/[^0-9.]/g, ""))}
+              placeholder="0"
+            />
+            <div className="text-[11px] text-slate-400 mt-0.5">Any positive amount. Above 10% of subtotal requires manager permission.</div>
+          </label>
+
+          <div className="flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2">
+            <span className="text-sm font-medium text-slate-600">Sub total</span>
+            <span className="text-2xl font-mono font-bold">PKR {newTotal.toFixed(0)}</span>
           </div>
+
+          {amountReceived > 0 && (
+            <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${cashReturn >= 0 ? "bg-emerald-50 border-emerald-300" : "bg-red-50 border-red-300"}`}>
+              <span className="text-sm font-medium text-slate-700">{cashReturn >= 0 ? "Cash return" : "Amount short"}</span>
+              <span className={`text-2xl font-mono font-bold ${cashReturn >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                PKR {Math.abs(cashReturn).toFixed(0)}
+              </span>
+            </div>
+          )}
+
           {error && <div className="text-sm text-red-600">{error}</div>}
         </div>
 
