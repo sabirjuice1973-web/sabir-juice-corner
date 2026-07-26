@@ -297,6 +297,11 @@ export const api = {
     return request<{ suggestions: string[] }>("GET", `/ledger/suggestions?${qs}`);
   },
 
+  bulkAddLedgerNames: (ledgerAccountId: string | number, field: "productName" | "supplierName", values: string[]) =>
+    request<{ added: number; skipped: number; total: number }>(
+      "POST", `/ledger/accounts/${ledgerAccountId}/name-suggestions`, { field, values }
+    ),
+
   ledgerReport: (params: {
     branchId: string | number;
     from?: string;

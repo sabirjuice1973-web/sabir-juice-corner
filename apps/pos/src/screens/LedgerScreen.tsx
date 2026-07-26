@@ -504,6 +504,7 @@ function InlineEntryForm({
   onCancel: () => void;
   defaultDate: string;
 }) {
+  const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
   const [form, setForm] = useState<EntryFormData>(() =>
     editing
       ? { entryDate: editing.entryDate, productName: editing.productName,
@@ -667,7 +668,13 @@ function InlineEntryForm({
               className={iCls + " w-28"} />
           </div>
           <div className="flex-1 min-w-[120px]">
-            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Product Name *</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] font-medium text-slate-500">Product Name *</label>
+              <button type="button" onClick={() => setBulkField("productName")}
+                className="text-[10px] font-medium text-blue-600 hover:text-blue-800" title="Paste a list of product names to add them all at once">
+                + Bulk add
+              </button>
+            </div>
             {suggBox("productName", "e.g. Petrol, Sugar, Labour", "w-full")}
           </div>
           <div className="shrink-0">
@@ -699,7 +706,13 @@ function InlineEntryForm({
         {/* Row 2: Supplier · Cash Paid · Description · Attachment · Buttons */}
         <div className="flex gap-2 items-end mt-2 flex-wrap">
           <div className="flex-1 min-w-[110px]">
-            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Supplier</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] font-medium text-slate-500">Supplier</label>
+              <button type="button" onClick={() => setBulkField("supplierName")}
+                className="text-[10px] font-medium text-blue-600 hover:text-blue-800" title="Paste a list of supplier names to add them all at once">
+                + Bulk add
+              </button>
+            </div>
             {suggBox("supplierName", "e.g. Ahmed Bhai", "w-full")}
           </div>
           <div className="shrink-0">
@@ -755,6 +768,93 @@ function InlineEntryForm({
         )}
         <div className="text-[10px] text-slate-400 mt-1">
           <span className="font-mono bg-slate-100 px-1 rounded">ENTER</span> moves to next field · last ENTER (on Description) saves
+        </div>
+      </div>
+      {bulkField && (
+        <BulkAddNamesModal
+          ledgerAccountId={ledgerAccountId}
+          field={bulkField}
+          onClose={() => setBulkField(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Bulk add product/supplier names ─────────────────────────────────────────
+// Lets the cashier paste a big list of names (one per line, or comma-separated)
+// so they all show up in the Product Name / Supplier autocomplete immediately,
+// instead of only appearing after being typed into a real entry once.
+
+function BulkAddNamesModal({
+  ledgerAccountId, field, onClose,
+}: {
+  ledgerAccountId: string;
+  field: "productName" | "supplierName";
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ added: number; skipped: number; total: number } | null>(null);
+
+  const label = field === "productName" ? "product" : "supplier";
+  const names = text
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  async function handleSave() {
+    if (names.length === 0) { setError(`Paste at least one ${label} name`); return; }
+    setBusy(true); setError("");
+    try {
+      const r = await api.bulkAddLedgerNames(ledgerAccountId, field, names);
+      setResult(r);
+      setText("");
+    } catch (e: any) {
+      setError(e.message || "Failed to save names");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="card w-full max-w-md flex flex-col bg-white">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <div className="font-semibold text-sm">Bulk add {label} names</div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <div className="p-4 space-y-2">
+          <label className="text-xs text-slate-500">
+            Paste names — one per line, or comma-separated
+            <textarea
+              autoFocus
+              value={text}
+              onChange={(e) => { setText(e.target.value); setResult(null); }}
+              placeholder={field === "productName" ? "Sugar\nPetrol\nLabour\n…" : "Ahmed Bhai\nAli Store\n…"}
+              rows={10}
+              className="w-full mt-1 border border-slate-300 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400"
+            />
+          </label>
+          <div className="text-[11px] text-slate-400">{names.length} name{names.length === 1 ? "" : "s"} detected</div>
+          {error && <div className="text-xs text-red-600">{error}</div>}
+          {result && (
+            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+              Added {result.added} new name{result.added === 1 ? "" : "s"}
+              {result.skipped > 0 ? ` (${result.skipped} already existed)` : ""}. They'll now appear in the {label} dropdown.
+            </div>
+          )}
+        </div>
+        <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs">
+            Close
+          </button>
+          <button type="button" onClick={() => void handleSave()} disabled={busy || names.length === 0}
+            className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs disabled:opacity-50">
+            {busy ? "Saving…" : `Save ${names.length || ""}`.trim()}
+          </button>
         </div>
       </div>
     </div>

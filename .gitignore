@@ -36,6 +36,9 @@ postgres-data/
 **/prisma/*.db
 **/prisma/*.db-journal
 
+# database backups — real business data, never commit
+/backups/
+
 # coverage
 coverage/
 *.lcov

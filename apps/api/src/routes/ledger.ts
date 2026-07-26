@@ -289,7 +289,11 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
 
   /**
    * GET /ledger/suggestions?branchId=x&field=productName&q=am
-   * Returns up to 10 distinct past values for the given field that contain q.
+   * Returns up to 20 matching values for the given field: first any manually
+   * bulk-added names (LedgerNameSuggestion — see POST .../name-suggestions
+   * below), then names actually used in past entries, ordered by frequency.
+   * Merging these means a name shows up in the dropdown as soon as it's been
+   * bulk-seeded, without needing to already appear in a real entry first.
    * field: "productName" | "supplierName" | "headName"
    */
   app.get("/suggestions", async (req, reply) => {
@@ -312,6 +316,18 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
       if (to)   dateFilter.entryDate.lte = new Date(to);
     }
 
+    const manual = accountId
+      ? await prisma.ledgerNameSuggestion.findMany({
+          where: {
+            ledgerAccountId: accountId,
+            field,
+            ...(search ? { value: { contains: search, mode: "insensitive" } } : {}),
+          },
+          orderBy: { value: "asc" },
+          take: 20,
+        })
+      : [];
+
     const rows = await (prisma.ledgerEntry as any).groupBy({
       by: [field],
       where: {
@@ -326,11 +342,77 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
       take: 10,
     });
 
-    const values = rows
+    const historical = rows
       .map((r: any) => r[field])
       .filter((v: any) => v != null && v !== "") as string[];
 
-    return toJson({ suggestions: values });
+    // Manual list first (it's the curated reference), then historical matches
+    // not already present, deduped case-insensitively.
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (const v of [...manual.map((m) => m.value), ...historical]) {
+      const key = v.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      values.push(v);
+    }
+
+    return toJson({ suggestions: values.slice(0, 20) });
+  });
+
+  /**
+   * POST /ledger/accounts/:id/name-suggestions
+   * Bulk-add product/supplier names to an account's suggestion list — e.g.
+   * paste 200 supplier names at once so they all show up in the Hisaab
+   * dropdown before anyone has typed a single entry for them. Same access
+   * level as creating a normal entry (no extra role check): this only seeds
+   * autocomplete data, it never touches money.
+   */
+  app.post("/accounts/:id/name-suggestions", async (req, reply) => {
+    const id = BigInt((req.params as any).id);
+    const body = z.object({
+      field: z.enum(["productName", "supplierName"]),
+      values: z.array(z.string().trim().min(1).max(200)).min(1).max(2000),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "field and values[] required" });
+
+    const account = await prisma.ledgerAccount.findUnique({ where: { id } });
+    if (!account) return reply.code(404).send({ error: "Account not found" });
+
+    // Dedupe the incoming batch case-insensitively, then drop anything that
+    // already exists for this account+field (also case-insensitively) so we
+    // don't end up with both "Sugar" and "sugar" as separate rows.
+    const existing = await prisma.ledgerNameSuggestion.findMany({
+      where: { ledgerAccountId: id, field: body.data.field },
+      select: { value: true },
+    });
+    const existingLower = new Set(existing.map((e) => e.value.toLowerCase()));
+
+    const seen = new Set<string>();
+    const toInsert: string[] = [];
+    for (const raw of body.data.values) {
+      const v = raw.trim();
+      if (!v) continue;
+      const key = v.toLowerCase();
+      if (seen.has(key) || existingLower.has(key)) continue;
+      seen.add(key);
+      toInsert.push(v);
+    }
+
+    if (toInsert.length > 0) {
+      await prisma.ledgerNameSuggestion.createMany({
+        data: toInsert.map((value) => ({
+          branchId: account.branchId, ledgerAccountId: id, field: body.data.field, value,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return toJson({
+      added: toInsert.length,
+      skipped: body.data.values.length - toInsert.length,
+      total: body.data.values.length,
+    });
   });
 
   // ─── Report ────────────────────────────────────────────────────────────

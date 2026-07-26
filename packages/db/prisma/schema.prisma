@@ -71,6 +71,7 @@ model Branch {
   accounts         Account[]
   ledgerAccounts   LedgerAccount[]
   ledgerEntries    LedgerEntry[]
+  ledgerNameSuggestions LedgerNameSuggestion[]
 
   @@index([organizationId])
 }
@@ -1297,9 +1298,31 @@ model LedgerAccount {
 
   branch  Branch        @relation(fields: [branchId], references: [id])
   entries LedgerEntry[]
+  nameSuggestions LedgerNameSuggestion[]
 
   @@unique([branchId, position])
   @@index([branchId])
+}
+
+// A manually-curated product/supplier name — lets the owner (or any cashier
+// with Hisaab access) bulk-seed names for an account so they appear in the
+// autocomplete dropdown immediately, before any entry has ever used them.
+// GET /ledger/suggestions normally only surfaces names already typed into a
+// past LedgerEntry; this table supplements that for accounts with a known,
+// large vocabulary of products/suppliers (e.g. Daily Hisaab, Salary).
+model LedgerNameSuggestion {
+  id              BigInt   @id @default(autoincrement())
+  branchId        BigInt
+  ledgerAccountId BigInt
+  field           String   // "productName" | "supplierName"
+  value           String
+  createdAt       DateTime @default(now())
+
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([ledgerAccountId, field, value])
+  @@index([ledgerAccountId, field])
 }
 
 model LedgerEntry {
