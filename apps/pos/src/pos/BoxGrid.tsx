@@ -342,7 +342,7 @@ function BoxPanel({
             />
           ) : (
             <span
-              className={`font-bold text-white truncate cursor-pointer transition-colors hover:text-cyan-300 ${kitchen ? "text-lg" : ""}`}
+              className={`${urdu ? "" : "font-bold"} text-white truncate cursor-pointer transition-colors hover:text-cyan-300 ${kitchen ? "text-lg" : ""}`}
               style={nameFontStyle}
               title="Click to rename"
               onClick={startEdit}
@@ -382,12 +382,13 @@ function BoxPanel({
         {orders.length === 0 ? (
           <div className="text-center text-slate-300 text-xs py-6">empty</div>
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {orders.map((o) => (
+          <ul className="p-0.5">
+            {orders.map((o, i) => (
               <OrderRow
                 key={o.localId}
                 order={o}
                 kitchen={kitchen}
+                first={i === 0}
                 selected={!mergeMode && o.localId === selectedLocalId}
                 selectedForMerge={!!mergeMode && (mergeSelectedIds?.has(o.localId) ?? false)}
                 onToggleDelivered={() => onToggleDelivered(o.localId)}
@@ -413,6 +414,7 @@ function BoxPanel({
 type RowProps = {
   order: BoxOrder;
   kitchen: boolean;
+  first: boolean;
   selected: boolean;
   selectedForMerge: boolean;
   onToggleDelivered: () => void;
@@ -427,7 +429,7 @@ type RowProps = {
 };
 
 function OrderRow({
-  order, kitchen, selected, selectedForMerge, onToggleDelivered, onPrint,
+  order, kitchen, first, selected, selectedForMerge, onToggleDelivered, onPrint,
   onSave, onPrintAndSave, onOpenDetails, onSelect, onTogglePrepaid, mergeMode, onMergeToggle,
 }: RowProps) {
   // Build JSX for the items summary so (M) and (J) can be bold
@@ -485,7 +487,7 @@ function OrderRow({
 
   if (kitchen) {
     return (
-      <li className={`px-2 py-2 flex items-center gap-2 text-base select-none ${isOverdue ? "bg-red-100 ring-1 ring-inset ring-red-400" : "bg-white"}`}>
+      <li className={`px-2 py-2 flex items-center gap-2 text-base select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${isOverdue ? "bg-red-100 ring-1 ring-inset ring-red-400" : "bg-white"}`}>
         <span className={`flex-1 ${isOverdue ? "text-red-900 font-semibold" : "text-slate-900"}`}>
           {order.customerName && <b className="text-accent-700 mr-2">{order.customerName}:</b>}
           {itemsJsx}
@@ -502,7 +504,7 @@ function OrderRow({
 
   return (
     <li
-      className={`px-2 py-1.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none ${
+      className={`px-2 py-1.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-x-2 border-b-2 border-blue-900 ${first ? "border-t-2 rounded-t" : ""} last:rounded-b ${
         selectedForMerge ? "ring-2 ring-inset ring-green-500 bg-green-50" :
         selected && isDelivered ? "ring-2 ring-inset ring-red-500 bg-yellow-200/70" :
         selected ? "ring-2 ring-inset ring-red-500 bg-white" :
