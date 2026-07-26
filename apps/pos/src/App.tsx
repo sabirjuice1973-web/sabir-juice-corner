@@ -4,6 +4,8 @@ import { Login } from "./screens/Login";
 import { ShiftGate } from "./screens/ShiftGate";
 import { Pos } from "./screens/Pos";
 import { Kitchen } from "./screens/Kitchen";
+import { LedgerWindow } from "./screens/LedgerWindow";
+import { StatsWindow } from "./screens/StatsWindow";
 import { wireAutoDrain } from "./offline/syncDrain";
 
 /**
@@ -17,20 +19,38 @@ function isKitchenMode(): boolean {
   catch { return false; }
 }
 
+/**
+ * Detect ?ledger=1 / ?stats=1 — the Hisaab/Accounts and Statistics popup
+ * windows opened from Pos.tsx (openLedgerWindow / openStatsWindow). Unlike
+ * Kitchen these do need auth (they call the API directly), but the token
+ * already lives in localStorage shared with the POS window that opened them,
+ * so api.ts's request() works here with no extra plumbing.
+ */
+function isLedgerMode(): boolean {
+  try { return new URLSearchParams(window.location.search).get("ledger") === "1"; }
+  catch { return false; }
+}
+function isStatsMode(): boolean {
+  try { return new URLSearchParams(window.location.search).get("stats") === "1"; }
+  catch { return false; }
+}
+
 type Stage =
   | { kind: "loading" }
   | { kind: "login" }
   | { kind: "shiftGate"; user: AuthUser }
   | { kind: "pos"; user: AuthUser; branchId: string; shiftId: string };
 
-const BRANCH_KEY = "sjc.branchId";
-const SHIFT_KEY  = "sjc.shiftId";
+export const BRANCH_KEY = "sjc.branchId";
+export const SHIFT_KEY  = "sjc.shiftId";
 
 export function App() {
   // Kitchen Display window — short-circuit all auth / shift logic. It reads
   // POS state from localStorage and listens for storage events. Splitting into
   // two components keeps hooks compliant — Kitchen has its own, PosApp has its own.
   if (isKitchenMode()) return <Kitchen />;
+  if (isLedgerMode()) return <LedgerWindow />;
+  if (isStatsMode()) return <StatsWindow />;
   return <PosApp />;
 }
 

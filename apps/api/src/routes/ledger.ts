@@ -128,9 +128,14 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
 
   /**
    * PATCH /ledger/accounts/:id
-   * Rename a ledger account.
+   * Rename a ledger account. OWNER-only — these are shared account books, not
+   * per-cashier settings.
    */
   app.patch("/accounts/:id", async (req, reply) => {
+    if (!req.auth) return reply.code(401).send({ error: "Unauthenticated" });
+    if (!req.auth.roles.some((r) => r.code === "OWNER")) {
+      return reply.code(403).send({ error: "Only OWNER can rename ledger accounts" });
+    }
     const id = BigInt((req.params as any).id);
     const body = z.object({ name: z.string().trim().min(1).max(100) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "name required" });

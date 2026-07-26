@@ -42,9 +42,19 @@ const EMPTY_FORM = (): EntryFormData => ({
 
 // ─── Main floating window ────────────────────────────────────────────────────
 
-type Props = { branchId: string; shiftId: string; businessDate: string | null; canViewReports?: boolean; onClose: () => void };
+type Props = {
+  branchId: string;
+  shiftId: string;
+  businessDate: string | null;
+  canViewReports?: boolean;
+  onClose: () => void;
+  /** Rendered as the sole content of its own popup window (see LedgerWindow) —
+   * skips the in-app drag/resize/minimize/maximize chrome and backdrop, since
+   * the real OS window already provides all of that. */
+  standalone?: boolean;
+};
 
-export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports = true, onClose }: Props) {
+export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports = true, onClose, standalone = false }: Props) {
   const [win, setWin] = useState<WinState>(defaultWin);
   const winRef = useRef(win);
   useEffect(() => { winRef.current = win; });
@@ -115,6 +125,10 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
     );
   }
   function toggleMinimize() {
+    // No-op in standalone mode: there's no minimize/restore button to bring it
+    // back (the real OS window handles that), so minimizing would just hide
+    // all content behind a blank popup with no way to undo it.
+    if (standalone) return;
     setWin((prev) => ({ ...prev, minimized: !prev.minimized, maximized: false }));
   }
 
@@ -192,7 +206,9 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
   const selectedAccount = accounts.find((a) => a.id === selectedId) ?? null;
 
   // ── Window geometry ────────────────────────────────────────────────────────
-  const containerStyle: React.CSSProperties = win.maximized
+  const containerStyle: React.CSSProperties = standalone
+    ? { position: "fixed", inset: 0, zIndex: 60 }
+    : win.maximized
     ? { position: "fixed", inset: 0, zIndex: 60 }
     : win.minimized
     ? { position: "fixed", right: 24, bottom: 0, width: 320, height: 40, zIndex: 60 }
@@ -201,20 +217,22 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Backdrop — clicking it minimizes the Hisaab window so cashier can use POS */}
-      {!win.minimized && (
+      {/* Backdrop — clicking it minimizes the Hisaab window so cashier can use POS.
+          Not needed in standalone mode: the popup window has no POS behind it. */}
+      {!standalone && !win.minimized && (
         <div className="fixed inset-0 z-50 bg-black/10 cursor-pointer" onClick={toggleMinimize} />
       )}
 
-      <div style={containerStyle} className="flex flex-col bg-white shadow-2xl border border-slate-400 rounded-t-lg overflow-hidden select-none">
-        {/* Title bar — draggable */}
+      <div style={containerStyle} className={`flex flex-col bg-white overflow-hidden select-none ${standalone ? "" : "shadow-2xl border border-slate-400 rounded-t-lg"}`}>
+        {/* Title bar — draggable (unless standalone: the real OS window handles move/resize/minimize) */}
         <div
-          className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-blue-800 to-blue-600 text-white shrink-0 cursor-move"
+          className={`flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-blue-800 to-blue-600 text-white shrink-0 ${standalone ? "" : "cursor-move"}`}
           onPointerDown={(e) => {
+            if (standalone) return;
             if ((e.target as HTMLElement).closest("button")) return;
             if (!win.maximized && !win.minimized) startDrag(e, "move");
           }}
-          onDoubleClick={toggleMaximize}
+          onDoubleClick={standalone ? undefined : toggleMaximize}
         >
           <div className="flex items-center gap-2 min-w-0">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
@@ -237,23 +255,27 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                 )}
               </>
             )}
-            {/* Minimize */}
-            <button type="button" onClick={toggleMinimize}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 text-white text-base leading-none ml-1"
-              title="Minimize">
-              <span className="block w-3 h-0.5 bg-white mt-2" />
-            </button>
-            {/* Maximize / Restore */}
-            <button type="button" onClick={toggleMaximize}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 text-white"
-              title={win.maximized ? "Restore" : "Maximize"}>
-              {win.maximized
-                ? <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="0" width="8" height="8"/><rect x="0" y="3" width="8" height="8" fill="white" stroke="currentColor"/></svg>
-                : <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="0" y="0" width="11" height="11"/></svg>}
-            </button>
+            {!standalone && (
+              <>
+                {/* Minimize */}
+                <button type="button" onClick={toggleMinimize}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 text-white text-base leading-none ml-1"
+                  title="Minimize">
+                  <span className="block w-3 h-0.5 bg-white mt-2" />
+                </button>
+                {/* Maximize / Restore */}
+                <button type="button" onClick={toggleMaximize}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 text-white"
+                  title={win.maximized ? "Restore" : "Maximize"}>
+                  {win.maximized
+                    ? <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="0" width="8" height="8"/><rect x="0" y="3" width="8" height="8" fill="white" stroke="currentColor"/></svg>
+                    : <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="0" y="0" width="11" height="11"/></svg>}
+                </button>
+              </>
+            )}
             {/* Close */}
             <button type="button" onClick={onClose}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-red-500 text-white font-bold text-base leading-none"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-red-500 text-white font-bold text-base leading-none ml-1"
               title="Close">×</button>
           </div>
         </div>
@@ -287,8 +309,8 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   ) : (
                     <button type="button"
                       onClick={() => { setSelectedId(acc.id); setEditingEntry(null); }}
-                      onDoubleClick={() => startRename(acc)}
-                      title="Double-click to rename"
+                      onDoubleClick={canViewReports ? () => startRename(acc) : undefined}
+                      title={canViewReports ? "Double-click to rename" : undefined}
                       className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${
                         selectedId === acc.id ? "bg-blue-600 text-white" : "text-slate-300 hover:bg-slate-700"
                       }`}
@@ -298,7 +320,11 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   )}
                 </div>
               ))}
-              <div className="mt-auto px-3 py-2 text-[10px] text-slate-500">Double-click to rename</div>
+              {/* canViewReports doubles as the OWNER flag here — renaming these shared
+                  account books is OWNER-only, matching the backend's PATCH guard. */}
+              {canViewReports && (
+                <div className="mt-auto px-3 py-2 text-[10px] text-slate-500">Double-click to rename</div>
+              )}
             </aside>
 
             {/* Main */}
@@ -355,36 +381,36 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   </div>
                 ) : (
                   <table className="w-full text-xs border-collapse">
-                    <thead className="sticky top-0 bg-slate-100 border-b">
+                    <thead className="sticky top-0 bg-slate-200 border-b border-slate-300">
                       <tr>
-                        <th className="px-2 py-1.5 text-left text-slate-500 w-24">Date</th>
-                        <th className="px-2 py-1.5 text-left text-slate-500">Product</th>
-                        <th className="px-2 py-1.5 text-right text-slate-500 w-12">Qty</th>
-                        <th className="px-2 py-1.5 text-right text-slate-500 w-20">Rate</th>
-                        <th className="px-2 py-1.5 text-right text-slate-500 w-20">Total</th>
-                        <th className="px-2 py-1.5 text-left text-slate-500 w-24">Head</th>
-                        <th className="px-2 py-1.5 text-left text-slate-500 w-24">Supplier</th>
-                        <th className="px-2 py-1.5 text-right text-slate-500 w-20">Cash Paid</th>
-                        <th className="px-2 py-1.5 text-right text-slate-500 w-22">Balance</th>
-                        <th className="px-2 py-1.5 text-left text-slate-500">Desc</th>
-                        <th className="px-2 py-1.5 text-slate-500 w-10">📎</th>
-                        <th className="px-2 py-1.5 w-14"></th>
+                        <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-24">Date</th>
+                        <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px]">Product</th>
+                        <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-12">Qty</th>
+                        <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-28">Rate</th>
+                        <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-28">Total</th>
+                        <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-24">Head</th>
+                        <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-24">Supplier</th>
+                        <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-28">Cash Paid</th>
+                        <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-28">Balance</th>
+                        <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px]">Desc</th>
+                        <th className="px-2 py-2 text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-10">📎</th>
+                        <th className="px-2 py-2 w-14"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {displayEntries.map((e, idx) => (
                         <tr key={e.id}
-                          className={`border-b hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
-                          <td className="px-2 py-1.5 text-slate-400 tabular-nums whitespace-nowrap">{e.entryDate}</td>
-                          <td className="px-2 py-1.5 font-medium text-slate-800">{e.productName}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">{e.quantity ?? "—"}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">{e.rate ? fmtPKR(e.rate) : "—"}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">{fmtPKR(e.total)}</td>
-                          <td className="px-2 py-1.5 text-slate-500 truncate max-w-[96px]" title={e.headName ?? ""}>{e.headName ?? "—"}</td>
-                          <td className="px-2 py-1.5 text-slate-500 truncate max-w-[96px]" title={e.supplierName ?? ""}>{e.supplierName ?? "—"}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-red-700">{fmtPKR(e.cashPaid)}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-blue-700">{fmtPKR(e.balance.toFixed(2))}</td>
-                          <td className="px-2 py-1.5 text-slate-400 truncate max-w-[100px]" title={e.description ?? ""}>{e.description ?? ""}</td>
+                          className={`border-b border-slate-200 hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                          <td className="px-2 py-1.5 text-slate-600 tabular-nums whitespace-nowrap">{e.entryDate}</td>
+                          <td className="px-2 py-1.5 font-semibold text-slate-900">{e.productName}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-slate-800">{e.quantity ?? "—"}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-slate-800">{e.rate ? fmtPKR(e.rate) : "—"}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap font-semibold text-slate-900">{fmtPKR(e.total)}</td>
+                          <td className="px-2 py-1.5 text-slate-700 truncate max-w-[96px]" title={e.headName ?? ""}>{e.headName ?? "—"}</td>
+                          <td className="px-2 py-1.5 text-slate-700 truncate max-w-[96px]" title={e.supplierName ?? ""}>{e.supplierName ?? "—"}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap font-semibold text-red-700">{fmtPKR(e.cashPaid)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap font-semibold text-blue-700">{fmtPKR(e.balance.toFixed(2))}</td>
+                          <td className="px-2 py-1.5 text-slate-500 truncate max-w-[100px]" title={e.description ?? ""}>{e.description ?? ""}</td>
                           <td className="px-2 py-1.5 text-center">
                             {e.attachmentUrl && (
                               e.attachmentUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i)
@@ -430,8 +456,8 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
           </div>
         )}
 
-        {/* Resize handles (shown when not maximized/minimized) */}
-        {!win.maximized && !win.minimized && <>
+        {/* Resize handles (shown when not maximized/minimized/standalone) */}
+        {!standalone && !win.maximized && !win.minimized && <>
           {rh("n",  "inset-x-2 top-0 h-1 cursor-n-resize",  "n",  startDrag)}
           {rh("s",  "inset-x-2 bottom-0 h-1 cursor-s-resize","s",  startDrag)}
           {rh("e",  "inset-y-2 right-0 w-1 cursor-e-resize", "e",  startDrag)}

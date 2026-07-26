@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AuthUser } from "../api";
-import { LedgerScreen } from "./LedgerScreen";
 import { BrandLogo } from "../components/BrandLogo";
 import { SyncStatus } from "../components/SyncStatus";
 import { TodaySalesModal } from "../components/TodaySalesModal";
-import { StatsScreen } from "../components/StatsScreen";
 import { BusinessDatePill } from "../components/BusinessDatePill";
 import { OrderWindow } from "../pos/OrderWindow";
 import { OrderDetails } from "../pos/OrderDetails";
@@ -76,8 +74,6 @@ export function Pos({
   const [detailsTarget, setDetailsTarget] = useState<{ boxIdx: number; localId: string } | null>(null);
   const [salesOpen, setSalesOpen] = useState(false);
   const [creditorOpen, setCreditorOpen] = useState(false);
-  const [ledgerOpen, setLedgerOpen] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(false);
   // Row selection state — Shift+click on a row sets this; Shift+C reads it.
   const [selectedRow, setSelectedRow] = useState<{ boxIdx: number; localId: string } | null>(null);
   // Active branch business date (YYYY-MM-DD), loaded from /branches/:id/business-date.
@@ -707,6 +703,28 @@ export function Pos({
     }
   }
 
+  // Statistics and Hisaab/Accounts open in their own popup window (same
+  // mechanism as Kitchen) so the cashier can minimize/switch away and come
+  // back without losing their place. Reusing window.name lets a second click
+  // focus the already-open window instead of stacking duplicates.
+  function openStatsWindow() {
+    const params = new URLSearchParams({ stats: "1", branchId, shiftId });
+    const w = window.open(`/?${params}`, "sjc-stats", "noopener,popup,width=1400,height=900");
+    if (!w) {
+      setError("Browser blocked the statistics window — allow popups for this site.");
+      setTimeout(() => setError(null), 4000);
+    }
+  }
+  function openLedgerWindow() {
+    const params = new URLSearchParams({ ledger: "1", branchId, shiftId, owner: isOwner ? "1" : "0" });
+    if (businessDate) params.set("businessDate", businessDate);
+    const w = window.open(`/?${params}`, "sjc-ledger", "noopener,popup,width=1400,height=900");
+    if (!w) {
+      setError("Browser blocked the accounts window — allow popups for this site.");
+      setTimeout(() => setError(null), 4000);
+    }
+  }
+
   // ─── Close shift ─────────────────────────────────────────────────────────
   async function closeShift() {
     setBusy(true); setError(null);
@@ -820,7 +838,7 @@ export function Pos({
           {isOwner && (
             <button
               type="button"
-              onClick={() => setStatsOpen(true)}
+              onClick={openStatsWindow}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -833,7 +851,7 @@ export function Pos({
           )}
           <button
             type="button"
-            onClick={() => setLedgerOpen(true)}
+            onClick={openLedgerWindow}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1005,19 +1023,9 @@ export function Pos({
       {/* Today's Sales panel */}
       {salesOpen && <TodaySalesModal shiftId={shiftId} onClose={() => setSalesOpen(false)} />}
 
-      {/* Statistics & Insights */}
-      {statsOpen && <StatsScreen shiftId={shiftId} branchId={branchId} onClose={() => setStatsOpen(false)} />}
-
-      {/* Hisaab Kitaab — expense ledger */}
-      {ledgerOpen && (
-        <LedgerScreen
-          branchId={branchId}
-          shiftId={shiftId}
-          businessDate={businessDate}
-          canViewReports={isOwner}
-          onClose={() => setLedgerOpen(false)}
-        />
-      )}
+      {/* Statistics & Insights and Hisaab Kitaab now open in their own popup
+          window (openStatsWindow / openLedgerWindow above) instead of as
+          in-app overlays — see StatsWindow / LedgerWindow. */}
 
       {/* Creditor Accounts modal */}
       {creditorOpen && (

@@ -28,10 +28,13 @@ function boxName(box: number) {
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
-export function StatsScreen({ shiftId, branchId, onClose }: {
+export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: {
   shiftId: string;
   branchId: string;
   onClose: () => void;
+  /** Rendered as the sole content of its own popup window (see StatsWindow) —
+   * skips the click-outside-to-close backdrop since there's no POS behind it. */
+  standalone?: boolean;
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -206,10 +209,10 @@ export function StatsScreen({ shiftId, branchId, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-3 overflow-auto"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className={`fixed inset-0 flex items-start justify-center z-50 overflow-auto ${standalone ? "bg-white p-0" : "bg-black/50 p-3"}`}
+      onClick={standalone ? undefined : (e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col my-2">
+      <div className={`bg-white flex flex-col ${standalone ? "w-full h-full" : "rounded-2xl shadow-2xl w-full max-w-6xl my-2"}`}>
 
         {/* ── Header ── */}
         <div
