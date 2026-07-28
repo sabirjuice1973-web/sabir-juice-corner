@@ -22,16 +22,27 @@ import { LOGO_MONO_DATA_URI } from "./logoMonoDataUri";
  * commands. The logo would be re-rasterised by the printer driver.
  */
 
-// Reused across every print instead of opening + closing a fresh popup each
-// time. Spinning up a brand-new browsing context (renderer process, layout,
-// print pipeline) is what was costing ~1-1.5s per print on Windows/Edge —
-// reusing the same window pays that startup cost once per shift instead of
-// once per receipt. The window is never explicitly closed by us; if the user
-// closes it themselves, the next print just opens a new one.
+// Reused across prints (within a burst) instead of opening + closing a fresh
+// popup every time. Spinning up a brand-new browsing context (renderer process,
+// layout, print pipeline) is what was costing ~1-1.5s per print on Windows/Edge.
+//
+// BUT: a popup left open and untouched for a while (first order after opening
+// the shop, or after a lull) can get frozen/discarded in the background by
+// Chromium's memory-saving tab lifecycle — `.closed` still reads false, yet
+// win.print() on it silently fails at the OS/spooler level ("Print failed —
+// check your printer"), even though the printer itself is fine. So reuse is
+// only trusted for STALE_MS after the last successful print; anything older
+// is torn down and replaced with a fresh window, same as a cold start.
 let sharedPrintWindow: Window | null = null;
+let lastPrintAt = 0;
+const STALE_MS = 3 * 60 * 1000;
 
 function getPrintWindow(): Window | null {
-  if (sharedPrintWindow && !sharedPrintWindow.closed) return sharedPrintWindow;
+  const isFresh = sharedPrintWindow && !sharedPrintWindow.closed && Date.now() - lastPrintAt < STALE_MS;
+  if (isFresh) return sharedPrintWindow;
+  if (sharedPrintWindow && !sharedPrintWindow.closed) {
+    try { sharedPrintWindow.close(); } catch { /* ignore */ }
+  }
   // Note: do NOT include "noopener" in the features string — when noopener is
   // present the browser opens the window but window.open() returns null (per
   // spec), so every print would silently fall through to the null-check below.
@@ -62,6 +73,7 @@ export function printReceipt(
   // can be silently blocked on Windows Edge.
   win.focus();
   win.print();
+  lastPrintAt = Date.now();
   if (onDone) {
     win.addEventListener("afterprint", () => onDone(), { once: true });
   }
@@ -344,8 +356,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
       <td class="label-r">Order</td><td class="value">${orderTime}</td>
     </tr>
     <tr>
-      <td class="label">Cashier</td><td class="value">${escapeHtml(header.cashier)}</td>
-      <td class="label-r">Print</td><td class="value">${printTime}</td>
+      <td class="label">Print</td><td class="value" colspan="3">${printTime}</td>
     </tr>
   </table>
   <hr />
@@ -434,6 +445,7 @@ export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   win.document.close();
   win.focus();
   win.print();
+  lastPrintAt = Date.now();
 }
 
 function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string {
@@ -448,6 +460,15 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
     total > 0 && cashPaid > 0   ? "PURCHASE &amp; PAYMENT" :
     "LEDGER VOUCHER";
 
+  // Qty + Rate combined onto one line ("2 × PKR 250") instead of two rows —
+  // one of several compactions here to cut a voucher that was mostly empty
+  // whitespace down to roughly half its printed length.
+  const qtyRateLine =
+    entry.quantity && entry.rate ? `${escapeHtml(entry.quantity)} × PKR ${formatMoney(parseFloat(entry.rate))}` :
+    entry.quantity ? escapeHtml(entry.quantity) :
+    entry.rate ? `PKR ${formatMoney(parseFloat(entry.rate))}` :
+    null;
+
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><title>${docType} — ${escapeHtml(accountName)}</title>
 <style>
@@ -456,7 +477,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    font: 500 9pt/1.45 "Arial Narrow", Arial, sans-serif;
+    font: 500 9pt/1.4 "Arial Narrow", Arial, sans-serif;
     color: #000;
     font-variant-numeric: tabular-nums;
     -webkit-print-color-adjust: exact;
@@ -464,51 +485,36 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   }
   .receipt, .receipt * { page-break-inside: avoid !important; break-inside: avoid !important; }
   .receipt { page-break-after: avoid !important; break-after: avoid !important; }
-  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 2mm; margin-bottom: 1.5mm; }
-  .header-info { flex: 1; }
-  .logo { width: 22mm; height: auto; flex-shrink: 0; filter: contrast(2); -webkit-print-color-adjust: exact; }
-  h1 { font-size: 12pt; margin: 0; letter-spacing: 0.5px; font-weight: 900; }
-  .addr-line { font-size: 8pt; font-weight: 700; color: #000; margin-top: 1mm; line-height: 1.35; }
-  .addr-line b { font-weight: 900; }
-  hr { border: 0; border-top: 1px dashed #444; margin: 2.5mm 0; }
-  .doc-title { text-align: center; font-size: 11pt; font-weight: 900; letter-spacing: 1px; margin: 1mm 0 0.5mm; }
-  .account-name { text-align: center; font-size: 8.5pt; font-weight: 700; margin-bottom: 0.5mm; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 2mm; }
+  .logo { width: 14mm; height: auto; flex-shrink: 0; filter: contrast(2); -webkit-print-color-adjust: exact; }
+  h1 { font-size: 11pt; margin: 0; letter-spacing: 0.5px; font-weight: 900; }
+  hr { border: 0; border-top: 1px dashed #444; margin: 1.5mm 0; }
+  .doc-title { text-align: center; font-size: 9.5pt; font-weight: 900; letter-spacing: 0.5px; }
   table.fields { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
-  table.fields td { padding: 1mm 0; vertical-align: top; }
-  table.fields td.lbl { font-weight: 700; white-space: nowrap; width: 32%; padding-right: 2mm; }
-  .section-hdr { font-size: 8pt; font-weight: 900; letter-spacing: 0.5px; margin: 1mm 0 0.5mm; }
-  table.totals { width: 100%; border-collapse: collapse; margin-top: 1mm; }
-  table.totals td { padding: 1.2mm 0; font-size: 9.5pt; font-weight: 700; }
+  table.fields td { padding: 0.6mm 0; vertical-align: top; }
+  table.fields td.lbl { font-weight: 700; white-space: nowrap; width: 26%; padding-right: 2mm; }
+  table.totals { width: 100%; border-collapse: collapse; }
+  table.totals td { padding: 0.8mm 0; font-size: 9pt; font-weight: 700; }
   table.totals .num { text-align: right; }
-  table.totals tr.balance-row td { font-size: 11.5pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.5mm 0; }
-  .notes { font-size: 8pt; margin-top: 1.5mm; font-style: italic; }
-  .footer-line { text-align: center; font-size: 8pt; font-weight: 700; margin-top: 1.5mm; }
+  table.totals tr.balance-row td { font-size: 11pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.2mm 0; }
+  .notes { font-size: 8pt; margin-top: 0.8mm; font-style: italic; }
+  .footer-line { text-align: center; font-size: 7.5pt; font-weight: 700; margin-top: 1mm; }
 </style>
 </head><body>
 <div class="receipt">
   <div class="header-row">
-    <div class="header-info">
-      <h1>SABIR JUICE CORNER</h1>
-      <div class="addr-line">Clifton Plaza, Multan Cantt.</div>
-      <div class="addr-line"><b>Contact</b> 0321-6366000</div>
-    </div>
     <img class="logo" src="${LOGO_MONO_DATA_URI}" alt="Sabir Juice Corner" />
+    <h1>SABIR JUICE CORNER</h1>
+    <div style="width:14mm"></div>
   </div>
   <hr />
   <div class="doc-title">${docType}</div>
-  <div class="account-name">${escapeHtml(accountName)}</div>
   <hr />
   <table class="fields">
     <tr><td class="lbl">Date</td><td>${escapeHtml(entry.entryDate)}</td></tr>
     ${entry.supplierName ? `<tr><td class="lbl">Supplier</td><td>${escapeHtml(entry.supplierName)}</td></tr>` : ""}
-    ${entry.headName ? `<tr><td class="lbl">Head</td><td>${escapeHtml(entry.headName)}</td></tr>` : ""}
-  </table>
-  <hr />
-  <div class="section-hdr">ITEM DETAILS</div>
-  <table class="fields">
     <tr><td class="lbl">Product</td><td>${escapeHtml(entry.productName)}</td></tr>
-    ${entry.quantity ? `<tr><td class="lbl">Qty</td><td>${escapeHtml(entry.quantity)}</td></tr>` : ""}
-    ${entry.rate ? `<tr><td class="lbl">Rate</td><td>PKR ${formatMoney(parseFloat(entry.rate))}</td></tr>` : ""}
+    ${qtyRateLine ? `<tr><td class="lbl">Qty × Rate</td><td>${qtyRateLine}</td></tr>` : ""}
   </table>
   <hr />
   <table class="totals">
@@ -517,9 +523,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
     <tr class="balance-row"><td>BALANCE</td><td class="num">PKR ${formatMoney(entry.balance)}</td></tr>
   </table>
   ${entry.description ? `<div class="notes">Notes: ${escapeHtml(entry.description)}</div>` : ""}
-  <hr />
   <div class="footer-line">Printed: ${printDate} ${printTime}</div>
-  <div class="footer-line" style="font-weight:600;font-style:italic;margin-top:1mm;">Serving fresh Juices since 1973</div>
 </div>
 <script>
   window.addEventListener('afterprint', function () {

@@ -472,26 +472,41 @@ ${printScript}
               />
             </div>
             <div className="flex-1 overflow-auto">
-              {accounts.map((acc) => (
-                <button
-                  key={acc.id}
-                  type="button"
-                  onClick={() => loadAccount(acc)}
-                  className={`w-full px-3 py-3 text-left border-b border-slate-100 transition-colors ${
-                    selectedAccount?.id === acc.id
-                      ? "bg-accent-50 border-l-2 border-l-accent-500"
-                      : "hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="font-medium text-sm text-slate-900">{acc.name}</div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className={`text-xs font-mono font-bold ${Number(acc.currentBalance) > 0 ? "text-red-600" : "text-green-600"}`}>
-                      PKR {Number(acc.currentBalance).toFixed(0)}
-                    </span>
-                  </div>
-                  {acc.phone && <div className="text-xs text-slate-400 mt-0.5">{acc.phone}</div>}
-                </button>
-              ))}
+              {accounts.map((acc) => {
+                const bal = Number(acc.currentBalance);
+                const owes = bal > 0;
+                const isSelected = selectedAccount?.id === acc.id;
+                return (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => loadAccount(acc)}
+                    className={`w-full px-3 py-3 text-left border-b border-slate-100 transition-colors ${
+                      isSelected
+                        ? "bg-accent-50 border-l-4 border-l-accent-500"
+                        : "hover:bg-slate-50 border-l-4 border-l-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm text-slate-900 truncate">{acc.name}</div>
+                        {acc.phone && <div className="text-[11px] text-slate-400 mt-0.5">{acc.phone}</div>}
+                      </div>
+                      <div className={`shrink-0 rounded-md px-2 py-1 text-right ${owes ? "bg-red-50 border border-red-200" : "bg-green-50 border border-green-200"}`}>
+                        <div className={`font-mono font-bold text-sm leading-tight ${owes ? "text-red-700" : "text-green-700"}`}>
+                          PKR {Math.abs(bal).toFixed(0)}
+                        </div>
+                        <div className={`text-[9px] font-semibold uppercase tracking-wide ${owes ? "text-red-400" : "text-green-500"}`}>
+                          {owes ? "owes" : "settled"}
+                        </div>
+                      </div>
+                    </div>
+                    {acc.orderCount > 0 && (
+                      <div className="text-[11px] text-slate-400 mt-1.5">{acc.orderCount} order{acc.orderCount !== 1 ? "s" : ""}</div>
+                    )}
+                  </button>
+                );
+              })}
               {accounts.length === 0 && (
                 <div className="text-center text-slate-400 text-xs py-10">No accounts found</div>
               )}

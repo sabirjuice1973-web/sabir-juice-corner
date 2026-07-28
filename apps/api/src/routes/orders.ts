@@ -62,7 +62,7 @@ const CreateOrderWithItemsBody = z.object({
     qty: z.coerce.number().positive().max(99),
     notes: z.string().max(200).optional(),
   }).refine((d) => !!d.itemCode || !!d.mixOf, "Each item needs either itemCode or mixOf"))
-    .min(1).max(50),
+    .min(1),
 });
 
 const ApplyDiscountBody = z.object({

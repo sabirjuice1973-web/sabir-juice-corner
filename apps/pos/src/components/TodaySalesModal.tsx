@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, type TodayOrder } from "../api";
+import { api, type TodayOrder, type CashMovement } from "../api";
 import { ORDERS_CHANGED } from "../lib/events";
-import { displayItemName, BOX_LABELS, BOX_COUNT } from "../pos/posState";
+import { displayItemName, BOX_LABELS, BOX_COUNT, type BoxOrder } from "../pos/posState";
+import { printReceipt } from "../pos/receipt";
+import { PrinterIcon } from "./PrinterIcon";
 
 const LABELS_KEY = "sjc.boxLabels";
 function getBoxLabel(boxNumber: number): string {
@@ -34,7 +36,7 @@ type ItemRow = {
   qty: string; revenue: string; isMix: boolean;
 };
 
-export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose: () => void }) {
+export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: string; branchId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("orders");
   const [orders, setOrders] = useState<TodayOrder[] | null>(null);
   const [items, setItems] = useState<ItemRow[] | null>(null);
@@ -51,21 +53,82 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   const todayStr = new Date().toISOString().slice(0, 10);
   const [lateCashReceived, setLateCashReceived] = useState(0);
   const [lateDiscount, setLateDiscount] = useState(0);
+  const [todayExpense, setTodayExpense] = useState(0);
+  const [openingCash, setOpeningCash] = useState(0);
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
+  const [openingCashDraft, setOpeningCashDraft] = useState("");
+  const [editingOpeningCash, setEditingOpeningCash] = useState(false);
+  const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
+  const [movementAmount, setMovementAmount] = useState("");
+  const [movementReason, setMovementReason] = useState("");
+  const [movementBusy, setMovementBusy] = useState(false);
+  const [showCashCounter, setShowCashCounter] = useState(false);
 
   const isToday = fromDate === null && toDate === null;
 
-  // Fetch late cash (account payments collected today) — only meaningful for today
-  useEffect(() => {
+  // Fetch late cash, opening cash, and cash in/out — only meaningful for today's (currently open) shift
+  const refreshShiftStats = () => {
     if (!isToday) { setLateCashReceived(0); setLateDiscount(0); return; }
-    let cancelled = false;
     api.todayStats(shiftId).then((s) => {
-      if (!cancelled) {
-        setLateCashReceived(Number(s.lateCashReceived));
-        setLateDiscount(Number(s.lateDiscount));
-      }
+      setLateCashReceived(Number(s.lateCashReceived));
+      setLateDiscount(Number(s.lateDiscount));
+      setOpeningCash(Number(s.openingCash));
+      setCashMovements(s.cashMovements);
+    }).catch(() => {});
+  };
+  useEffect(refreshShiftStats, [shiftId, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Today's Expense — total cash paid out across all ledger accounts today (billed elsewhere, cash actually paid)
+  useEffect(() => {
+    if (!isToday) { setTodayExpense(0); return; }
+    let cancelled = false;
+    api.ledgerCashToday(branchId, todayStr).then((r) => {
+      if (!cancelled) setTodayExpense(Number(r.totalExpenses));
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [shiftId, isToday]);
+  }, [branchId, isToday, todayStr]);
+
+  async function saveOpeningCash() {
+    const v = Number(openingCashDraft);
+    if (!Number.isFinite(v) || v < 0) return;
+    setMovementBusy(true);
+    try {
+      await api.setOpeningCash(shiftId, v);
+      setOpeningCash(v);
+      setEditingOpeningCash(false);
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not update opening cash");
+    } finally {
+      setMovementBusy(false);
+    }
+  }
+
+  async function addMovement() {
+    const amt = Number(movementAmount);
+    if (!Number.isFinite(amt) || amt <= 0) return;
+    setMovementBusy(true);
+    try {
+      await api.addCashMovement(shiftId, movementType, amt, movementReason.trim() || undefined);
+      setMovementAmount(""); setMovementReason("");
+      refreshShiftStats();
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not add entry");
+    } finally {
+      setMovementBusy(false);
+    }
+  }
+
+  async function removeMovement(id: string) {
+    setMovementBusy(true);
+    try {
+      await api.deleteCashMovement(shiftId, id);
+      refreshShiftStats();
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not remove entry");
+    } finally {
+      setMovementBusy(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +186,50 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
     }
   }
 
+  // Reprint a past order's receipt — for when the cashier saved without
+  // printing, or the original slip was damaged/misplaced. Fetches the full
+  // order fresh (not the cached row) so custom-mix names resolve correctly.
+  const [printingId, setPrintingId] = useState<string | null>(null);
+  async function reprintOrder(order: TodayOrder) {
+    setPrintingId(order.id);
+    try {
+      const data = await api.getOrder(order.id);
+      const o = data.order;
+      if (!o) return;
+      const lines: BoxOrder["lines"] = (o.items ?? []).map((it: any) => {
+        const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents : null;
+        const displayName = mix && mix.length >= 2
+          ? `${mix.map((m: any) => m.name).join("+")} ${mix[0].size === "MEDIUM" ? "Medium" : "Jumbo"}`
+          : it.item.name;
+        return {
+          itemCode: it.item.itemCode,
+          name: displayName,
+          size: (mix ? mix[0].size : it.item.size) as "MEDIUM" | "JUMBO" | "NA",
+          qty: Number(it.qty),
+          lineTotal: it.lineTotal,
+          mixOf: mix ? mix.map((m: any) => m.itemCode) : undefined,
+        };
+      });
+      const boxOrder: BoxOrder = {
+        serverId: o.id,
+        localId: o.id,
+        orderNo: o.orderNo,
+        subtotal: o.subtotal,
+        discountAmount: o.discountAmount,
+        total: o.total,
+        customerName: o.customerName,
+        lines,
+        openedAt: o.openedAt,
+        deliveredAt: null,
+      };
+      printReceipt(boxOrder, { branchName: "", cashier: order.cashier?.fullName ?? "" });
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not print this order");
+    } finally {
+      setPrintingId(null);
+    }
+  }
+
   const isCashOrder   = (o: TodayOrder) => o.payments.length > 0 && o.payments.every((p) => p.method !== "CREDIT");
   const isCreditOrder = (o: TodayOrder) => o.payments.some((p) => p.method === "CREDIT");
 
@@ -145,6 +252,16 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   const totalSale     = paidOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalDiscount = cashOrders.reduce((s, o) => s + Number(o.discountAmount), 0);
   const totalCashInHand = cashSale + lateCashReceived - totalDiscount - lateDiscount;
+
+  // Cash in Counter: opening float + today's net cash + borrow/lend adjustment
+  // − today's expense (cash already paid out of the till to suppliers/accounts).
+  // "IN" = cash borrowed into the till — still owed back out, so it's subtracted
+  // from the true cash position. "OUT" = shop cash loaned to someone — still an
+  // asset owed back TO the shop, so it's added back even though it physically left.
+  const cashInTotal  = cashMovements.filter((m) => m.type === "IN").reduce((s, m) => s + Number(m.amount), 0);
+  const cashOutTotal = cashMovements.filter((m) => m.type === "OUT").reduce((s, m) => s + Number(m.amount), 0);
+  const cashInCounter = openingCash + totalCashInHand + (cashOutTotal - cashInTotal) - todayExpense;
+  const netEarningToday = totalCashInHand - todayExpense;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -254,8 +371,8 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                     </div>
                   </div>
 
-                  {/* Row 2: late cash + late discount + total cash in hand (always shown; late cash/discount = 0 for historical dates) */}
-                  <div className="grid grid-cols-4 gap-3">
+                  {/* Row 2: late cash + late discount (0 for historical dates) */}
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
                       <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateCashReceived > 0 ? `PKR ${lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
@@ -266,13 +383,64 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                       <div className="font-mono font-bold text-red-900 text-base mt-0.5">{lateDiscount > 0 ? `−PKR ${lateDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
                       <div className="text-[10px] text-red-400 mt-0.5">written off</div>
                     </div>
-                    <div className="col-span-2 rounded-xl border-2 border-teal-300 bg-teal-50 px-3 py-2.5 text-center flex flex-col items-center justify-center">
-                      <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Total Cash in Hand</div>
-                      <div className="font-mono font-bold text-teal-900 text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
-                      <div className="text-[10px] text-teal-500 mt-0.5">cash − discount + late cash − late discount</div>
+                  </div>
+
+                  {/* ── The Results: Total Cash, Total Expense, Net Earning — one line, distinct from the breakdown cards above ── */}
+                  <div className="grid grid-cols-3 gap-3 rounded-xl bg-slate-900 px-3 py-3">
+                    <div className="text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-teal-300 font-bold">Total Cash</div>
+                      <div className="font-mono font-bold text-white text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
+                    </div>
+                    <div className="text-center border-x border-white/10">
+                      <div className="text-[10px] uppercase tracking-wider text-rose-300 font-bold">Total Expense</div>
+                      <div className="font-mono font-bold text-white text-xl mt-0.5">
+                        {isToday ? `PKR ${todayExpense.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-[10px] uppercase tracking-wider font-bold ${isToday && netEarningToday < 0 ? "text-red-400" : "text-emerald-300"}`}>Net Earning</div>
+                      <div className={`font-mono font-bold text-xl mt-0.5 ${isToday && netEarningToday < 0 ? "text-red-400" : "text-white"}`}>
+                        {isToday ? `PKR ${netEarningToday.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}
+                      </div>
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* ── Cash in Counter: tucked behind a button, opens its own popup ── */}
+              {isToday && (
+                <button
+                  className="mb-4 w-full flex items-center justify-between rounded-xl border-2 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-4 py-2.5 text-left transition-colors"
+                  onClick={() => setShowCashCounter(true)}
+                >
+                  <span className="text-sm font-semibold text-indigo-800">Want to calculate Cash in Counter?</span>
+                  <span className="text-xs text-indigo-500">opening cash · borrow/loan entries →</span>
+                </button>
+              )}
+
+              {showCashCounter && (
+                <CashCounterPopup
+                  cashInCounter={cashInCounter}
+                  openingCash={openingCash}
+                  cashInTotal={cashInTotal}
+                  cashOutTotal={cashOutTotal}
+                  cashMovements={cashMovements}
+                  editingOpeningCash={editingOpeningCash}
+                  openingCashDraft={openingCashDraft}
+                  setOpeningCashDraft={setOpeningCashDraft}
+                  setEditingOpeningCash={setEditingOpeningCash}
+                  saveOpeningCash={saveOpeningCash}
+                  movementType={movementType}
+                  setMovementType={setMovementType}
+                  movementAmount={movementAmount}
+                  setMovementAmount={setMovementAmount}
+                  movementReason={movementReason}
+                  setMovementReason={setMovementReason}
+                  movementBusy={movementBusy}
+                  addMovement={addMovement}
+                  removeMovement={removeMovement}
+                  onClose={() => setShowCashCounter(false)}
+                />
               )}
 
               {/* Filter row: order-type toggle + status toggle */}
@@ -318,13 +486,15 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
               <table className="table">
                 <thead>
                   <tr>
-                    <th className="w-28">Time</th>
+                    <th className="w-24">Date</th>
+                    <th className="w-20">Time</th>
                     <th>Order #</th>
                     <th className="w-20">Box</th>
                     <th className="w-24">Status</th>
                     <th className="text-right w-24">Discount</th>
                     <th className="text-right w-28">Total</th>
                     <th className="w-32">Payment</th>
+                    <th className="w-16 text-center">Print</th>
                     <th className="w-8"></th>
                   </tr>
                 </thead>
@@ -336,6 +506,8 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
                       expanded={expandedOrderId === o.id}
                       items={orderItemsCache[o.id]}
                       onToggle={() => toggleExpand(o.id)}
+                      onPrint={() => void reprintOrder(o)}
+                      printing={printingId === o.id}
                     />
                   ))}
                 </tbody>
@@ -470,16 +642,146 @@ export function TodaySalesModal({ shiftId, onClose }: { shiftId: string; onClose
   );
 }
 
+// ─── Cash in Counter popup ──────────────────────────────────────────────────
+
+function CashCounterPopup({
+  cashInCounter, openingCash, cashInTotal, cashOutTotal, cashMovements,
+  editingOpeningCash, openingCashDraft, setOpeningCashDraft, setEditingOpeningCash, saveOpeningCash,
+  movementType, setMovementType, movementAmount, setMovementAmount, movementReason, setMovementReason,
+  movementBusy, addMovement, removeMovement, onClose,
+}: {
+  cashInCounter: number; openingCash: number; cashInTotal: number; cashOutTotal: number;
+  cashMovements: CashMovement[];
+  editingOpeningCash: boolean; openingCashDraft: string;
+  setOpeningCashDraft: (v: string) => void; setEditingOpeningCash: (v: boolean) => void;
+  saveOpeningCash: () => void | Promise<void>;
+  movementType: "IN" | "OUT"; setMovementType: (v: "IN" | "OUT") => void;
+  movementAmount: string; setMovementAmount: (v: string) => void;
+  movementReason: string; setMovementReason: (v: string) => void;
+  movementBusy: boolean;
+  addMovement: () => void | Promise<void>;
+  removeMovement: (id: string) => void | Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="card w-full max-w-lg p-0 rounded-xl border-2 border-indigo-200 bg-indigo-50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-200">
+          <div className="text-sm font-bold text-indigo-800">Cash in Counter</div>
+          <button onClick={onClose} className="text-indigo-400 hover:text-indigo-700 text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-4">
+          <div className="text-center mb-4">
+            <div className="font-mono font-bold text-indigo-900 text-2xl">
+              PKR {cashInCounter.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
+            </div>
+            <div className="text-[10px] text-indigo-400 mt-0.5">opening + total cash in hand + (cash out − cash in) − today's expense</div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            {/* Opening cash */}
+            <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Opening Cash</div>
+              {editingOpeningCash ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" autoFocus
+                    className="input text-sm py-1 px-2 w-full"
+                    value={openingCashDraft}
+                    onChange={(e) => setOpeningCashDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void saveOpeningCash(); if (e.key === "Escape") setEditingOpeningCash(false); }}
+                  />
+                  <button className="text-xs px-2 py-1 rounded bg-indigo-600 text-white disabled:opacity-50" disabled={movementBusy} onClick={() => void saveOpeningCash()}>Save</button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-slate-900">PKR {openingCash.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
+                  <button
+                    className="text-xs text-indigo-600 hover:underline"
+                    onClick={() => { setOpeningCashDraft(String(openingCash)); setEditingOpeningCash(true); }}
+                  >Edit</button>
+                </div>
+              )}
+            </div>
+            {/* Cash borrowed in (liability) */}
+            <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Cash Borrowed In</div>
+              <div className="font-mono font-bold text-red-600">{cashInTotal > 0 ? `−PKR ${cashInTotal.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+            </div>
+            {/* Cash loaned out (asset) */}
+            <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Cash Loaned Out</div>
+              <div className="font-mono font-bold text-emerald-600">{cashOutTotal > 0 ? `+PKR ${cashOutTotal.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+            </div>
+          </div>
+
+          {/* Add a Cash In/Out entry */}
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <div className="flex rounded-lg overflow-hidden border border-indigo-300">
+              <button
+                className={`px-3 py-1.5 text-xs font-semibold ${movementType === "IN" ? "bg-red-600 text-white" : "bg-white text-slate-600"}`}
+                onClick={() => setMovementType("IN")}
+              >Cash In (borrowed)</button>
+              <button
+                className={`px-3 py-1.5 text-xs font-semibold ${movementType === "OUT" ? "bg-emerald-600 text-white" : "bg-white text-slate-600"}`}
+                onClick={() => setMovementType("OUT")}
+              >Cash Out (loaned)</button>
+            </div>
+            <input
+              type="number" placeholder="Amount"
+              className="input text-sm py-1 px-2 w-28"
+              value={movementAmount}
+              onChange={(e) => setMovementAmount(e.target.value)}
+            />
+            <input
+              type="text" placeholder="Reason (optional)"
+              className="input text-sm py-1 px-2 flex-1 min-w-[140px]"
+              value={movementReason}
+              onChange={(e) => setMovementReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void addMovement(); }}
+            />
+            <button
+              className="text-xs px-3 py-1.5 rounded bg-indigo-600 text-white disabled:opacity-50"
+              disabled={movementBusy || !movementAmount}
+              onClick={() => void addMovement()}
+            >Add</button>
+          </div>
+
+          {/* Entries list */}
+          {cashMovements.length > 0 && (
+            <div className="space-y-1 max-h-40 overflow-auto">
+              {cashMovements.map((m) => (
+                <div key={m.id} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1 border border-indigo-100">
+                  <span className={`font-semibold ${m.type === "IN" ? "text-red-600" : "text-emerald-600"}`}>
+                    {m.type === "IN" ? "Cash In" : "Cash Out"}
+                  </span>
+                  <span className="font-mono">PKR {Number(m.amount).toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
+                  <span className="text-slate-400 truncate flex-1 mx-2">{m.reason ?? ""}</span>
+                  <button className="text-slate-400 hover:text-red-600" onClick={() => void removeMovement(m.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── One order row + expanded line items ──────────────────────────────────
 
 type OrderLine = { name: string; size: string; qty: string; unitPrice: string; lineTotal: string };
 
-function OrderRow({ order, expanded, items, onToggle }: {
+function OrderRow({ order, expanded, items, onToggle, onPrint, printing }: {
   order: TodayOrder;
   expanded: boolean;
   items: OrderLine[] | undefined;
   onToggle: () => void;
+  onPrint: () => void;
+  printing: boolean;
 }) {
+  const date = new Date(order.businessDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short" });
   const time = new Date(order.openedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
   const statusPill =
     order.status === "PAID"      ? "bg-emerald-100 text-emerald-800" :
@@ -492,6 +794,7 @@ function OrderRow({ order, expanded, items, onToggle }: {
   return (
     <>
       <tr className="cursor-pointer hover:bg-slate-50" onClick={onToggle}>
+        <td className="text-xs font-mono text-slate-500">{date}</td>
         <td className="text-xs font-mono">{time}</td>
         <td className="font-medium">{order.orderNo}</td>
         <td className="text-xs text-slate-500">{order.waiterBox ? `Box ${order.waiterBox}` : "—"}</td>
@@ -499,11 +802,19 @@ function OrderRow({ order, expanded, items, onToggle }: {
         <td className="text-right font-mono">{Number(order.discountAmount) > 0 ? `−${order.discountAmount}` : "—"}</td>
         <td className="text-right font-mono font-medium">PKR {order.total}</td>
         <td className="text-xs text-slate-600 truncate">{methods}</td>
+        <td className="text-center">
+          <button
+            className="inline-flex items-center justify-center p-1.5 rounded bg-slate-200 hover:bg-blue-200 text-slate-700 hover:text-blue-800 disabled:opacity-40"
+            disabled={printing}
+            title="Reprint receipt"
+            onClick={(e) => { e.stopPropagation(); onPrint(); }}
+          >{printing ? <span className="text-xs">…</span> : <PrinterIcon className="w-4 h-4" />}</button>
+        </td>
         <td className="text-slate-400 text-xs">{expanded ? "▾" : "▸"}</td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={8} className="bg-slate-50 px-4 py-2">
+          <td colSpan={10} className="bg-slate-50 px-4 py-2">
             {!items && <div className="text-xs text-slate-400 py-2">Loading items…</div>}
             {items && items.length === 0 && <div className="text-xs text-slate-400 py-2">No items.</div>}
             {items && items.length > 0 && (

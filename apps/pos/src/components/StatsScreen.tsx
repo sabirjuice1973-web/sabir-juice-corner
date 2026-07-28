@@ -8,6 +8,7 @@ type ItemRow = {
   qty: string; revenue: string; isMix: boolean;
 };
 type AccSummary = { id: string; name: string; type: string; currentBalance: string };
+type DebtGroup = { account: { id: string; position: number; name: string }; totalAmount: string; totalCashPaid: string };
 
 // Glass-equivalent weights: MEDIUM = 1, JUMBO = 1.5
 const GLASS_WT: Record<string, number> = { MEDIUM: 1, JUMBO: 1.5 };
@@ -46,6 +47,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const [items,     setItems]     = useState<ItemRow[]    | null>(null);
   const [accounts,  setAccounts]  = useState<AccSummary[] | null>(null);
   const [allDebt,   setAllDebt]   = useState<{ total: number; paid: number } | null>(null);
+  const [debtGroups, setDebtGroups] = useState<DebtGroup[] | null>(null);
   const [periodExp, setPeriodExp] = useState<{ total: number; paid: number } | null>(null);
   const [yestRev,   setYestRev]   = useState<number | null>(null);
   const [loading,   setLoading]   = useState(false);
@@ -77,6 +79,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
         setItems(itemRes.items);
         setAccounts(accRes.accounts as AccSummary[]);
         setAllDebt({ total: Number(debtRes.grandTotalAmount), paid: Number(debtRes.grandTotalCashPaid) });
+        setDebtGroups(debtRes.groups as DebtGroup[]);
         setPeriodExp({ total: Number(expRes.grandTotalAmount), paid: Number(expRes.grandTotalCashPaid) });
       })
       .catch((e: any) => {
@@ -201,6 +204,17 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   // ── Derived: Debts ───────────────────────────────────────────────────────────
   const shopDebt     = allDebt   ? allDebt.total   - allDebt.paid   : 0;
   const periodExpOut = periodExp  ? periodExp.total - periodExp.paid : 0;
+
+  // ── Derived: Net Earning ─────────────────────────────────────────────────────
+  // Sales in the selected range minus all expenses billed (not just paid) in that
+  // same range — accrual-style net earning, matching "Total Expense" above.
+  const netEarning = periodExp ? revenue - periodExp.total : null;
+
+  // ── Derived: Per-account shop debt breakdown ─────────────────────────────────
+  const debtBreakdown = (debtGroups ?? [])
+    .map((g) => ({ ...g.account, debt: Number(g.totalAmount) - Number(g.totalCashPaid) }))
+    .filter((g) => g.debt !== 0)
+    .sort((a, b) => b.debt - a.debt);
 
   // ── Date label ───────────────────────────────────────────────────────────────
   const dateLabel = isToday ? "Today"
@@ -540,7 +554,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
               {/* ── S9: Period Expenses ── */}
               <div>
                 <SH>Expenses in Selected Period</SH>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="card p-4 text-center">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1.5">Total Expense</div>
                     <div className="text-xl font-bold text-slate-900 font-mono">{periodExp ? pkr(periodExp.total) : "—"}</div>
@@ -557,6 +571,13 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                       {pkr(periodExpOut)}
                     </div>
                     <div className="text-xs text-orange-400 mt-1">from this period's entries</div>
+                  </div>
+                  <div className={`card p-4 text-center border-2 ${netEarning !== null && netEarning < 0 ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+                    <div className={`text-[10px] uppercase tracking-wider font-bold mb-1.5 ${netEarning !== null && netEarning < 0 ? "text-red-600" : "text-emerald-600"}`}>Net Earning</div>
+                    <div className={`text-xl font-bold font-mono ${netEarning !== null && netEarning < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                      {netEarning !== null ? pkr(netEarning) : "—"}
+                    </div>
+                    <div className={`text-xs mt-1 ${netEarning !== null && netEarning < 0 ? "text-red-400" : "text-emerald-500"}`}>sales − total expense</div>
                   </div>
                 </div>
               </div>
@@ -583,6 +604,20 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                       )}
                     </div>
                   </div>
+
+                  {debtBreakdown.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-red-200 space-y-1.5">
+                      <div className="text-xs font-semibold text-slate-600 mb-2">Breakdown by account:</div>
+                      {debtBreakdown.map((g) => (
+                        <div key={g.id} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
+                          <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                            {pkr(g.debt)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </>

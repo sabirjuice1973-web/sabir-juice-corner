@@ -20,6 +20,9 @@ logs/
 npm-debug.log*
 pnpm-debug.log*
 
+# dedicated Chrome profile for the POS kiosk window (start.bat)
+.pos-chrome-profile/
+
 # OS / editor
 .DS_Store
 Thumbs.db
@@ -38,6 +41,9 @@ postgres-data/
 
 # database backups — real business data, never commit
 /backups/
+
+# user-uploaded attachments (ledger receipts, etc.) — runtime content, not source
+apps/api/uploads/
 
 # coverage
 coverage/

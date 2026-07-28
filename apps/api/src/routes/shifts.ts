@@ -52,12 +52,12 @@ export async function registerShiftRoutes(app: FastifyInstance) {
    */
   app.get("/:id/today-stats", async (req, reply) => {
     const id = BigInt((req.params as { id: string }).id);
-    const shift = await prisma.shift.findUnique({ where: { id }, select: { id: true, branchId: true, status: true } });
+    const shift = await prisma.shift.findUnique({ where: { id }, select: { id: true, branchId: true, status: true, openingCash: true } });
     if (!shift) return reply.code(404).send({ error: "Shift not found" });
 
     const businessDate = await getBranchBusinessDate(shift.branchId);
 
-    const [orderAgg, paymentBreakdown, latePaymentAgg] = await Promise.all([
+    const [orderAgg, paymentBreakdown, latePaymentAgg, cashMovements] = await Promise.all([
       prisma.order.aggregate({
         _sum: { total: true, discountAmount: true },
         _count: { _all: true },
@@ -71,6 +71,14 @@ export async function registerShiftRoutes(app: FastifyInstance) {
       prisma.accountPayment.aggregate({
         _sum: { amount: true, discount: true },
         where: { businessDate, account: { branchId: shift.branchId } },
+      }),
+      // Cash In/Out for the Cash-in-Counter widget — scoped to this shift only
+      // (not businessDate) since the shift itself is the natural container and
+      // a shift never spans more than one business day in practice.
+      prisma.cashDrawerMovement.findMany({
+        where: { shiftId: id },
+        orderBy: { at: "asc" },
+        select: { id: true, type: true, amount: true, reason: true, at: true },
       }),
     ]);
     const byMethod = (m: string) =>
@@ -91,6 +99,11 @@ export async function registerShiftRoutes(app: FastifyInstance) {
       },
       lateCashReceived: (latePaymentAgg._sum.amount   ?? new Prisma.Decimal(0)).toString(),
       lateDiscount:     (latePaymentAgg._sum.discount ?? new Prisma.Decimal(0)).toString(),
+      openingCash: shift.openingCash?.toString() ?? "0",
+      cashMovements: cashMovements.map((m) => ({
+        id: m.id.toString(), type: m.type, amount: m.amount.toString(),
+        reason: m.reason, at: m.at,
+      })),
     });
   });
 
@@ -150,6 +163,7 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         waiterBox: o.waiterBox,
         openedAt: o.openedAt,
         closedAt: o.closedAt,
+        businessDate: o.businessDate.toISOString().slice(0, 10),
         subtotal: o.subtotal.toString(),
         discountAmount: o.discountAmount.toString(),
         total: o.total.toString(),
@@ -158,6 +172,95 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         payments: o.payments.map((p) => ({ method: p.method, amount: p.amount.toString() })),
       })),
     });
+  });
+
+  /**
+   * PATCH /shifts/:id/opening-cash — correct the opening cash count on the
+   * currently OPEN shift. Lets the owner fix a miscounted opening float (or
+   * update it through the day) so the "Cash in Counter" widget stays accurate.
+   * Only allowed while the shift is still open — once closed, opening cash is
+   * part of the locked reconciliation record.
+   */
+  app.patch("/:id/opening-cash", { preHandler: requirePermission("POS_BILL") }, async (req, reply) => {
+    const id = BigInt((req.params as { id: string }).id);
+    const parsed = z.object({ openingCash: z.coerce.number().nonnegative() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid body", details: parsed.error.flatten() });
+
+    const shift = await prisma.shift.findUnique({ where: { id }, select: { id: true, branchId: true, status: true, openingCash: true } });
+    if (!shift) return reply.code(404).send({ error: "Shift not found" });
+    if (shift.status !== "OPEN") return reply.code(409).send({ error: "Shift is not open" });
+
+    const updated = await prisma.shift.update({
+      where: { id },
+      data: { openingCash: new Prisma.Decimal(parsed.data.openingCash) },
+    });
+    await writeAudit({
+      req, branchId: shift.branchId, action: "shift.opening_cash.update", entityType: "Shift", entityId: id,
+      before: { openingCash: shift.openingCash.toString() },
+      after: { openingCash: parsed.data.openingCash },
+    });
+    return toJson({ shift: updated });
+  });
+
+  /**
+   * POST /shifts/:id/cash-movements — log a Cash In/Out entry for the
+   * "Cash in Counter" widget. "IN" = cash borrowed into the till (a liability,
+   * subtracted when computing true cash position); "OUT" = shop cash loaned to
+   * someone (still an asset owed back, added back). See Cash in Counter math
+   * in the today-stats consumer for the full formula.
+   */
+  app.post("/:id/cash-movements", { preHandler: requirePermission("POS_BILL") }, async (req, reply) => {
+    const id = BigInt((req.params as { id: string }).id);
+    const parsed = z.object({
+      type: z.enum(["IN", "OUT"]),
+      amount: z.coerce.number().positive(),
+      reason: z.string().max(200).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid body", details: parsed.error.flatten() });
+
+    const shift = await prisma.shift.findUnique({ where: { id }, select: { id: true, branchId: true, status: true } });
+    if (!shift) return reply.code(404).send({ error: "Shift not found" });
+    if (shift.status !== "OPEN") return reply.code(409).send({ error: "Shift is not open" });
+
+    const movement = await prisma.cashDrawerMovement.create({
+      data: {
+        shiftId: id,
+        type: parsed.data.type,
+        amount: new Prisma.Decimal(parsed.data.amount),
+        reason: parsed.data.reason,
+        byUserId: BigInt(req.auth!.sub),
+      },
+    });
+    await writeAudit({
+      req, branchId: shift.branchId, action: "shift.cash_movement.create", entityType: "CashDrawerMovement", entityId: movement.id,
+      after: { type: parsed.data.type, amount: parsed.data.amount, reason: parsed.data.reason },
+    });
+    return toJson({
+      movement: {
+        id: movement.id.toString(), type: movement.type, amount: movement.amount.toString(),
+        reason: movement.reason, at: movement.at,
+      },
+    });
+  });
+
+  /** DELETE /shifts/:id/cash-movements/:movementId — remove a mistaken entry */
+  app.delete("/:id/cash-movements/:movementId", { preHandler: requirePermission("POS_BILL") }, async (req, reply) => {
+    const id = BigInt((req.params as { id: string }).id);
+    const movementId = BigInt((req.params as { movementId: string }).movementId);
+
+    const shift = await prisma.shift.findUnique({ where: { id }, select: { branchId: true, status: true } });
+    if (!shift) return reply.code(404).send({ error: "Shift not found" });
+    if (shift.status !== "OPEN") return reply.code(409).send({ error: "Shift is not open" });
+
+    const movement = await prisma.cashDrawerMovement.findUnique({ where: { id: movementId } });
+    if (!movement || movement.shiftId !== id) return reply.code(404).send({ error: "Movement not found" });
+
+    await prisma.cashDrawerMovement.delete({ where: { id: movementId } });
+    await writeAudit({
+      req, branchId: shift.branchId, action: "shift.cash_movement.delete", entityType: "CashDrawerMovement", entityId: movementId,
+      before: { type: movement.type, amount: movement.amount.toString(), reason: movement.reason },
+    });
+    return toJson({ ok: true });
   });
 
   /**
@@ -199,7 +302,10 @@ export async function registerShiftRoutes(app: FastifyInstance) {
       orderWhere = { order: { shiftId: id, status: "PAID", businessDate, ...paymentFilter } };
     }
 
-    // Pull every OrderItem for PAID orders, with the joined item.
+    // Pull every OrderItem for PAID orders, with the joined item. Also pull the
+    // parent order's subtotal/discountAmount so each line's revenue can be net
+    // of discount — discount is applied at the order level, not per line, so
+    // it's prorated across that order's lines by their share of the subtotal.
     const rows = await prisma.orderItem.findMany({
       where: orderWhere,
       select: {
@@ -208,6 +314,7 @@ export async function registerShiftRoutes(app: FastifyInstance) {
         isCustomMix: true,
         customMixComponents: true,
         item: { select: { id: true, itemCode: true, name: true, size: true } },
+        order: { select: { subtotal: true, discountAmount: true } },
       },
     });
 
@@ -224,7 +331,13 @@ export async function registerShiftRoutes(app: FastifyInstance) {
     const byItem = new Map<string, Agg>();
     for (const r of rows) {
       const glassQty = Number(r.qty.toString());
-      const lineTotalNum = Number(r.lineTotal.toString());
+      const grossLineTotal = Number(r.lineTotal.toString());
+      const orderSubtotal = Number(r.order.subtotal.toString());
+      const orderDiscount = Number(r.order.discountAmount.toString());
+      // Net = this line's share of the order, after that order's discount.
+      const lineTotalNum = orderSubtotal > 0
+        ? grossLineTotal - (grossLineTotal / orderSubtotal) * orderDiscount
+        : grossLineTotal;
 
       if (r.isCustomMix) {
         // Each unique mix combination gets its own row, keyed by sorted component codes.

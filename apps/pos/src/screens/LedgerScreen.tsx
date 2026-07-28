@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LedgerAccount, type LedgerEntry } from "../api";
 import { printLedgerEntry } from "../pos/receipt";
+import { PrinterIcon } from "../components/PrinterIcon";
 
 // ─── Window state ─────────────────────────────────────────────────────────────
 
@@ -163,15 +164,20 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
     if (selectedId) void loadEntries(selectedId);
   }, [selectedId, loadEntries]);
 
-  // Per-supplier running balance across ALL entries (all time, sorted ASC).
-  // Key = supplierName (lowercased, trimmed). Empty string groups entries with no supplier.
-  // Balance for each entry = sum of (total − cashPaid) for all entries of the same
-  // supplier from the very first entry of that supplier up to and including this entry.
+  // Running balance across ALL entries (all time, sorted ASC), grouped by
+  // supplierName for most accounts — but Daily Hisaab (position 1) and Salary
+  // (position 2) group by productName instead: those two accounts log
+  // per-person/per-item entries under a shared generic supplier (e.g. every
+  // salary row tagged "Dehari"), so a supplier-keyed balance would pool
+  // unrelated people's entries together. Key is lowercased/trimmed; empty
+  // string groups entries with no value in the relevant field.
+  const balanceGroupPosition = accounts.find((a) => a.id === selectedId)?.position;
+  const groupBalanceByProduct = balanceGroupPosition === 1 || balanceGroupPosition === 2;
   const supplierBalanceMap = (() => {
     const running: Record<string, number> = {};
     const map: Record<string, number> = {};
     for (const e of allEntries) {
-      const key = (e.supplierName ?? "").toLowerCase().trim();
+      const key = ((groupBalanceByProduct ? e.productName : e.supplierName) ?? "").toLowerCase().trim();
       running[key] = (running[key] ?? 0) + parseFloat(e.total) - parseFloat(e.cashPaid);
       map[e.id] = running[key];
     }
@@ -424,7 +430,9 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                           <td className="px-2 py-1.5">
                             <div className="flex gap-1">
                               <button type="button" onClick={() => printLedgerEntry(e, selectedAccount?.name ?? "")}
-                                className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-green-200 text-green-700 text-[10px]" title="Print voucher">🖨</button>
+                                className="inline-flex items-center justify-center p-1 rounded bg-slate-200 hover:bg-green-200 text-green-700" title="Print voucher">
+                                <PrinterIcon className="w-3.5 h-3.5" />
+                              </button>
                               <button type="button" onClick={() => setEditingEntry(e)}
                                 className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-blue-200 text-slate-700 text-[10px]">Edit</button>
                               <button type="button" onClick={() => void handleDelete(e.id)}
@@ -522,15 +530,21 @@ function InlineEntryForm({
   isOwner: boolean;
 }) {
   const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
-  const [form, setForm] = useState<EntryFormData>(() =>
-    editing
-      ? { entryDate: editing.entryDate, productName: editing.productName,
-          quantity: editing.quantity ?? "", rate: editing.rate ?? "",
-          total: editing.total, headName: editing.headName ?? "",
-          supplierName: editing.supplierName ?? "", cashPaid: editing.cashPaid,
-          description: editing.description ?? "" }
-      : { ...EMPTY_FORM(), entryDate: defaultDate }
-  );
+  const [form, setForm] = useState<EntryFormData>(() => {
+    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate };
+    // Total is always Qty × Rate, never a stored value on its own — recompute
+    // on load too, so a legacy entry saved before that rule existed (or a
+    // cash-only entry with no qty/rate) displays the correct 0 instead of
+    // whatever number happened to be persisted.
+    const q = parseFloat(editing.quantity ?? "");
+    const r = parseFloat(editing.rate ?? "");
+    const computedTotal = (!isNaN(q) && !isNaN(r)) ? (q * r).toFixed(2) : "0";
+    return { entryDate: editing.entryDate, productName: editing.productName,
+      quantity: editing.quantity ?? "", rate: editing.rate ?? "",
+      total: computedTotal, headName: editing.headName ?? "",
+      supplierName: editing.supplierName ?? "", cashPaid: editing.cashPaid,
+      description: editing.description ?? "" };
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(editing?.attachmentUrl ?? null);
@@ -593,10 +607,6 @@ function InlineEntryForm({
     }
     prevTotal.current = next.total;
     setForm(next);
-  }
-  function handleTotalChange(value: string) {
-    setForm((p) => { const sync = p.cashPaid === p.total; return { ...p, total: value, cashPaid: sync ? value : p.cashPaid }; });
-    prevTotal.current = value;
   }
 
   async function handleSubmit() {
@@ -745,9 +755,9 @@ function InlineEntryForm({
           <div className="shrink-0">
             <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Total</label>
             <input ref={(el) => { inputRefs.current.total = el; }} type="number" value={form.total}
-              onChange={(e) => handleTotalChange(e.target.value)}
+              readOnly title="Qty × Rate — not directly editable"
               onKeyDown={(e) => onFieldEnter(e, "total")}
-              placeholder="0" min="0" step="any" className={iCls + " w-24 text-right font-semibold"} />
+              placeholder="0" min="0" step="any" className={iCls + " w-24 text-right font-semibold bg-slate-100 text-slate-600 cursor-not-allowed"} />
           </div>
           <div className="shrink-0 min-w-[110px]">
             <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Head Account</label>
@@ -1334,8 +1344,8 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
           <h2 className="font-semibold text-slate-800">Account Report</h2>
           <div className="flex gap-2">
             <button type="button" onClick={() => { window.addEventListener("afterprint", onClose, { once: true }); window.print(); }}
-              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold">
-              🖨 Print / PDF
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold">
+              <PrinterIcon className="w-3.5 h-3.5" /> Print / PDF
             </button>
             <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
           </div>

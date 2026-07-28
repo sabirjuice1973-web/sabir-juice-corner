@@ -18,17 +18,11 @@ start "SJC - Admin" cmd /k "cd /d "%~dp0" && pnpm --filter @sjc/admin dev"
 :: Wait for servers to be ready then open browser
 timeout /t 6 /nobreak >nul
 
-:: Open POS with --kiosk-printing so Print Bill fires immediately with no dialog
-:: (prints silently to whatever printer is set as Windows default)
-set BROWSER="C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-if not exist %BROWSER% set BROWSER="C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-if not exist %BROWSER% set BROWSER="C:\Program Files\Google\Chrome\Application\chrome.exe"
-if not exist %BROWSER% set BROWSER="C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-if exist %BROWSER% (
-    start "" %BROWSER% --app=http://localhost:3000 --kiosk-printing
-) else (
-    start "" http://localhost:3000
-)
+:: Open POS with --kiosk-printing so Print Bill fires immediately with no dialog.
+:: The actual browser-launch logic lives in open-pos.bat (also used to reopen
+:: just the POS window later without restarting the servers) so the two never
+:: drift out of sync.
+call "%~dp0open-pos.bat"
 
 :: Admin opens in a normal browser window (no silent print needed there)
 start "" http://localhost:3100

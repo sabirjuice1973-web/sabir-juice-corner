@@ -218,22 +218,20 @@ export function Users() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
-                      {/* Can't edit or deactivate the OWNER account from here */}
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-700"
+                        onClick={() => { setPwTarget(u); setNewPw(""); setPwError(null); setPwOk(false); }}
+                      >
+                        Change Password
+                      </button>
+                      {/* Deactivating the OWNER account would lock everyone out — never offer it here */}
                       {!u.userRoles.some((r) => r.role.code === "OWNER") && (
-                        <>
-                          <button
-                            className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-700"
-                            onClick={() => { setPwTarget(u); setNewPw(""); setPwError(null); setPwOk(false); }}
-                          >
-                            Change Password
-                          </button>
-                          <button
-                            className={`text-xs px-2 py-1 rounded ${u.status === "ACTIVE" ? "bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700" : "bg-slate-100 hover:bg-green-100 text-slate-700 hover:text-green-700"}`}
-                            onClick={() => void toggleStatus(u)}
-                          >
-                            {u.status === "ACTIVE" ? "Deactivate" : "Re-activate (Suspended)"}
-                          </button>
-                        </>
+                        <button
+                          className={`text-xs px-2 py-1 rounded ${u.status === "ACTIVE" ? "bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700" : "bg-slate-100 hover:bg-green-100 text-slate-700 hover:text-green-700"}`}
+                          onClick={() => void toggleStatus(u)}
+                        >
+                          {u.status === "ACTIVE" ? "Deactivate" : "Re-activate (Suspended)"}
+                        </button>
                       )}
                     </div>
                   </td>

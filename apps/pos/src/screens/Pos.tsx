@@ -1021,7 +1021,7 @@ export function Pos({
       )}
 
       {/* Today's Sales panel */}
-      {salesOpen && <TodaySalesModal shiftId={shiftId} onClose={() => setSalesOpen(false)} />}
+      {salesOpen && <TodaySalesModal shiftId={shiftId} branchId={branchId} onClose={() => setSalesOpen(false)} />}
 
       {/* Statistics & Insights and Hisaab Kitaab now open in their own popup
           window (openStatsWindow / openLedgerWindow above) instead of as

@@ -194,7 +194,18 @@ export const api = {
       byMethod: { cash: string; card: string; wallet: string; credit: string; bank: string };
       lateCashReceived: string;
       lateDiscount: string;
+      openingCash: string;
+      cashMovements: CashMovement[];
     }>("GET", `/shifts/${shiftId}/today-stats`),
+
+  setOpeningCash: (shiftId: string | number, openingCash: number) =>
+    request<{ shift: unknown }>("PATCH", `/shifts/${shiftId}/opening-cash`, { openingCash }),
+
+  addCashMovement: (shiftId: string | number, type: "IN" | "OUT", amount: number, reason?: string) =>
+    request<{ movement: CashMovement }>("POST", `/shifts/${shiftId}/cash-movements`, { type, amount, reason }),
+
+  deleteCashMovement: (shiftId: string | number, movementId: string | number) =>
+    request<{ ok: true }>("DELETE", `/shifts/${shiftId}/cash-movements/${movementId}`),
 
   // ─── Today's Sales — orders list + per-item summary for the active shift ──
   todayOrders: (shiftId: string | number, from?: string, to?: string) => {
@@ -397,6 +408,15 @@ export type LedgerEntry = {
   updatedAt: string;
 };
 
+/** A single Cash In/Out entry for the "Cash in Counter" widget. */
+export type CashMovement = {
+  id: string;
+  type: "IN" | "OUT";
+  amount: string;
+  reason: string | null;
+  at: string;
+};
+
 /** Slim Order shape used in the "Today's Sales" panel — no full items array. */
 export type TodayOrder = {
   id: string;
@@ -405,6 +425,7 @@ export type TodayOrder = {
   waiterBox: number | null;
   openedAt: string;
   closedAt: string | null;
+  businessDate: string;
   subtotal: string;
   discountAmount: string;
   total: string;
