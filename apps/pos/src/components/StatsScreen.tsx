@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { TodayOrder } from "../api";
 import { BOX_LABELS } from "../pos/posState";
+import { printDebtSummary } from "../pos/receipt";
+import { PrinterIcon } from "./PrinterIcon";
 
 type ItemRow = {
   itemId: string; itemCode: number | null; name: string; size: string;
@@ -12,6 +14,11 @@ type DebtGroup = { account: { id: string; position: number; name: string }; tota
 
 // Glass-equivalent weights: MEDIUM = 1, JUMBO = 1.5
 const GLASS_WT: Record<string, number> = { MEDIUM: 1, JUMBO: 1.5 };
+
+// Full 24-hour day starting at 6am and wrapping past midnight (6,7,…,23,0,…,5)
+// instead of stopping at 11pm — the shop trades until ~3am, so a range that
+// dropped hours 0-5 was silently cutting off real late-night sales data.
+const HOUR_SEQUENCE = Array.from({ length: 24 }, (_, i) => (i + 6) % 24);
 
 function pkr(n: number) {
   return `PKR ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
@@ -134,7 +141,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   } else {
     const hourly = new Array(24).fill(0);
     for (const o of paid) hourly[new Date(o.openedAt).getHours()] += Number(o.total);
-    for (let h = 6; h < 24; h++) {
+    for (const h of HOUR_SEQUENCE) {
       chartData.push({ label: hLabel(h), value: hourly[h] });
     }
   }
@@ -164,14 +171,20 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   // ── Derived: Busiest Hours ───────────────────────────────────────────────────
   const hourCnt = new Array(24).fill(0);
   for (const o of paid) hourCnt[new Date(o.openedAt).getHours()]++;
-  const busyHours = Array.from({ length: 18 }, (_, i) => i + 6)
+  const busyHours = HOUR_SEQUENCE
     .filter((h) => hourCnt[h] > 0)
     .map((h) => ({ h, cnt: hourCnt[h] as number }));
   const maxBusy = Math.max(...busyHours.map((d) => d.cnt), 1);
 
-  // Alert: no orders in the last 2 business hours
+  // Alert: no orders in the last 2 business hours. Guarded to roughly the
+  // shop's real trading window (~11am to ~3am, i.e. NOT ~4am-8am) — and using
+  // modulo so "the last 2 hours" wraps correctly past midnight instead of
+  // indexing hourCnt[-1]/[-2] (silently false, since undefined !== 0) right
+  // when the shop is normally still open.
   const nowH = new Date().getHours();
-  const emptyAlert = isToday && nowH >= 8 && hourCnt[nowH - 1] === 0 && hourCnt[nowH - 2] === 0;
+  const prevH1 = (nowH + 23) % 24;
+  const prevH2 = (nowH + 22) % 24;
+  const emptyAlert = isToday && (nowH >= 8 || nowH < 4) && hourCnt[prevH1] === 0 && hourCnt[prevH2] === 0;
 
   // ── Derived: Size Mix ────────────────────────────────────────────────────────
   let medQty = 0, jumboQty = 0;
@@ -214,7 +227,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const debtBreakdown = (debtGroups ?? [])
     .map((g) => ({ ...g.account, debt: Number(g.totalAmount) - Number(g.totalCashPaid) }))
     .filter((g) => g.debt !== 0)
-    .sort((a, b) => b.debt - a.debt);
+    .sort((a, b) => a.position - b.position);
 
   // ── Date label ───────────────────────────────────────────────────────────────
   const dateLabel = isToday ? "Today"
@@ -584,7 +597,23 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
 
               {/* ── S10: Total Shop Debt — All-time, always live ── */}
               <div>
-                <SH>Total Shop Debt <Dim>all-time · always live · ignores date filter</Dim></SH>
+                <div className="flex items-center justify-between">
+                  <SH>Total Shop Debt <Dim>all-time · always live · ignores date filter</Dim></SH>
+                  {allDebt && (
+                    <button
+                      onClick={() => printDebtSummary({
+                        totalBilled: allDebt.total,
+                        totalPaid: allDebt.paid,
+                        totalDebt: shopDebt,
+                        breakdown: debtBreakdown.map((g) => ({ position: g.position, name: g.name, debt: g.debt })),
+                      })}
+                      title="Print a thermal-slip summary of this debt breakdown"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800 bg-white border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1 mb-2"
+                    >
+                      <PrinterIcon className="w-3.5 h-3.5" /> Print
+                    </button>
+                  )}
+                </div>
                 <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="min-w-0">

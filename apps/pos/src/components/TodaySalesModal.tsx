@@ -78,15 +78,19 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   };
   useEffect(refreshShiftStats, [shiftId, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Today's Expense — total cash paid out across all ledger accounts today (billed elsewhere, cash actually paid)
+  // Total Expense — cash paid out across all ledger accounts in the selected
+  // period (defaults to today when no range is picked). Uses the ledger report
+  // endpoint rather than the single-day cash-today endpoint so this works for
+  // any from/to range, not just "today with no filter selected."
   useEffect(() => {
-    if (!isToday) { setTodayExpense(0); return; }
     let cancelled = false;
-    api.ledgerCashToday(branchId, todayStr).then((r) => {
-      if (!cancelled) setTodayExpense(Number(r.totalExpenses));
+    const from = fromDate ?? todayStr;
+    const to = toDate ?? todayStr;
+    api.ledgerReport({ branchId, from, to }).then((r) => {
+      if (!cancelled) setTodayExpense(Number(r.grandTotalCashPaid));
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [branchId, isToday, todayStr]);
+  }, [branchId, fromDate, toDate, todayStr]);
 
   async function saveOpeningCash() {
     const v = Number(openingCashDraft);
@@ -263,6 +267,14 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const cashInCounter = openingCash + totalCashInHand + (cashOutTotal - cashInTotal) - todayExpense;
   const netEarningToday = totalCashInHand - todayExpense;
 
+  // Averages per day — only meaningful across a multi-day range, not a single date.
+  const rangeDays = Math.round(
+    (new Date(toDate ?? todayStr).getTime() - new Date(fromDate ?? todayStr).getTime()) / 86400000
+  ) + 1;
+  const isMultiDay = rangeDays > 1;
+  const avgSalePerDay = totalCashInHand / rangeDays;
+  const avgExpensePerDay = todayExpense / rangeDays;
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="card w-full max-w-5xl max-h-[90vh] p-0 flex flex-col">
@@ -371,8 +383,8 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                     </div>
                   </div>
 
-                  {/* Row 2: late cash + late discount (0 for historical dates) */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Row 2: late cash + late discount (0 for historical dates) + per-day averages (multi-day ranges only) */}
+                  <div className="grid grid-cols-4 gap-3">
                     <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
                       <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateCashReceived > 0 ? `PKR ${lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
@@ -382,6 +394,20 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                       <div className="text-[10px] uppercase tracking-wider text-red-500 font-bold">Late Discount</div>
                       <div className="font-mono font-bold text-red-900 text-base mt-0.5">{lateDiscount > 0 ? `−PKR ${lateDiscount.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
                       <div className="text-[10px] text-red-400 mt-0.5">written off</div>
+                    </div>
+                    <div className="rounded-xl border-2 border-teal-200 bg-teal-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-teal-600 font-bold">Avg Sale / Day</div>
+                      <div className="font-mono font-bold text-teal-900 text-base mt-0.5">
+                        {isMultiDay ? `PKR ${avgSalePerDay.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}
+                      </div>
+                      <div className="text-[10px] text-teal-500 mt-0.5">{isMultiDay ? `over ${rangeDays} days` : "pick a multi-day range"}</div>
+                    </div>
+                    <div className="rounded-xl border-2 border-rose-200 bg-rose-50 px-3 py-2.5 text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-rose-600 font-bold">Avg Expense / Day</div>
+                      <div className="font-mono font-bold text-rose-900 text-base mt-0.5">
+                        {isMultiDay ? `PKR ${avgExpensePerDay.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}
+                      </div>
+                      <div className="text-[10px] text-rose-500 mt-0.5">{isMultiDay ? `over ${rangeDays} days` : "pick a multi-day range"}</div>
                     </div>
                   </div>
 
@@ -394,13 +420,13 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                     <div className="text-center border-x border-white/10">
                       <div className="text-[10px] uppercase tracking-wider text-rose-300 font-bold">Total Expense</div>
                       <div className="font-mono font-bold text-white text-xl mt-0.5">
-                        {isToday ? `PKR ${todayExpense.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}
+                        PKR {todayExpense.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
                       </div>
                     </div>
                     <div className="text-center">
-                      <div className={`text-[10px] uppercase tracking-wider font-bold ${isToday && netEarningToday < 0 ? "text-red-400" : "text-emerald-300"}`}>Net Earning</div>
-                      <div className={`font-mono font-bold text-xl mt-0.5 ${isToday && netEarningToday < 0 ? "text-red-400" : "text-white"}`}>
-                        {isToday ? `PKR ${netEarningToday.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}
+                      <div className={`text-[10px] uppercase tracking-wider font-bold ${netEarningToday < 0 ? "text-red-400" : "text-emerald-300"}`}>Net Earning</div>
+                      <div className={`font-mono font-bold text-xl mt-0.5 ${netEarningToday < 0 ? "text-red-400" : "text-white"}`}>
+                        PKR {netEarningToday.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
                       </div>
                     </div>
                   </div>

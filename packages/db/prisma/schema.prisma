@@ -72,6 +72,7 @@ model Branch {
   ledgerAccounts   LedgerAccount[]
   ledgerEntries    LedgerEntry[]
   ledgerNameSuggestions LedgerNameSuggestion[]
+  paymentScheduleEntries PaymentScheduleEntry[]
 
   @@index([organizationId])
 }
@@ -122,6 +123,7 @@ model User {
   reconciliationsClosing StockReconciliation[]      @relation("recon_closed_by")
   reconReasonsLogged     StockReconciliationLine[]  @relation("recon_reason_by")
   accountPaymentsRecorded AccountPayment[]          @relation("account_payment_by")
+  paymentScheduleEntries  PaymentScheduleEntry[]
 
   @@index([organizationId])
 }
@@ -1347,4 +1349,57 @@ model LedgerEntry {
 
   @@index([branchId, entryDate])
   @@index([ledgerAccountId, entryDate])
+}
+
+// Owner's forward-looking cash-flow planner — "when do I owe money, and can
+// sales cover it." Deliberately separate from LedgerEntry: this is a forecast/
+// checklist (amounts not yet paid), not a record of money that already moved.
+// Marking a row "paid" here never creates a LedgerEntry — the owner still
+// enters the real payment in Hisaab separately when it happens.
+model PaymentScheduleEntry {
+  id          BigInt   @id @default(autoincrement())
+  branchId    BigInt
+  entryDate   DateTime @db.Date
+  details     String
+  // Current OUTSTANDING amount — shrinks as PaymentScheduleInstallment rows
+  // are recorded against it (a partial payment reduces this directly rather
+  // than tracking a separate original-total/paid-so-far pair), matching how
+  // the owner already thinks about it: "his pending amount is now 100000."
+  amount      Decimal  @db.Decimal(12, 2)
+  description String?
+  isPaid      Boolean  @default(false)
+  // Label only ("WEEKLY" | "MONTHLY" | null for one-time). At creation time,
+  // choosing weekly/monthly generates every occurrence through the currently
+  // viewed range in one shot (POST /payment-schedule/recurring) — but there
+  // is no ongoing engine keeping a series in sync afterward; the owner uses
+  // the "Repeat" action to clone a single row forward when a real due-date
+  // drifts from the pattern (a weekly payment isn't always exactly 7 days).
+  recurrence  String?
+  createdById BigInt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch       Branch                       @relation(fields: [branchId], references: [id])
+  createdBy    User                         @relation(fields: [createdById], references: [id])
+  installments PaymentScheduleInstallment[]
+
+  @@index([branchId, entryDate])
+}
+
+// A partial payment recorded against a PaymentScheduleEntry — kept purely as
+// a dated history log ("paid 100000 on Aug 2, 50000 on Aug 3") for the
+// owner's own reference. Recording one immediately reduces the parent
+// entry's `amount` by this installment's amount; it is never written to
+// LedgerEntry (see PaymentScheduleEntry's doc comment).
+model PaymentScheduleInstallment {
+  id              BigInt   @id @default(autoincrement())
+  scheduleEntryId BigInt
+  amount          Decimal  @db.Decimal(12, 2)
+  paidDate        DateTime @db.Date
+  note            String?
+  createdAt       DateTime @default(now())
+
+  scheduleEntry PaymentScheduleEntry @relation(fields: [scheduleEntryId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleEntryId])
 }

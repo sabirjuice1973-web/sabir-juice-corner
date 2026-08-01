@@ -564,6 +564,7 @@ ${printScript}
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Order #</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Date</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Time</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Items</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Total</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Paid</th>
@@ -582,6 +583,9 @@ ${printScript}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs text-slate-700">{o.orderNo}</td>
                             <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">{o.businessDate}</td>
+                            <td className="px-3 py-2 text-xs text-slate-500 font-mono whitespace-nowrap">
+                              {new Date(o.openedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                            </td>
                             <td className="px-3 py-2 text-xs text-slate-600 max-w-[220px] truncate" title={o.itemsSummary}>{o.itemsSummary}</td>
                             <td className="px-3 py-2 text-right font-mono text-xs">PKR {Number(o.total).toFixed(0)}</td>
                             <td className="px-3 py-2 text-right font-mono text-xs text-green-700">PKR {Number(o.paid).toFixed(0)}</td>

@@ -448,6 +448,15 @@ export function printLedgerEntry(entry: LedgerPrintEntry, accountName: string) {
   lastPrintAt = Date.now();
 }
 
+// Numeric DD/MM/YYYY instead of spelling out weekday/month names — avoids
+// needing an Urdu month/weekday translation table, and numeric dates are
+// already how Urdu business paperwork in Pakistan is normally dated.
+function formatDateNumeric(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
 function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string {
   const printedAt = new Date();
   const printDate = printedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -455,10 +464,10 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   const total = parseFloat(entry.total) || 0;
   const cashPaid = parseFloat(entry.cashPaid) || 0;
   const docType =
-    total > 0 && cashPaid === 0 ? "PURCHASE ENTRY" :
-    total === 0 && cashPaid > 0 ? "PAYMENT VOUCHER" :
-    total > 0 && cashPaid > 0   ? "PURCHASE &amp; PAYMENT" :
-    "LEDGER VOUCHER";
+    total > 0 && cashPaid === 0 ? "خریداری اندراج" :
+    total === 0 && cashPaid > 0 ? "ادائیگی واؤچر" :
+    total > 0 && cashPaid > 0   ? "خریداری اور ادائیگی" :
+    "کھاتہ واؤچر";
 
   // Qty + Rate combined onto one line ("2 × PKR 250") instead of two rows —
   // one of several compactions here to cut a voucher that was mostly empty
@@ -470,7 +479,110 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
     null;
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /><title>${docType} — ${escapeHtml(accountName)}</title>
+<html dir="rtl" lang="ur"><head><meta charset="utf-8" /><title>${docType} — ${escapeHtml(accountName)}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  @media screen { .receipt { visibility: hidden; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 500 12pt/1.9 "Alvi Nastaleeq", "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt, .receipt * { page-break-inside: avoid !important; break-inside: avoid !important; }
+  .receipt { page-break-after: avoid !important; break-after: avoid !important; }
+  /* Stacked/centered rather than the side-by-side flex row the LTR receipts
+     use — under dir="rtl" a flex row's item ORDER visually reverses (the
+     browser treats the right edge as "start"), which was enough to make the
+     logo <img> fail to paint on this printer even though it's the exact
+     same tag/data URI as the working English receipts. Centering it above
+     the title sidesteps any RTL/flex interaction entirely. */
+  .header-block { text-align: center; }
+  .logo { width: 16mm; height: auto; filter: contrast(2); -webkit-print-color-adjust: exact; }
+  h1 { font-size: 11pt; margin: 1mm 0 0; letter-spacing: 0.5px; font-weight: 900; font-family: Arial, sans-serif; }
+  hr { border: 0; border-top: 1px dashed #444; margin: 1.5mm 0; }
+  .doc-title { text-align: center; font-size: 12pt; font-weight: 900; }
+  table.fields { width: 100%; border-collapse: collapse; font-size: 11pt; }
+  table.fields td { padding: 0.8mm 0; vertical-align: top; }
+  table.fields td.lbl { font-weight: 700; white-space: nowrap; width: 30%; padding-left: 2mm; }
+  table.totals { width: 100%; border-collapse: collapse; }
+  table.totals td { padding: 1mm 0; font-size: 11pt; font-weight: 700; }
+  table.totals .num { text-align: left; direction: ltr; }
+  table.totals tr.balance-row td { font-size: 13pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.5mm 0; }
+  .notes { font-size: 10pt; margin-top: 1mm; font-style: italic; }
+  .footer-line { text-align: center; font-size: 9pt; font-weight: 700; margin-top: 1mm; direction: ltr; }
+</style>
+</head><body>
+<div class="receipt">
+  <div class="header-block">
+    <img class="logo" src="${LOGO_MONO_DATA_URI}" alt="Sabir Juice Corner" />
+    <h1>SABIR JUICE CORNER</h1>
+  </div>
+  <hr />
+  <div class="doc-title">${docType}</div>
+  <hr />
+  <table class="fields">
+    <tr><td class="lbl">تاریخ</td><td>${escapeHtml(formatDateNumeric(entry.entryDate))}</td></tr>
+    ${entry.supplierName ? `<tr><td class="lbl">سپلائر</td><td>${escapeHtml(entry.supplierName)}</td></tr>` : ""}
+    <tr><td class="lbl">پروڈکٹ</td><td>${escapeHtml(entry.productName)}</td></tr>
+    ${qtyRateLine ? `<tr><td class="lbl">مقدار × ریٹ</td><td>${qtyRateLine}</td></tr>` : ""}
+  </table>
+  <hr />
+  <table class="totals">
+    ${total > 0 ? `<tr><td>کل رقم</td><td class="num">PKR ${formatMoney(total)}</td></tr>` : ""}
+    ${cashPaid > 0 ? `<tr><td>نقد ادائیگی</td><td class="num">PKR ${formatMoney(cashPaid)}</td></tr>` : ""}
+    <tr class="balance-row"><td>بقایا</td><td class="num">PKR ${formatMoney(entry.balance)}</td></tr>
+  </table>
+  ${entry.description ? `<div class="notes">نوٹس: ${escapeHtml(entry.description)}</div>` : ""}
+  <div class="footer-line">Printed: ${printDate} ${printTime}</div>
+</div>
+<script>
+  window.addEventListener('afterprint', function () {
+    if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+    window.blur();
+  }, { once: true });
+</script>
+</body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]!));
+}
+
+// ─── Shop Debt Summary print (from the Stats page's Total Shop Debt card) ──
+
+type DebtSummaryLine = { position: number; name: string; debt: number };
+
+export function printDebtSummary(data: { totalBilled: number; totalPaid: number; totalDebt: number; breakdown: DebtSummaryLine[] }) {
+  const html = debtSummaryHtml(data);
+  const win = getPrintWindow();
+  if (!win) return;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+  lastPrintAt = Date.now();
+}
+
+function debtSummaryHtml(data: { totalBilled: number; totalPaid: number; totalDebt: number; breakdown: DebtSummaryLine[] }): string {
+  const printedAt = new Date();
+  const printDate = printedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+  const rows = data.breakdown.map((b) => `
+    <tr>
+      <td class="acct">${b.position}. ${escapeHtml(b.name)}</td>
+      <td class="num ${b.debt < 0 ? "credit" : ""}">PKR ${formatMoney(b.debt)}</td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Shop Debt Summary</title>
 <style>
   @page { size: 80mm auto; margin: 4mm; }
   @media screen { .receipt { visibility: hidden; } }
@@ -490,14 +602,16 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   h1 { font-size: 11pt; margin: 0; letter-spacing: 0.5px; font-weight: 900; }
   hr { border: 0; border-top: 1px dashed #444; margin: 1.5mm 0; }
   .doc-title { text-align: center; font-size: 9.5pt; font-weight: 900; letter-spacing: 0.5px; }
-  table.fields { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
-  table.fields td { padding: 0.6mm 0; vertical-align: top; }
-  table.fields td.lbl { font-weight: 700; white-space: nowrap; width: 26%; padding-right: 2mm; }
   table.totals { width: 100%; border-collapse: collapse; }
   table.totals td { padding: 0.8mm 0; font-size: 9pt; font-weight: 700; }
   table.totals .num { text-align: right; }
-  table.totals tr.balance-row td { font-size: 11pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.2mm 0; }
-  .notes { font-size: 8pt; margin-top: 0.8mm; font-style: italic; }
+  table.totals tr.debt-row td { font-size: 12pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.2mm 0; }
+  .section-hdr { font-size: 8pt; font-weight: 900; letter-spacing: 0.5px; margin: 1.5mm 0 0.5mm; }
+  table.breakdown { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  table.breakdown td { padding: 0.6mm 0; }
+  table.breakdown td.acct { font-weight: 600; }
+  table.breakdown td.num { text-align: right; font-weight: 700; white-space: nowrap; }
+  table.breakdown td.num.credit { color: #006600; }
   .footer-line { text-align: center; font-size: 7.5pt; font-weight: 700; margin-top: 1mm; }
 </style>
 </head><body>
@@ -508,21 +622,17 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
     <div style="width:14mm"></div>
   </div>
   <hr />
-  <div class="doc-title">${docType}</div>
-  <hr />
-  <table class="fields">
-    <tr><td class="lbl">Date</td><td>${escapeHtml(entry.entryDate)}</td></tr>
-    ${entry.supplierName ? `<tr><td class="lbl">Supplier</td><td>${escapeHtml(entry.supplierName)}</td></tr>` : ""}
-    <tr><td class="lbl">Product</td><td>${escapeHtml(entry.productName)}</td></tr>
-    ${qtyRateLine ? `<tr><td class="lbl">Qty × Rate</td><td>${qtyRateLine}</td></tr>` : ""}
-  </table>
+  <div class="doc-title">SHOP DEBT SUMMARY</div>
   <hr />
   <table class="totals">
-    ${total > 0 ? `<tr><td>Total Amount</td><td class="num">PKR ${formatMoney(total)}</td></tr>` : ""}
-    ${cashPaid > 0 ? `<tr><td>Cash Paid</td><td class="num">PKR ${formatMoney(cashPaid)}</td></tr>` : ""}
-    <tr class="balance-row"><td>BALANCE</td><td class="num">PKR ${formatMoney(entry.balance)}</td></tr>
+    <tr><td>Total Billed</td><td class="num">PKR ${formatMoney(data.totalBilled)}</td></tr>
+    <tr><td>Total Paid</td><td class="num">PKR ${formatMoney(data.totalPaid)}</td></tr>
+    <tr class="debt-row"><td>${data.totalDebt < 0 ? "NET CREDIT" : "TOTAL DEBT"}</td><td class="num">PKR ${formatMoney(Math.abs(data.totalDebt))}</td></tr>
   </table>
-  ${entry.description ? `<div class="notes">Notes: ${escapeHtml(entry.description)}</div>` : ""}
+  ${data.breakdown.length > 0 ? `
+  <div class="section-hdr">BREAKDOWN BY ACCOUNT</div>
+  <table class="breakdown">${rows}</table>` : ""}
+  <hr />
   <div class="footer-line">Printed: ${printDate} ${printTime}</div>
 </div>
 <script>
@@ -532,12 +642,6 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   }, { once: true });
 </script>
 </body></html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]!));
 }
 
 /**
@@ -552,4 +656,71 @@ function formatMoney(n: number): string {
   const rounded = Math.round(n * 100) / 100;
   if (Number.isInteger(rounded)) return rounded.toLocaleString("en-PK");
   return rounded.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ─── Petty Cash slip (stapled to next day's opening float) ────────────────
+
+/**
+ * A deliberately tiny slip — just the date the cash is FOR (next business
+ * date, not today) and the amount — to staple to the petty cash set aside
+ * at closing for tomorrow's opening float. No logo/address/items table;
+ * this never leaves the drawer/envelope, so it doesn't need shop branding.
+ */
+export function printPettyCashSlip(data: { forDate: string; amount: number }) {
+  const html = pettyCashSlipHtml(data);
+  const win = getPrintWindow();
+  if (!win) return;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+  lastPrintAt = Date.now();
+}
+
+function pettyCashSlipHtml(data: { forDate: string; amount: number }): string {
+  const dateLabel = formatDateNumeric(data.forDate);
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="ur"><head><meta charset="utf-8" /><title>کھلا کیش</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  @media screen { .receipt { visibility: hidden; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 500 12pt/1.9 "Alvi Nastaleeq", "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt, .receipt * { page-break-inside: avoid !important; break-inside: avoid !important; }
+  .receipt { page-break-after: avoid !important; break-after: avoid !important; }
+  .title { text-align: center; font-size: 14pt; font-weight: 900; }
+  hr { border: 0; border-top: 1px dashed #444; margin: 2mm 0; }
+  .row { display: flex; justify-content: space-between; margin: 1.5mm 0; font-size: 11pt; }
+  .lbl { font-weight: 700; }
+  .date-val { font-weight: 600; direction: ltr; }
+  .amount-row { text-align: center; margin-top: 1mm; }
+  .amount-lbl { font-size: 11pt; font-weight: 700; }
+  .amount-val { font-size: 16pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.5mm 0; margin-top: 1mm; direction: ltr; }
+</style>
+</head><body>
+<div class="receipt">
+  <div class="title">کھلا کیش</div>
+  <hr />
+  <div class="row"><span class="lbl">برائے تاریخ</span><span class="date-val">${dateLabel}</span></div>
+  <div class="amount-row">
+    <div class="amount-lbl">کل کھلا کیش</div>
+    <div class="amount-val">PKR ${formatMoney(data.amount)}</div>
+  </div>
+</div>
+<script>
+  window.addEventListener('afterprint', function () {
+    if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+    window.blur();
+  }, { once: true });
+</script>
+</body></html>`;
 }

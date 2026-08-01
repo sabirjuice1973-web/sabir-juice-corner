@@ -211,6 +211,15 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
 
   const selectedAccount = accounts.find((a) => a.id === selectedId) ?? null;
 
+  // Head Account is fixed (never freely typed) for these three accounts —
+  // Salary is always "Salary"; Ghalla Mandi+Disposable and Sabzi Mandi are
+  // always "Shop Expense". Every other account keeps the free-text/suggestion
+  // Head Account field.
+  const fixedHeadName =
+    selectedAccount?.position === 2 ? "Salary" :
+    selectedAccount?.position === 3 || selectedAccount?.position === 4 ? "Shop Expense" :
+    null;
+
   // ── Window geometry ────────────────────────────────────────────────────────
   const containerStyle: React.CSSProperties = standalone
     ? { position: "fixed", inset: 0, zIndex: 60 }
@@ -372,6 +381,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   editing={editingEntry}
                   defaultDate={viewDate}
                   isOwner={canViewReports}
+                  fixedHeadName={fixedHeadName}
                   onSave={() => { resetForm(); void loadEntries(selectedId); }}
                   onCancel={resetForm}
                 />
@@ -391,6 +401,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                     <thead className="sticky top-0 bg-slate-200 border-b border-slate-300">
                       <tr>
                         <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-24">Date</th>
+                        <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-16">Time</th>
                         <th className="px-2 py-2 text-left text-slate-700 font-semibold uppercase tracking-wide text-[10px]">Product</th>
                         <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-12">Qty</th>
                         <th className="px-2 py-2 text-right text-slate-700 font-semibold uppercase tracking-wide text-[10px] w-28">Rate</th>
@@ -409,6 +420,9 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                         <tr key={e.id}
                           className={`border-b border-slate-200 hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
                           <td className="px-2 py-1.5 text-slate-600 tabular-nums whitespace-nowrap">{e.entryDate}</td>
+                          <td className="px-2 py-1.5 text-slate-500 tabular-nums whitespace-nowrap">
+                            {new Date(e.createdAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                          </td>
                           <td className="px-2 py-1.5 font-semibold text-slate-900">{e.productName}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-slate-800">{e.quantity ?? "—"}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-slate-800">{e.rate ? fmtPKR(e.rate) : "—"}</td>
@@ -444,7 +458,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                     </tbody>
                     <tfoot className="sticky bottom-0">
                       <tr className="bg-slate-800 text-white">
-                        <td colSpan={4} className="px-3 py-2 text-sm font-bold tracking-wide">TODAY</td>
+                        <td colSpan={5} className="px-3 py-2 text-sm font-bold tracking-wide">TODAY</td>
                         <td className="px-3 py-2 text-right tabular-nums text-sm font-bold text-white">
                           {fmtPKR(viewEntries.reduce((s, e) => s + parseFloat(e.total), 0).toFixed(2))}
                         </td>
@@ -520,7 +534,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 }
 
 function InlineEntryForm({
-  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner,
+  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner, fixedHeadName,
 }: {
   branchId: string; ledgerAccountId: string;
   editing: LedgerEntry | null;
@@ -528,10 +542,14 @@ function InlineEntryForm({
   onCancel: () => void;
   defaultDate: string;
   isOwner: boolean;
+  /** When set, this account's Head Account is locked to one value (e.g. Salary,
+   * Shop Expense) instead of the free-text suggestion field — it never varies
+   * for this account, so every entry uses exactly this value, no exceptions. */
+  fixedHeadName?: string | null;
 }) {
   const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
   const [form, setForm] = useState<EntryFormData>(() => {
-    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate };
+    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate, headName: fixedHeadName ?? "" };
     // Total is always Qty × Rate, never a stored value on its own — recompute
     // on load too, so a legacy entry saved before that rule existed (or a
     // cash-only entry with no qty/rate) displays the correct 0 instead of
@@ -541,7 +559,7 @@ function InlineEntryForm({
     const computedTotal = (!isNaN(q) && !isNaN(r)) ? (q * r).toFixed(2) : "0";
     return { entryDate: editing.entryDate, productName: editing.productName,
       quantity: editing.quantity ?? "", rate: editing.rate ?? "",
-      total: computedTotal, headName: editing.headName ?? "",
+      total: computedTotal, headName: fixedHeadName ?? editing.headName ?? "",
       supplierName: editing.supplierName ?? "", cashPaid: editing.cashPaid,
       description: editing.description ?? "" };
   });
@@ -761,7 +779,12 @@ function InlineEntryForm({
           </div>
           <div className="shrink-0 min-w-[110px]">
             <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Head Account</label>
-            {suggBox("headName", "Shop Expense…", "w-full")}
+            {fixedHeadName ? (
+              <input ref={(el) => { inputRefs.current.headName = el; }}
+                type="text" value={fixedHeadName} readOnly title="Fixed for this account — always this value"
+                onKeyDown={(e) => onFieldEnter(e, "headName")}
+                className={iCls + " w-full bg-slate-100 text-slate-600 cursor-not-allowed"} />
+            ) : suggBox("headName", "Shop Expense…", "w-full")}
           </div>
         </div>
         {/* Row 2: Supplier · Cash Paid · Description · Attachment · Buttons */}

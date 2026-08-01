@@ -30,10 +30,6 @@ export function BusinessDatePill({ branchId, user, onDateLoaded, onDateChanged }
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // When the backend refuses the date change because OPEN orders are blocking
-  // (409 with samples), we keep the pending-order list here to show the user
-  // exactly which rows need to be cleared first.
-  const [blockedSamples, setBlockedSamples] = useState<{ orderNo: string; waiterBox: number | null }[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const canEdit = user.roles?.some((r) => ALLOWED_ROLES.has(r.code)) ?? false;
@@ -62,7 +58,7 @@ export function BusinessDatePill({ branchId, user, onDateLoaded, onDateChanged }
 
   async function commitChange(next: string) {
     if (next === date) { setOpen(false); return; }
-    setSaving(true); setError(null); setBlockedSamples(null);
+    setSaving(true); setError(null);
     try {
       const r = await api.setBranchBusinessDate(branchId, next);
       setDate(r.businessDate);
@@ -74,9 +70,6 @@ export function BusinessDatePill({ branchId, user, onDateLoaded, onDateChanged }
       setOpen(false);
     } catch (e: any) {
       setError(e.body?.error || e.message || "Could not save date");
-      // 409 with pending-order samples — show them so the cashier knows
-      // exactly which rows to clear before the date can be rolled.
-      if (Array.isArray(e.body?.samples)) setBlockedSamples(e.body.samples);
     } finally {
       setSaving(false);
     }
@@ -133,17 +126,8 @@ export function BusinessDatePill({ branchId, user, onDateLoaded, onDateChanged }
             className="input w-full font-mono"
           />
           {error && (
-            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-2 space-y-1">
-              <div className="font-medium">{error}</div>
-              {blockedSamples && blockedSamples.length > 0 && (
-                <ul className="font-mono text-[11px] pl-3 list-disc space-y-0.5">
-                  {blockedSamples.map((s) => (
-                    <li key={s.orderNo}>
-                      {s.orderNo}{s.waiterBox != null ? ` (Box ${s.waiterBox})` : ""}
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-2">
+              {error}
             </div>
           )}
           <div className="flex gap-2 mt-3">

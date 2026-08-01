@@ -148,16 +148,39 @@ export function ShiftGate({
           <button className="text-xs text-slate-500 hover:text-slate-700" onClick={onLogout}>Sign out</button>
         </div>
         <div className="space-y-2">
-          {phase.branches.map((b) => (
-            <button
-              key={b.id}
-              className="w-full text-left rounded-lg border border-slate-200 hover:border-sjc-400 hover:bg-sjc-50 px-4 py-3 transition-colors"
-              onClick={() => void connectTo(String(b.id))}
-            >
-              <div className="font-semibold text-slate-800">{b.name}</div>
-              <div className="text-xs text-slate-500">{b.code}</div>
-            </button>
-          ))}
+          {phase.branches.map((b) => {
+            // Only Cantt Branch (B2) is actually in operation — the other seeded
+            // branches are locked out of this picker so a mis-click can't send
+            // the day's entries into the wrong branch, requiring a manual fix later.
+            const isActive = b.code === "B2";
+            return (
+              <button
+                key={b.id}
+                disabled={!isActive}
+                title={isActive ? undefined : "Not in use — locked to prevent accidental selection"}
+                className={
+                  isActive
+                    ? "w-full text-left rounded-lg border border-slate-200 hover:border-sjc-400 hover:bg-sjc-50 px-4 py-3 transition-colors"
+                    : "w-full text-left rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 cursor-not-allowed opacity-60"
+                }
+                onClick={() => { if (isActive) void connectTo(String(b.id)); }}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className={`font-semibold ${isActive ? "text-slate-800" : "text-slate-400"}`}>{b.name}</div>
+                    <div className="text-xs text-slate-500">{b.code}</div>
+                  </div>
+                  {!isActive && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 shrink-0">
+                      <rect x="3" y="11" width="18" height="11" rx="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -96,27 +96,11 @@ export async function registerBranchRoutes(app: FastifyInstance) {
       return toJson({ branchId: id, businessDate: isoDate, changed: false });
     }
 
-    // Refuse to roll the business date forward (or backward) if there are still
-    // OPEN orders on the CURRENT business date. Owner must pay/void/cancel them
-    // first — otherwise those orders get stranded with yesterday's businessDate
-    // while the system has already moved on, which makes reconciliation a mess.
-    const pendingCount = await prisma.order.count({
-      where: { branchId: id, businessDate: branch.currentBusinessDate, status: "OPEN" },
-    });
-    if (pendingCount > 0) {
-      const samples = await prisma.order.findMany({
-        where: { branchId: id, businessDate: branch.currentBusinessDate, status: "OPEN" },
-        select: { orderNo: true, waiterBox: true },
-        orderBy: { openedAt: "asc" },
-        take: 5,
-      });
-      return reply.code(409).send({
-        error: `Cannot change business date — ${pendingCount} order${pendingCount === 1 ? "" : "s"} on ${before} ${pendingCount === 1 ? "is" : "are"} still open. Save (pay) or void them first.`,
-        pendingCount,
-        samples: samples.map((s) => ({ orderNo: s.orderNo, waiterBox: s.waiterBox })),
-      });
-    }
-
+    // No longer blocked by OPEN orders on the current business date — orders
+    // keep the businessDate they were stamped with at creation regardless of
+    // when they're eventually paid/voided/pushed to an account, so leaving
+    // some open in a box while the date rolls forward doesn't strand or
+    // misdate them. See the doc comment above.
     const updated = await prisma.branch.update({
       where: { id },
       data: { currentBusinessDate: newDate },

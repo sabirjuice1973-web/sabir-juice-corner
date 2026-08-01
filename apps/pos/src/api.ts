@@ -344,6 +344,55 @@ export const api = {
 
   ledgerCashToday: (branchId: string | number, date: string) =>
     request<{ date: string; totalExpenses: string }>("GET", `/ledger/cash-today?branchId=${branchId}&date=${date}`),
+
+  // ─── Payment Schedule — owner's cash-flow planner (OWNER-only, enforced server-side) ──
+  paymentSchedule: (branchId: string | number, from: string, to: string) =>
+    request<{ entries: PaymentScheduleEntry[] }>("GET", `/payment-schedule?branchId=${branchId}&from=${from}&to=${to}`),
+  paymentScheduleSalesSummary: (branchId: string | number, from: string, to: string) =>
+    request<{ totalSales: string }>("GET", `/payment-schedule/sales-summary?branchId=${branchId}&from=${from}&to=${to}`),
+  createPaymentScheduleEntry: (args: {
+    branchId: string | number; entryDate: string; details: string; amount: number;
+    description?: string | null; recurrence?: "WEEKLY" | "MONTHLY" | null;
+  }) => request<{ entry: PaymentScheduleEntry }>("POST", "/payment-schedule", args),
+  createRecurringPaymentSchedule: (args: {
+    branchId: string | number; entryDate: string; details: string; amount: number;
+    description?: string | null; recurrence: "WEEKLY" | "MONTHLY"; until: string;
+  }) => request<{ entries: PaymentScheduleEntry[] }>("POST", "/payment-schedule/recurring", args),
+  updatePaymentScheduleEntry: (id: string | number, args: Partial<{
+    entryDate: string; details: string; amount: number;
+    description: string | null; recurrence: "WEEKLY" | "MONTHLY" | null; isPaid: boolean;
+  }>) => request<{ entry: PaymentScheduleEntry }>("PATCH", `/payment-schedule/${id}`, args),
+  addPaymentScheduleInstallment: (id: string | number, args: {
+    amount: number; paidDate: string; note?: string | null; newEntryDate?: string | null;
+  }) => request<{ entry: PaymentScheduleEntry }>("POST", `/payment-schedule/${id}/installments`, args),
+  updatePaymentScheduleInstallment: (id: string | number, instId: string | number, args: Partial<{
+    amount: number; paidDate: string; note: string | null;
+  }>) => request<{ entry: PaymentScheduleEntry }>("PATCH", `/payment-schedule/${id}/installments/${instId}`, args),
+  deletePaymentScheduleInstallment: (id: string | number, instId: string | number) =>
+    request<{ entry: PaymentScheduleEntry }>("DELETE", `/payment-schedule/${id}/installments/${instId}`),
+  deletePaymentScheduleEntry: (id: string | number) =>
+    request<{ ok: true }>("DELETE", `/payment-schedule/${id}`),
+};
+
+export type PaymentScheduleInstallment = {
+  id: string;
+  amount: string;
+  paidDate: string;
+  note: string | null;
+};
+
+export type PaymentScheduleEntry = {
+  id: string;
+  entryDate: string;
+  details: string;
+  /** Original scheduled amount — never changes when partial payments are recorded. */
+  amount: string;
+  /** amount minus every installment, floored at 0 — always derived, never stored directly. */
+  outstanding: string;
+  description: string | null;
+  recurrence: "WEEKLY" | "MONTHLY" | null;
+  isPaid: boolean;
+  installments: PaymentScheduleInstallment[];
 };
 
 export type Item = {
