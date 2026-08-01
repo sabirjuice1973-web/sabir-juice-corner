@@ -8,23 +8,34 @@ echo   Sabir Juice Corner -- ERP/POS Launcher
 echo  ============================================
 echo.
 
-:: Step 1: Make sure Docker Desktop is running
+:: Step 1-2: Docker + Postgres — only matters on machines that actually run
+:: the database through Docker (e.g. the laptop). On machines with Postgres
+:: native instead (e.g. this shop PC), skip immediately if the `docker` CLI
+:: isn't even on PATH; if it IS present but Docker Desktop isn't meant to be
+:: used here, the retry loop below is capped (~30s) instead of waiting
+:: forever for a Docker Desktop that will never come up.
+where docker >nul 2>&1
+if %errorlevel% neq 0 goto skip_docker
+
 echo [1/4] Checking Docker...
 docker ps >nul 2>&1
-if %errorlevel% neq 0 (
-    echo     Docker not running. Starting Docker Desktop...
-    start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    echo     Waiting for Docker to be ready. Please wait...
-    :wait_docker
-    timeout /t 3 /nobreak >nul
-    docker ps >nul 2>&1
-    if %errorlevel% neq 0 goto wait_docker
-    echo     Docker is ready.
-) else (
-    echo     Docker is already running.
+if %errorlevel% equ 0 goto docker_ready
+echo     Docker not running. Starting Docker Desktop...
+start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+echo     Waiting for Docker to be ready. Please wait...
+set DOCKER_WAIT_TRIES=0
+:wait_docker
+set /a DOCKER_WAIT_TRIES+=1
+if %DOCKER_WAIT_TRIES% gtr 10 (
+    echo     Docker didn't come up after 30s -- continuing without it ^(assuming native Postgres^).
+    goto after_docker
 )
+timeout /t 3 /nobreak >nul
+docker ps >nul 2>&1
+if %errorlevel% neq 0 goto wait_docker
+:docker_ready
+echo     Docker is ready.
 
-:: Step 2: Start PostgreSQL container
 echo [2/4] Starting database...
 docker start sjc-postgres >nul 2>&1
 if %errorlevel% neq 0 (
@@ -32,6 +43,12 @@ if %errorlevel% neq 0 (
     docker compose -f "%~dp0docker-compose.yml" up -d postgres >nul 2>&1
 )
 echo     Database started.
+goto after_docker
+
+:skip_docker
+echo [1/4] Docker not installed on this machine -- skipping ^(using native Postgres^).
+
+:after_docker
 
 :: Step 3: Start API server
 echo [3/4] Starting API server on port 4000...
