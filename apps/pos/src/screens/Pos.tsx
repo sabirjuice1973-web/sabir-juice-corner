@@ -410,6 +410,18 @@ export function Pos({
         pushDraftToBox(parseInt(e.key, 10));
         return;
       }
+      // Ctrl+8 → Partner Accounts window (owner-only, mirrors the header button).
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "8") {
+        e.preventDefault();
+        if (isOwner) openPartnerAccountsWindow();
+        return;
+      }
+      // Ctrl+9 → Hisaab / Accounts ledger window.
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "9") {
+        e.preventDefault();
+        openLedgerWindow();
+        return;
+      }
       // Shift+C → edit the selected row's order. Capital C avoids clashing with
       // browser's own Ctrl+C copy. Ignore when typing.
       if ((e.key === "C" || e.key === "c") && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !isTypingInInput()) {
@@ -420,7 +432,7 @@ export function Pos({
     };
     document.addEventListener("keydown", onKey, { capture: true });
     return () => document.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [state.windowOpen, setWindowOpen, pushDraftToBox, enterEditMode, user.roles]);
+  }, [state.windowOpen, setWindowOpen, pushDraftToBox, enterEditMode, user.roles, isOwner, openPartnerAccountsWindow, openLedgerWindow]);
 
   // ─── Box row actions ─────────────────────────────────────────────────────
 
