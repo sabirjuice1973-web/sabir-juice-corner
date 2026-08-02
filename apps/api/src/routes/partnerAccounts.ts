@@ -109,13 +109,26 @@ export async function registerPartnerAccountRoutes(app: FastifyInstance) {
   });
 
   /**
-   * GET /partner-accounts/summary?branchId= — every partner's current
-   * balance + the grand total, for folding into the Stats page's Total Shop
-   * Debt (a positive balance is money the shop owes them, i.e. shop debt).
+   * GET /partner-accounts/summary?branchId=&from=&to= — every partner's
+   * current balance + the grand total, for folding into the Stats page's
+   * Total Shop Debt (a positive balance is money the shop owes them, i.e.
+   * shop debt). All-time, ignores from/to.
+   *
+   * When from/to are both given, also returns `period`: the same
+   * gave/took/online breakdown but restricted to entries dated in that
+   * range — used to correct a period's "Net Earning" figure. Cash a
+   * partner took out (or received online, bypassing the till) during the
+   * period isn't sitting in the shop anymore even though it was earned,
+   * and cash a partner gave in during the period isn't earnings at all —
+   * it's their money, just temporarily parked in the till.
    */
   app.get("/summary", async (req, reply) => {
     if (ownerOnly(req, reply)) return;
-    const q = z.object({ branchId: z.coerce.bigint() }).safeParse(req.query);
+    const q = z.object({
+      branchId: z.coerce.bigint(),
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }).safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "branchId required" });
 
     const accounts = await prisma.partnerAccount.findMany({
@@ -126,7 +139,24 @@ export async function registerPartnerAccountRoutes(app: FastifyInstance) {
     const partners = accounts.map((a) => ({ ...serializeAccount(a), balance: computeBalance(a.entries).toString() }));
     const totalOwedToPartners = partners.reduce((s, p) => s + Math.max(0, Number(p.balance)), 0);
     const totalOwedByPartners = partners.reduce((s, p) => s + Math.max(0, -Number(p.balance)), 0);
-    return toJson({ partners, totalOwedToPartners, totalOwedByPartners });
+
+    let period: { gave: string; took: string; online: string; net: string } | null = null;
+    if (q.data.from && q.data.to) {
+      const from = q.data.from, to = q.data.to;
+      let gave = new Prisma.Decimal(0), took = new Prisma.Decimal(0), online = new Prisma.Decimal(0);
+      for (const a of accounts) {
+        for (const e of a.entries) {
+          const iso = e.entryDate.toISOString().slice(0, 10);
+          if (iso < from || iso > to) continue;
+          if (e.type === "GAVE_TO_SHOP") gave = gave.plus(e.amount);
+          else if (e.type === "TOOK_FROM_SHOP") took = took.plus(e.amount);
+          else online = online.plus(e.amount);
+        }
+      }
+      period = { gave: gave.toString(), took: took.toString(), online: online.toString(), net: gave.minus(took).minus(online).toString() };
+    }
+
+    return toJson({ partners, totalOwedToPartners, totalOwedByPartners, period });
   });
 
   /** GET /partner-accounts/:id/entries — full history, oldest first (for running-balance display client-side) */

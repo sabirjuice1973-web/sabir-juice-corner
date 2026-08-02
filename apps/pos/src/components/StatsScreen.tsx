@@ -55,7 +55,10 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const [accounts,  setAccounts]  = useState<AccSummary[] | null>(null);
   const [allDebt,   setAllDebt]   = useState<{ total: number; paid: number } | null>(null);
   const [debtGroups, setDebtGroups] = useState<DebtGroup[] | null>(null);
-  const [partnerSummary, setPartnerSummary] = useState<{ partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number } | null>(null);
+  const [partnerSummary, setPartnerSummary] = useState<{
+    partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number;
+    period: { gave: string; took: string; online: string; net: string } | null;
+  } | null>(null);
   const [periodExp, setPeriodExp] = useState<{ total: number; paid: number } | null>(null);
   const [yestRev,   setYestRev]   = useState<number | null>(null);
   const [loading,   setLoading]   = useState(false);
@@ -99,16 +102,20 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shiftId, branchId, fromDate, toDate]);
 
-  // Partner Accounts balances — all-time/live like allDebt, fetched separately
-  // (not in the main Promise.all) so a 403 for a non-owner cashier doesn't
-  // blow up the rest of the stats page.
+  // Partner Accounts balances — all-time/live like allDebt (unaffected by
+  // the date filter) — plus a period-scoped gave/took/online breakdown for
+  // the selected range, used to correct Net Earning below. Fetched
+  // separately from the main Promise.all so a 403 for a non-owner cashier
+  // doesn't blow up the rest of the stats page.
   useEffect(() => {
     let cancelled = false;
-    api.partnerAccountsSummary(branchId)
+    const from = fromDate ?? todayStr;
+    const to = toDate ?? todayStr;
+    api.partnerAccountsSummary(branchId, { from, to })
       .then((r) => { if (!cancelled) setPartnerSummary(r); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [branchId]);
+  }, [branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Yesterday revenue comparison (only for "Today" view)
   useEffect(() => {
@@ -237,7 +244,12 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   // ── Derived: Net Earning ─────────────────────────────────────────────────────
   // Sales in the selected range minus all expenses billed (not just paid) in that
   // same range — accrual-style net earning, matching "Total Expense" above.
-  const netEarning = periodExp ? revenue - periodExp.total : null;
+  // Self Loan net (gave − took − online) for the same range is folded in: cash
+  // a partner took out or received online during the period isn't sitting in
+  // the shop anymore even though it was earned, and cash they gave in isn't
+  // earnings at all — it's their money, just parked in the till.
+  const selfLoanPeriodNet = partnerSummary?.period ? Number(partnerSummary.period.net) : 0;
+  const netEarning = periodExp ? revenue - periodExp.total + selfLoanPeriodNet : null;
 
   // ── Derived: Per-account shop debt breakdown ─────────────────────────────────
   const debtBreakdown = (debtGroups ?? [])
@@ -613,7 +625,11 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                     <div className={`text-xl font-bold font-mono ${netEarning !== null && netEarning < 0 ? "text-red-700" : "text-emerald-700"}`}>
                       {netEarning !== null ? pkr(netEarning) : "—"}
                     </div>
-                    <div className={`text-xs mt-1 ${netEarning !== null && netEarning < 0 ? "text-red-400" : "text-emerald-500"}`}>sales − total expense</div>
+                    <div className={`text-xs mt-1 ${netEarning !== null && netEarning < 0 ? "text-red-400" : "text-emerald-500"}`}>
+                      {selfLoanPeriodNet !== 0
+                        ? `${selfLoanPeriodNet < 0 ? "after" : "incl."} ${pkr(Math.abs(selfLoanPeriodNet))} self loan`
+                        : "sales − total expense"}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -378,9 +378,12 @@ export const api = {
     request<{ accounts: PartnerAccount[] }>("GET", `/partner-accounts?branchId=${branchId}`),
   renamePartnerAccount: (id: string | number, name: string) =>
     request<{ account: { id: string; position: number; name: string } }>("PATCH", `/partner-accounts/${id}`, { name }),
-  partnerAccountsSummary: (branchId: string | number) =>
-    request<{ partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number }>(
-      "GET", `/partner-accounts/summary?branchId=${branchId}`,
+  partnerAccountsSummary: (branchId: string | number, range?: { from: string; to: string }) =>
+    request<{
+      partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number;
+      period: { gave: string; took: string; online: string; net: string } | null;
+    }>(
+      "GET", `/partner-accounts/summary?branchId=${branchId}${range ? `&from=${range.from}&to=${range.to}` : ""}`,
     ),
   partnerAccountEntries: (accountId: string | number) =>
     request<{ entries: PartnerAccountEntry[] }>("GET", `/partner-accounts/${accountId}/entries`),

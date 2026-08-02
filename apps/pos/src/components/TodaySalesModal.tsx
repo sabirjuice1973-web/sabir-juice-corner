@@ -63,6 +63,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const [movementReason, setMovementReason] = useState("");
   const [movementBusy, setMovementBusy] = useState(false);
   const [showCashCounter, setShowCashCounter] = useState(false);
+  const [selfLoanPeriodNet, setSelfLoanPeriodNet] = useState(0);
 
   const isToday = fromDate === null && toDate === null;
 
@@ -89,6 +90,21 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
     api.ledgerReport({ branchId, from, to }).then((r) => {
       if (!cancelled) setTodayExpense(Number(r.grandTotalCashPaid));
     }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [branchId, fromDate, toDate, todayStr]);
+
+  // Self Loan (Usman/Naveed personal cash in/out + online receipts) for the
+  // selected period — cash taken out or received online during this period
+  // isn't sitting in the shop even though it was earned, and cash given in
+  // isn't earnings at all. Folded into Net Earning below so it reflects what
+  // actually stayed with the shop, not just sales minus billed expense.
+  useEffect(() => {
+    let cancelled = false;
+    const from = fromDate ?? todayStr;
+    const to = toDate ?? todayStr;
+    api.partnerAccountsSummary(branchId, { from, to }).then((r) => {
+      if (!cancelled) setSelfLoanPeriodNet(r.period ? Number(r.period.net) : 0);
+    }).catch(() => { if (!cancelled) setSelfLoanPeriodNet(0); });
     return () => { cancelled = true; };
   }, [branchId, fromDate, toDate, todayStr]);
 
@@ -265,7 +281,10 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const cashInTotal  = cashMovements.filter((m) => m.type === "IN").reduce((s, m) => s + Number(m.amount), 0);
   const cashOutTotal = cashMovements.filter((m) => m.type === "OUT").reduce((s, m) => s + Number(m.amount), 0);
   const cashInCounter = openingCash + totalCashInHand + (cashOutTotal - cashInTotal) - todayExpense;
-  const netEarningToday = totalCashInHand - todayExpense;
+  // Self Loan net (gave − took − online, for the selected period) folded in:
+  // a partner's withdrawal or online receipt for this period reduces what's
+  // actually left with the shop; money they gave in isn't earnings.
+  const netEarningToday = totalCashInHand - todayExpense + selfLoanPeriodNet;
 
   // Averages per day — only meaningful across a multi-day range, not a single date.
   const rangeDays = Math.round(
@@ -428,6 +447,12 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                       <div className={`font-mono font-bold text-xl mt-0.5 ${netEarningToday < 0 ? "text-red-400" : "text-white"}`}>
                         PKR {netEarningToday.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
                       </div>
+                      {selfLoanPeriodNet !== 0 && (
+                        <div className="text-[10px] text-amber-300/80 mt-0.5">
+                          {selfLoanPeriodNet < 0 ? "after " : "incl. "}
+                          PKR {Math.abs(selfLoanPeriodNet).toLocaleString("en-PK", { maximumFractionDigits: 0 })} self loan
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
