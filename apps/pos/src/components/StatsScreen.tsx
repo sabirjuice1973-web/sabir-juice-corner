@@ -248,7 +248,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   // Partner Accounts rows, appended after ledger accounts so the breakdown
   // reads as one unified "who is the shop's debt owed to/by" list.
   const partnerBreakdown = (partnerSummary?.partners ?? [])
-    .map((p) => ({ id: p.id, position: 100 + p.position, name: `${p.name} (Partner)`, debt: Number(p.balance) }))
+    .map((p) => ({ id: p.id, position: 100 + p.position, name: `${p.name} (Self Loan)`, debt: Number(p.balance) }))
     .filter((p) => p.debt !== 0);
   const fullDebtBreakdown = [...debtBreakdown, ...partnerBreakdown];
 

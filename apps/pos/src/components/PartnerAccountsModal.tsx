@@ -158,7 +158,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
         {/* Header */}
         <div className="px-5 py-3 border-b flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-xl font-bold">Partner Accounts</h2>
+            <h2 className="text-xl font-bold">Self Loan</h2>
             <div className="text-xs text-slate-500 mt-0.5">Personal cash in/out between you and the shop</div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none flex-shrink-0">×</button>

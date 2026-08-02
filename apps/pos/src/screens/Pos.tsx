@@ -747,10 +747,13 @@ export function Pos({
     }
   }
   function openPartnerAccountsWindow() {
-    const params = new URLSearchParams({ partners: "1", branchId });
+    // owner=1 lets the standalone window hide itself entirely for non-owners
+    // who might guess/bookmark the URL — the API is OWNER-only regardless,
+    // this is just so a cashier account can't even see the screen.
+    const params = new URLSearchParams({ partners: "1", branchId, owner: isOwner ? "1" : "0" });
     const w = window.open(`/?${params}`, "sjc-partner-accounts", "noopener,popup,width=1200,height=800");
     if (!w) {
-      setError("Browser blocked the partners window — allow popups for this site.");
+      setError("Browser blocked the Self Loan window — allow popups for this site.");
       setTimeout(() => setError(null), 4000);
     }
   }
@@ -873,7 +876,7 @@ export function Pos({
               </svg>} />
           )}
           {isOwner && (
-            <NavPill color="amber" onClick={openPartnerAccountsWindow} label="Partners"
+            <NavPill color="amber" onClick={openPartnerAccountsWindow} label="Self Loan"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>} />

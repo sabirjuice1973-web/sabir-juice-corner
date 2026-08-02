@@ -22,7 +22,7 @@ import { toJson } from "../lib/serialize.js";
  */
 
 const PARTNER_SLOT_COUNT = 2;
-const DEFAULT_PARTNER_NAMES = ["Partner 1", "Partner 2"];
+const DEFAULT_PARTNER_NAMES = ["Usman", "Naveed"];
 
 function ownerOnly(req: any, reply: any): true | undefined {
   if (!req.auth?.roles?.some((r: any) => r.code === "OWNER")) {
