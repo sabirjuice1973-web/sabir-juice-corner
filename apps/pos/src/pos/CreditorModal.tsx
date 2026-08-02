@@ -399,7 +399,13 @@ ${printScript}
       await api.recordAccountPayment(selectedAccount.id, {
         amount,
         ...(discount > 0 ? { discount } : {}),
-        notes: `Cash received for ${orderList.length} order(s): ${orderList.map((o) => o.orderNo).join(", ")}`,
+        // Listing every order number reads fine for a handful of orders, but
+        // a large bulk settlement (dozens of orders) built a notes string
+        // long enough to blow past the backend's max length and fail
+        // validation entirely. Summarize instead once the list gets long.
+        notes: orderList.length <= 10
+          ? `Cash received for ${orderList.length} order(s): ${orderList.map((o) => o.orderNo).join(", ")}`
+          : `Cash received for ${orderList.length} order(s): ${orderList.slice(0, 10).map((o) => o.orderNo).join(", ")}, +${orderList.length - 10} more`,
         ...(orderApplications ? { orderApplications } : {}),
       });
       setDiscountStr("");

@@ -7,6 +7,7 @@ import { Kitchen } from "./screens/Kitchen";
 import { LedgerWindow } from "./screens/LedgerWindow";
 import { StatsWindow } from "./screens/StatsWindow";
 import { PaymentScheduleWindow } from "./screens/PaymentScheduleWindow";
+import { PartnerAccountsWindow } from "./screens/PartnerAccountsWindow";
 import { wireAutoDrain } from "./offline/syncDrain";
 
 /**
@@ -39,6 +40,10 @@ function isPaymentScheduleMode(): boolean {
   try { return new URLSearchParams(window.location.search).get("schedule") === "1"; }
   catch { return false; }
 }
+function isPartnerAccountsMode(): boolean {
+  try { return new URLSearchParams(window.location.search).get("partners") === "1"; }
+  catch { return false; }
+}
 
 type Stage =
   | { kind: "loading" }
@@ -57,6 +62,7 @@ export function App() {
   if (isLedgerMode()) return <LedgerWindow />;
   if (isStatsMode()) return <StatsWindow />;
   if (isPaymentScheduleMode()) return <PaymentScheduleWindow />;
+  if (isPartnerAccountsMode()) return <PartnerAccountsWindow />;
   return <PosApp />;
 }
 

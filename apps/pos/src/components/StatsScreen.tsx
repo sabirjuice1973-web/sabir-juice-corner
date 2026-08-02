@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { TodayOrder } from "../api";
+import type { TodayOrder, PartnerAccount } from "../api";
 import { BOX_LABELS } from "../pos/posState";
 import { printDebtSummary } from "../pos/receipt";
 import { PrinterIcon } from "./PrinterIcon";
@@ -55,6 +55,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const [accounts,  setAccounts]  = useState<AccSummary[] | null>(null);
   const [allDebt,   setAllDebt]   = useState<{ total: number; paid: number } | null>(null);
   const [debtGroups, setDebtGroups] = useState<DebtGroup[] | null>(null);
+  const [partnerSummary, setPartnerSummary] = useState<{ partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number } | null>(null);
   const [periodExp, setPeriodExp] = useState<{ total: number; paid: number } | null>(null);
   const [yestRev,   setYestRev]   = useState<number | null>(null);
   const [loading,   setLoading]   = useState(false);
@@ -97,6 +98,17 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shiftId, branchId, fromDate, toDate]);
+
+  // Partner Accounts balances — all-time/live like allDebt, fetched separately
+  // (not in the main Promise.all) so a 403 for a non-owner cashier doesn't
+  // blow up the rest of the stats page.
+  useEffect(() => {
+    let cancelled = false;
+    api.partnerAccountsSummary(branchId)
+      .then((r) => { if (!cancelled) setPartnerSummary(r); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [branchId]);
 
   // Yesterday revenue comparison (only for "Today" view)
   useEffect(() => {
@@ -215,7 +227,11 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const top3 = [...creditAccs].sort((a, b) => Number(b.currentBalance) - Number(a.currentBalance)).slice(0, 3);
 
   // ── Derived: Debts ───────────────────────────────────────────────────────────
-  const shopDebt     = allDebt   ? allDebt.total   - allDebt.paid   : 0;
+  // Partner Accounts fold into shop debt: a positive partner balance means
+  // the shop owes that partner (they put in more than they took out), which
+  // is money payable by the shop just like a supplier's ledger balance.
+  const partnerNet = partnerSummary ? partnerSummary.totalOwedToPartners - partnerSummary.totalOwedByPartners : 0;
+  const shopDebt     = (allDebt ? allDebt.total - allDebt.paid : 0) + partnerNet;
   const periodExpOut = periodExp  ? periodExp.total - periodExp.paid : 0;
 
   // ── Derived: Net Earning ─────────────────────────────────────────────────────
@@ -228,6 +244,13 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
     .map((g) => ({ ...g.account, debt: Number(g.totalAmount) - Number(g.totalCashPaid) }))
     .filter((g) => g.debt !== 0)
     .sort((a, b) => a.position - b.position);
+
+  // Partner Accounts rows, appended after ledger accounts so the breakdown
+  // reads as one unified "who is the shop's debt owed to/by" list.
+  const partnerBreakdown = (partnerSummary?.partners ?? [])
+    .map((p) => ({ id: p.id, position: 100 + p.position, name: `${p.name} (Partner)`, debt: Number(p.balance) }))
+    .filter((p) => p.debt !== 0);
+  const fullDebtBreakdown = [...debtBreakdown, ...partnerBreakdown];
 
   // ── Date label ───────────────────────────────────────────────────────────────
   const dateLabel = isToday ? "Today"
@@ -605,7 +628,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                         totalBilled: allDebt.total,
                         totalPaid: allDebt.paid,
                         totalDebt: shopDebt,
-                        breakdown: debtBreakdown.map((g) => ({ position: g.position, name: g.name, debt: g.debt })),
+                        breakdown: fullDebtBreakdown.map((g) => ({ position: g.position, name: g.name, debt: g.debt })),
                       })}
                       title="Print a thermal-slip summary of this debt breakdown"
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800 bg-white border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1 mb-2"
@@ -634,10 +657,10 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                     </div>
                   </div>
 
-                  {debtBreakdown.length > 0 && (
+                  {fullDebtBreakdown.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-red-200 space-y-1.5">
                       <div className="text-xs font-semibold text-slate-600 mb-2">Breakdown by account:</div>
-                      {debtBreakdown.map((g) => (
+                      {fullDebtBreakdown.map((g) => (
                         <div key={g.id} className="flex items-center justify-between text-sm">
                           <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
                           <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>

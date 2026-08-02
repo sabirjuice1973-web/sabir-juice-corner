@@ -117,7 +117,6 @@ export function BoxGrid({
             mergeMode={mergeMode}
             mergeSelectedIds={mergeSelectedIds}
             onMergeToggle={onMergeToggle ? (localId) => onMergeToggle(i, localId) : undefined}
-            daySales={boxSales?.[i]}
             dayCount={boxDoneCounts?.[i]}
             boxLabel={customLabels[i + 1]}
             onRename={(name) => renameBox(i + 1, name)}
@@ -278,7 +277,6 @@ type BoxProps = {
   mergeMode?: boolean;
   mergeSelectedIds?: Set<string>;
   onMergeToggle?: (localId: string) => void;
-  daySales?: number;
   dayCount?: number;
   boxLabel?: string;
   onRename: (name: string) => void;
@@ -288,7 +286,7 @@ type BoxProps = {
 function BoxPanel({
   boxNumber, orders, kitchen, onToggleDelivered, onPrint, onSave, onPrintAndSave,
   onOpenDetails, onSelect, onTogglePrepaid, onPushAllFoodPanda, selectedLocalId, mergeMode,
-  mergeSelectedIds, onMergeToggle, daySales, dayCount, boxLabel, onRename, isBestSales,
+  mergeSelectedIds, onMergeToggle, dayCount, boxLabel, onRename, isBestSales,
 }: BoxProps) {
   const shortcut = `Ctrl+${boxNumber}`;
   const defaultLabel = BOX_LABELS[boxNumber] ?? `Box ${boxNumber}`;
@@ -353,12 +351,6 @@ function BoxPanel({
 
         {/* Right: stats + FP button */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {!kitchen && daySales !== undefined && daySales > 0 && (
-            <span
-              className={`text-xs font-bold tabular-nums ${isBestSales ? "text-yellow-300" : "text-emerald-300"}`}
-              title="Today's total sales from this box"
-            >Today Rs {daySales.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
-          )}
           {!kitchen && dayCount !== undefined && dayCount > 0 && (
             <span className="text-xs tabular-nums px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.12)", color: "#a5f3fc", border: "1px solid rgba(38,208,206,0.3)" }} title="Orders completed today">
               Done {dayCount}

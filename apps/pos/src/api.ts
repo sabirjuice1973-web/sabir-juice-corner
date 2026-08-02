@@ -372,6 +372,41 @@ export const api = {
     request<{ entry: PaymentScheduleEntry }>("DELETE", `/payment-schedule/${id}/installments/${instId}`),
   deletePaymentScheduleEntry: (id: string | number) =>
     request<{ ok: true }>("DELETE", `/payment-schedule/${id}`),
+
+  // ─── Partner Accounts — owners' personal cash-in/cash-out ledger (OWNER-only) ──
+  partnerAccounts: (branchId: string | number) =>
+    request<{ accounts: PartnerAccount[] }>("GET", `/partner-accounts?branchId=${branchId}`),
+  renamePartnerAccount: (id: string | number, name: string) =>
+    request<{ account: { id: string; position: number; name: string } }>("PATCH", `/partner-accounts/${id}`, { name }),
+  partnerAccountsSummary: (branchId: string | number) =>
+    request<{ partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number }>(
+      "GET", `/partner-accounts/summary?branchId=${branchId}`,
+    ),
+  partnerAccountEntries: (accountId: string | number) =>
+    request<{ entries: PartnerAccountEntry[] }>("GET", `/partner-accounts/${accountId}/entries`),
+  addPartnerAccountEntry: (accountId: string | number, args: {
+    entryDate: string; type: "GAVE_TO_SHOP" | "TOOK_FROM_SHOP" | "RECEIVED_ONLINE"; amount: number; note?: string | null;
+  }) => request<{ entry: PartnerAccountEntry }>("POST", `/partner-accounts/${accountId}/entries`, args),
+  updatePartnerAccountEntry: (accountId: string | number, entryId: string | number, args: Partial<{
+    entryDate: string; type: "GAVE_TO_SHOP" | "TOOK_FROM_SHOP" | "RECEIVED_ONLINE"; amount: number; note: string | null;
+  }>) => request<{ entry: PartnerAccountEntry }>("PATCH", `/partner-accounts/${accountId}/entries/${entryId}`, args),
+  deletePartnerAccountEntry: (accountId: string | number, entryId: string | number) =>
+    request<{ ok: true }>("DELETE", `/partner-accounts/${accountId}/entries/${entryId}`),
+};
+
+export type PartnerAccount = {
+  id: string;
+  position: number;
+  name: string;
+  balance: string;
+};
+
+export type PartnerAccountEntry = {
+  id: string;
+  entryDate: string;
+  type: "GAVE_TO_SHOP" | "TOOK_FROM_SHOP" | "RECEIVED_ONLINE";
+  amount: string;
+  note: string | null;
 };
 
 export type PaymentScheduleInstallment = {

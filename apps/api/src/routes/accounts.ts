@@ -65,7 +65,7 @@ const RecordPaymentBody = z.object({
   discount: z.coerce.number().nonnegative().max(10_000_000).default(0),
   method: z.enum(["CASH", "CARD", "WALLET", "CREDIT", "BANK_TRANSFER"]).default("CASH"),
   reference: z.string().max(120).optional(),
-  notes: z.string().max(500).optional(),
+  notes: z.string().max(2000).optional(),
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional(),
   // Optional per-order application — owner can mark which orders this payment settles.
   // appliedAmount per orderId — order.total is the implicit target if not given.
