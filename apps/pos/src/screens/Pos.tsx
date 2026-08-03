@@ -939,6 +939,21 @@ export function Pos({
                     </svg>
                     Close Shift
                   </button>
+                  <div className="mx-3 mb-1 border-t border-white/10" />
+                  <a
+                    href="http://localhost:3100"
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setMenuOpen(false)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                    Admin Dashboard ↗
+                  </a>
                 </div>
               </div>
             )}
@@ -955,20 +970,6 @@ export function Pos({
 
         {/* Account / session */}
         <div className="flex items-center gap-2 shrink-0 text-sm">
-          <a
-            href="http://localhost:3100"
-            target="_blank"
-            rel="noreferrer"
-            title="Open Admin dashboard"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            Admin
-          </a>
           <span className="flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-lg bg-white/10 text-white font-semibold">
             {user.fullName}
             {isOwner && <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-800 bg-emerald-300 px-1.5 py-0.5 rounded">Owner</span>}
