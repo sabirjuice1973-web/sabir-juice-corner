@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LedgerAccount, type LedgerEntry } from "../api";
-import { printLedgerEntry } from "../pos/receipt";
+import { printLedgerEntry, printAccountReportThermal } from "../pos/receipt";
 import { PrinterIcon } from "../components/PrinterIcon";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 // ─── Window state ─────────────────────────────────────────────────────────────
 
@@ -1340,42 +1342,91 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
     });
   }
 
-  // Professional print styles
-  const printStyle = `
-    @media print {
-      body * { visibility: hidden !important; }
-      .print-area, .print-area * { visibility: visible !important; }
-      .print-area { position: fixed !important; inset: 0 !important; overflow: visible !important; }
-      .no-print { display: none !important; }
-    }
-  `;
+  const printAreaRef = useRef<HTMLDivElement>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const reportTitle = `Sabir Juice Corner — Account Report`;
   const dateRange = `${from} to ${to}`;
   const grandTotalAmount = data ? parseFloat(data.grandTotalAmount) : 0;
   const grandTotalCashPaid = data ? parseFloat(data.grandTotalCashPaid) : 0;
   const grandBalance = grandTotalAmount - grandTotalCashPaid;
+  const filtersText = [headFilter && `Head: ${headFilter}`, supplierFilter && `Supplier: ${supplierFilter}`, productFilter && `Product: ${productFilter}`]
+    .filter(Boolean).join(" · ") || null;
+
+  // Saves a real PDF file instead of calling window.print() — the shop's POS
+  // Chrome window runs with --kiosk-printing (instant, dialog-free receipt
+  // printing), which also silently fires window.print() straight to the
+  // thermal printer for anything else in that window, with no chance to
+  // pick "Save as PDF". Rendering to canvas and writing our own PDF sidesteps
+  // print() entirely, so it always ends up as a real, savable/shareable file.
+  async function handleDownloadPdf() {
+    if (!printAreaRef.current) return;
+    setDownloadingPdf(true);
+    try {
+      const canvas = await html2canvas(printAreaRef.current, { scale: 2, backgroundColor: "#ffffff" });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidthMm = pdf.internal.pageSize.getWidth();
+      const pageHeightMm = pdf.internal.pageSize.getHeight();
+      const pxPerMm = canvas.width / pageWidthMm;
+      const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
+
+      // Slice the (potentially very tall) full-page canvas into page-height
+      // chunks, one per PDF page, instead of squeezing everything onto one.
+      let renderedPx = 0;
+      let firstPage = true;
+      while (renderedPx < canvas.height) {
+        const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeightPx;
+        const ctx = pageCanvas.getContext("2d")!;
+        ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+        if (!firstPage) pdf.addPage();
+        pdf.addImage(pageCanvas.toDataURL("image/png"), "PNG", 0, 0, pageWidthMm, sliceHeightPx / pxPerMm);
+        renderedPx += sliceHeightPx;
+        firstPage = false;
+      }
+      pdf.save(`Account Report ${from} to ${to}.pdf`);
+    } catch (e) {
+      console.error("PDF generation failed", e);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
+  function handlePrintThermal() {
+    if (!data) return;
+    printAccountReportThermal({
+      dateRange, filtersText, rowCount: data.rowCount,
+      groups: data.groups.map((g) => ({ position: g.account.position, name: g.account.name, totalAmount: parseFloat(g.totalAmount), totalCashPaid: parseFloat(g.totalCashPaid) })),
+      grandTotalAmount, grandTotalCashPaid,
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onMinimize(); }}>
-      <style>{printStyle}</style>
       <div className="bg-white rounded-xl shadow-2xl flex flex-col w-full max-w-5xl max-h-[92vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b shrink-0 no-print">
+        <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
           <h2 className="font-semibold text-slate-800">Account Report</h2>
           <div className="flex gap-2">
-            <button type="button" onClick={() => { window.addEventListener("afterprint", onClose, { once: true }); window.print(); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold">
-              <PrinterIcon className="w-3.5 h-3.5" /> Print / PDF
+            <button type="button" onClick={() => void handleDownloadPdf()} disabled={!data || downloadingPdf}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50">
+              <PrinterIcon className="w-3.5 h-3.5" /> {downloadingPdf ? "Generating…" : "Download PDF"}
+            </button>
+            <button type="button" onClick={handlePrintThermal} disabled={!data}
+              title="Compact summary print for the 80mm thermal printer — full detail stays in the PDF"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-600 hover:bg-slate-500 text-white text-xs font-semibold disabled:opacity-50">
+              <PrinterIcon className="w-3.5 h-3.5" /> Print (Thermal)
             </button>
             <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="px-5 py-3 border-b shrink-0 no-print flex flex-wrap gap-3 items-end bg-slate-50">
+        <div className="px-5 py-3 border-b shrink-0 flex flex-wrap gap-3 items-end bg-slate-50">
           <div>
             <label className="block text-xs text-slate-500 mb-1">From</label>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputCls + " w-36"} />
@@ -1424,7 +1475,7 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
         </div>
 
         {/* Account checkboxes */}
-        <div className="px-5 py-2 border-b shrink-0 no-print flex flex-wrap gap-x-3 gap-y-1 bg-slate-50">
+        <div className="px-5 py-2 border-b shrink-0 flex flex-wrap gap-x-3 gap-y-1 bg-slate-50">
           <button type="button" onClick={() => setSelectedAccountIds(new Set(accounts.map((a) => a.id)))}
             className="text-xs px-2 py-0.5 rounded border border-slate-300 hover:bg-white text-slate-600">All</button>
           <button type="button" onClick={() => setSelectedAccountIds(new Set())}
@@ -1437,10 +1488,10 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
           ))}
         </div>
 
-        {/* Print area */}
-        <div className="flex-1 min-h-0 overflow-y-auto print-area">
+        {/* Report content — captured by html2canvas for the PDF download */}
+        <div ref={printAreaRef} className="flex-1 min-h-0 overflow-y-auto bg-white">
           {!data ? (
-            <div className="flex items-center justify-center h-32 text-slate-400 text-sm no-print">
+            <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
               Set filters and click "Run Report"
             </div>
           ) : (

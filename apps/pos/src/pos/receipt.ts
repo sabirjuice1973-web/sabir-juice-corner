@@ -637,6 +637,129 @@ function debtSummaryHtml(data: { totalBilled: number; totalPaid: number; totalDe
 </body></html>`;
 }
 
+// ─── Account Report — thermal (80mm) summary print ─────────────────────────
+
+/**
+ * A compact 80mm alternative to the full-page Account Report PDF — grand
+ * totals plus a per-account breakdown, no line-item detail (that table has
+ * 10 columns and doesn't fit any thermal width meaningfully). For a quick
+ * printout on the shop's existing thermal printer; use the "Download PDF"
+ * button on the report screen for the full, unabridged version.
+ */
+export function printAccountReportThermal(data: {
+  dateRange: string;
+  filtersText: string | null;
+  rowCount: number;
+  groups: { position: number; name: string; totalAmount: number; totalCashPaid: number }[];
+  grandTotalAmount: number;
+  grandTotalCashPaid: number;
+}) {
+  const html = accountReportThermalHtml(data);
+  const win = getPrintWindow();
+  if (!win) return;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+  lastPrintAt = Date.now();
+}
+
+function accountReportThermalHtml(data: {
+  dateRange: string;
+  filtersText: string | null;
+  rowCount: number;
+  groups: { position: number; name: string; totalAmount: number; totalCashPaid: number }[];
+  grandTotalAmount: number;
+  grandTotalCashPaid: number;
+}): string {
+  const printedAt = new Date();
+  const printDate = printedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const grandBalance = data.grandTotalAmount - data.grandTotalCashPaid;
+
+  const rows = data.groups.map((g) => {
+    const bal = g.totalAmount - g.totalCashPaid;
+    return `
+    <tr>
+      <td class="acct">${g.position}. ${escapeHtml(g.name)}</td>
+      <td class="num">${formatMoney(g.totalAmount)}</td>
+      <td class="num">${formatMoney(g.totalCashPaid)}</td>
+      <td class="num ${bal < 0 ? "credit" : ""}">${formatMoney(bal)}</td>
+    </tr>`;
+  }).join("");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Account Report</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  @media screen { .receipt { visibility: hidden; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 500 9pt/1.4 "Arial Narrow", Arial, sans-serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt, .receipt * { page-break-inside: avoid !important; break-inside: avoid !important; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 2mm; }
+  .logo { width: 14mm; height: auto; flex-shrink: 0; filter: contrast(2); -webkit-print-color-adjust: exact; }
+  h1 { font-size: 11pt; margin: 0; letter-spacing: 0.5px; font-weight: 900; }
+  hr { border: 0; border-top: 1px dashed #444; margin: 1.5mm 0; }
+  .doc-title { text-align: center; font-size: 9.5pt; font-weight: 900; letter-spacing: 0.5px; }
+  .meta { text-align: center; font-size: 8pt; margin-top: 0.5mm; color: #333; }
+  table.totals { width: 100%; border-collapse: collapse; }
+  table.totals td { padding: 0.8mm 0; font-size: 9pt; font-weight: 700; }
+  table.totals .num { text-align: right; }
+  table.totals tr.balance-row td { font-size: 12pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.2mm 0; }
+  .section-hdr { font-size: 8pt; font-weight: 900; letter-spacing: 0.5px; margin: 1.5mm 0 0.5mm; }
+  table.breakdown { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  table.breakdown th { text-align: right; font-size: 7pt; font-weight: 700; padding-bottom: 0.5mm; border-bottom: 1px solid #999; }
+  table.breakdown th:first-child { text-align: left; }
+  table.breakdown td { padding: 0.6mm 0; }
+  table.breakdown td.acct { font-weight: 600; }
+  table.breakdown td.num { text-align: right; font-weight: 700; white-space: nowrap; }
+  table.breakdown td.num.credit { color: #006600; }
+  .footer-line { text-align: center; font-size: 7.5pt; font-weight: 700; margin-top: 1mm; }
+</style>
+</head><body>
+<div class="receipt">
+  <div class="header-row">
+    <img class="logo" src="${LOGO_MONO_DATA_URI}" alt="Sabir Juice Corner" />
+    <h1>SABIR JUICE CORNER</h1>
+    <div style="width:14mm"></div>
+  </div>
+  <hr />
+  <div class="doc-title">ACCOUNT REPORT</div>
+  <div class="meta">${escapeHtml(data.dateRange)}</div>
+  ${data.filtersText ? `<div class="meta">${escapeHtml(data.filtersText)}</div>` : ""}
+  <hr />
+  <table class="totals">
+    <tr><td>Total Entries</td><td class="num">${data.rowCount}</td></tr>
+    <tr><td>Total Amount</td><td class="num">PKR ${formatMoney(data.grandTotalAmount)}</td></tr>
+    <tr><td>Total Cash Paid</td><td class="num">PKR ${formatMoney(data.grandTotalCashPaid)}</td></tr>
+    <tr class="balance-row"><td>${grandBalance < 0 ? "OVERPAID" : "BALANCE"}</td><td class="num">PKR ${formatMoney(Math.abs(grandBalance))}</td></tr>
+  </table>
+  ${data.groups.length > 1 ? `
+  <div class="section-hdr">BY ACCOUNT (PKR)</div>
+  <table class="breakdown">
+    <tr><th>Account</th><th>Total</th><th>Paid</th><th>Balance</th></tr>
+    ${rows}
+  </table>` : ""}
+  <hr />
+  <div class="footer-line">Printed: ${printDate} ${printTime}</div>
+</div>
+<script>
+  window.addEventListener('afterprint', function () {
+    if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+    window.blur();
+  }, { once: true });
+</script>
+</body></html>`;
+}
+
 /**
  * Money rendering for the receipt columns.
  * - Integer values print as-is (`320`, not `320.00`) — keeps columns tight on
