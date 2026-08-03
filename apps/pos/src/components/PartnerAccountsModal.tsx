@@ -46,6 +46,53 @@ const TYPE_META: Record<PartnerAccountEntry["type"], { label: string; short: str
   RECEIVED_ONLINE: { label: "Received Online for Order", short: "Online", color: "cyan" },
 };
 
+type Row = PartnerAccountEntry & { runningBalance: number };
+
+// Shared by the "Today" view and the per-day detail popup opened from "All dates".
+function EntriesTable({ rows, onEdit, onDelete }: {
+  rows: Row[];
+  onEdit: (e: PartnerAccountEntry) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <table className="table w-full border-collapse">
+      <thead>
+        <tr>
+          <th className="px-3 py-1.5 w-24">Date</th>
+          <th className="px-3 py-1.5 text-left">Type</th>
+          <th className="px-3 py-1.5 text-right w-28">Amount</th>
+          <th className="px-3 py-1.5 text-right w-32">Balance</th>
+          <th className="px-3 py-1.5 pl-5 border-l border-slate-200 text-left">Note</th>
+          <th className="px-3 py-1.5 w-24 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-300">
+        {[...rows].reverse().map((r) => (
+          <tr key={r.id}>
+            <td className="px-3 py-1 text-xs font-mono whitespace-nowrap">{formatDateDisplay(r.entryDate)}</td>
+            <td className="px-3 py-1">
+              <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                r.type === "GAVE_TO_SHOP" ? "bg-emerald-50 text-emerald-700" : r.type === "TOOK_FROM_SHOP" ? "bg-rose-50 text-rose-700" : "bg-cyan-50 text-cyan-700"
+              }`}>{TYPE_META[r.type].label}</span>
+            </td>
+            <td className="px-3 py-1 text-right font-mono whitespace-nowrap">{pkr(Number(r.amount))}</td>
+            <td className={`px-3 py-1 text-right font-mono whitespace-nowrap font-semibold ${r.runningBalance > 0 ? "text-emerald-700" : r.runningBalance < 0 ? "text-red-700" : "text-slate-400"}`}>
+              {pkr(Math.abs(r.runningBalance))}
+            </td>
+            <td className="px-3 py-1 pl-5 border-l border-slate-200 text-xs text-slate-500 max-w-[220px] truncate" title={r.note ?? ""}>{r.note}</td>
+            <td className="px-3 py-1 text-center">
+              <div className="flex items-center justify-center gap-1">
+                <button title="Edit" onClick={() => onEdit(r)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700">Edit</button>
+                <button title="Delete" onClick={() => onDelete(r.id)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700">Del</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 type FormState = {
   id: string | null;
   entryDate: string;
@@ -75,6 +122,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [showAllDates, setShowAllDates] = useState(false);
+  const [dayDetail, setDayDetail] = useState<string | null>(null);
   const amountRef = useRef<HTMLInputElement>(null);
 
   const loadAccounts = async () => {
@@ -114,16 +162,27 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
     });
   })();
 
-  // Default view is just the business date's entries; "All dates" shows the
-  // full history (previous behavior). Running balance always reflects the
-  // true all-time position regardless of which rows are shown.
-  const displayedRows = showAllDates ? rows : rows.filter((r) => r.entryDate === effectiveBusinessDate);
+  // Default view is just the business date's entries in full detail.
+  const todaysRows = rows.filter((r) => r.entryDate === effectiveBusinessDate);
+
+  // "All dates" is a per-date rollup (like the Excel sheet this replaces) —
+  // one line per date showing that day's net movement, not every entry.
+  // Clicking a date opens the same detail table as the "Today" view above,
+  // scoped to that date.
+  const dateGroups = (() => {
+    const map = new Map<string, { date: string; net: number; closingBalance: number; count: number }>();
+    for (const r of rows) {
+      const signed = r.type === "GAVE_TO_SHOP" ? Number(r.amount) : -Number(r.amount);
+      const g = map.get(r.entryDate);
+      if (g) { g.net += signed; g.closingBalance = r.runningBalance; g.count += 1; }
+      else map.set(r.entryDate, { date: r.entryDate, net: signed, closingBalance: r.runningBalance, count: 1 });
+    }
+    return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  })();
 
   // Business date's net movement — not the running balance, just today's
   // entries summed the same signed way (gave +, took/online −).
-  const businessDateNet = rows
-    .filter((r) => r.entryDate === effectiveBusinessDate)
-    .reduce((s, r) => s + (r.type === "GAVE_TO_SHOP" ? Number(r.amount) : -Number(r.amount)), 0);
+  const businessDateNet = todaysRows.reduce((s, r) => s + (r.type === "GAVE_TO_SHOP" ? Number(r.amount) : -Number(r.amount)), 0);
 
   function resetForm() { setForm(EMPTY_FORM(effectiveBusinessDate)); }
 
@@ -347,45 +406,46 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
               </div>
 
               {loading && <div className="text-slate-400 text-sm text-center py-8">Loading…</div>}
-              {!loading && displayedRows.length === 0 && (
+
+              {!loading && !showAllDates && todaysRows.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
-                  {showAllDates
-                    ? `No entries yet for ${selectedAccount.name}.`
-                    : `No entries for ${formatDateDisplay(effectiveBusinessDate)}.${rows.length > 0 ? ` (${rows.length} on other dates — switch to "All dates".)` : ""}`}
+                  {`No entries for ${formatDateDisplay(effectiveBusinessDate)}.${rows.length > 0 ? ` (${rows.length} on other dates — switch to "All dates".)` : ""}`}
                 </div>
               )}
-              {!loading && displayedRows.length > 0 && (
+              {!loading && !showAllDates && todaysRows.length > 0 && (
+                <EntriesTable rows={todaysRows} onEdit={startEdit} onDelete={(id) => void removeEntry(id)} />
+              )}
+
+              {!loading && showAllDates && dateGroups.length === 0 && (
+                <div className="text-slate-400 text-sm text-center py-12">No entries yet for {selectedAccount.name}.</div>
+              )}
+              {!loading && showAllDates && dateGroups.length > 0 && (
                 <table className="table w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="px-3 py-1.5 w-24">Date</th>
-                      <th className="px-3 py-1.5 text-left">Type</th>
-                      <th className="px-3 py-1.5 text-right w-28">Amount</th>
+                      <th className="px-3 py-1.5 text-left w-32">Date</th>
+                      <th className="px-3 py-1.5 text-right w-32">Net</th>
                       <th className="px-3 py-1.5 text-right w-32">Balance</th>
-                      <th className="px-3 py-1.5 pl-5 border-l border-slate-200 text-left">Note</th>
-                      <th className="px-3 py-1.5 w-24 text-center">Actions</th>
+                      <th className="px-3 py-1.5 text-right w-20">Entries</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-300">
-                    {[...displayedRows].reverse().map((r) => (
-                      <tr key={r.id}>
-                        <td className="px-3 py-1 text-xs font-mono whitespace-nowrap">{formatDateDisplay(r.entryDate)}</td>
-                        <td className="px-3 py-1">
-                          <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                            r.type === "GAVE_TO_SHOP" ? "bg-emerald-50 text-emerald-700" : r.type === "TOOK_FROM_SHOP" ? "bg-rose-50 text-rose-700" : "bg-cyan-50 text-cyan-700"
-                          }`}>{TYPE_META[r.type].label}</span>
+                    {dateGroups.map((g) => (
+                      <tr key={g.date}
+                        onClick={() => setDayDetail(g.date)}
+                        className={`cursor-pointer hover:bg-slate-50 ${g.date === effectiveBusinessDate ? "bg-amber-50" : ""}`}
+                      >
+                        <td className="px-3 py-1.5 text-xs font-mono whitespace-nowrap">
+                          {formatDateDisplay(g.date)}
+                          {g.date === effectiveBusinessDate && <span className="ml-1.5 text-[9px] font-semibold text-amber-600 uppercase">Today</span>}
                         </td>
-                        <td className="px-3 py-1 text-right font-mono whitespace-nowrap">{pkr(Number(r.amount))}</td>
-                        <td className={`px-3 py-1 text-right font-mono whitespace-nowrap font-semibold ${r.runningBalance > 0 ? "text-emerald-700" : r.runningBalance < 0 ? "text-red-700" : "text-slate-400"}`}>
-                          {pkr(Math.abs(r.runningBalance))}
+                        <td className={`px-3 py-1.5 text-right font-mono font-semibold ${g.net > 0 ? "text-emerald-700" : g.net < 0 ? "text-red-700" : "text-slate-400"}`}>
+                          {pkrSigned(g.net)}
                         </td>
-                        <td className="px-3 py-1 pl-5 border-l border-slate-200 text-xs text-slate-500 max-w-[220px] truncate" title={r.note ?? ""}>{r.note}</td>
-                        <td className="px-3 py-1 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button title="Edit" onClick={() => startEdit(r)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700">Edit</button>
-                            <button title="Delete" onClick={() => void removeEntry(r.id)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700">Del</button>
-                          </div>
+                        <td className={`px-3 py-1.5 text-right font-mono ${g.closingBalance > 0 ? "text-emerald-700" : g.closingBalance < 0 ? "text-red-700" : "text-slate-400"}`}>
+                          {pkr(Math.abs(g.closingBalance))}
                         </td>
+                        <td className="px-3 py-1.5 text-right text-xs text-slate-400">{g.count}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -395,6 +455,31 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
           )}
         </div>
       </div>
+
+      {/* Per-day detail popup — opened by clicking a date row in "All dates" */}
+      {dayDetail && selectedAccount && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setDayDetail(null); }}>
+          <div className="card w-full max-w-3xl max-h-[80vh] flex flex-col p-0">
+            <div className="px-5 py-3 border-b flex items-center justify-between gap-4">
+              <h3 className="text-lg font-bold">{formatDateDisplay(dayDetail)} — {selectedAccount.name}</h3>
+              <button onClick={() => setDayDetail(null)} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-auto p-5">
+              {(() => {
+                const dayRows = rows.filter((r) => r.entryDate === dayDetail);
+                if (dayRows.length === 0) return <div className="text-slate-400 text-sm text-center py-8">No entries left for this date.</div>;
+                return (
+                  <EntriesTable
+                    rows={dayRows}
+                    onEdit={(e) => { startEdit(e); setDayDetail(null); }}
+                    onDelete={(id) => void removeEntry(id)}
+                  />
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
