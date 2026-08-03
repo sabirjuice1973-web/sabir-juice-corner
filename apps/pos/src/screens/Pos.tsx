@@ -76,6 +76,8 @@ export function Pos({
   const [salesOpen, setSalesOpen] = useState(false);
   const [pettyCashOpen, setPettyCashOpen] = useState(false);
   const [creditorOpen, setCreditorOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   // Row selection state — Shift+click on a row sets this; Shift+C reads it.
   const [selectedRow, setSelectedRow] = useState<{ boxIdx: number; localId: string } | null>(null);
   // Active branch business date (YYYY-MM-DD), loaded from /branches/:id/business-date.
@@ -502,6 +504,16 @@ export function Pos({
     return () => clearInterval(id);
   }, [fetchBoxSales]);
 
+  // Close the header menu when the user clicks anywhere outside it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [menuOpen]);
+
   // On mount: fetch all OPEN orders for this shift from the server and rebuild
   // the boxes from that authoritative list. This ensures a cashier or manager
   // logging in mid-shift immediately sees every order already in the boxes,
@@ -856,43 +868,81 @@ export function Pos({
         {/* Divider */}
         <span className="w-px self-stretch bg-white/10 shrink-0" />
 
-        {/* Primary nav — each feature gets its own colored pill so they're
-            actually distinguishable at a glance, not just ghost-on-dark. */}
+        {/* Primary nav — Sales + Kitchen always visible; everything else in the Menu dropdown */}
         <div className="flex items-center gap-1.5 shrink-0">
           {isOwner && (
             <NavPill color="emerald" onClick={() => setSalesOpen(true)} label="Sales"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10h18M3 6h18M3 14h12M3 18h8" /></svg>} />
           )}
-          {isOwner && (
-            <NavPill color="blue" onClick={openStatsWindow} label="Stats"
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
-              </svg>} />
-          )}
-          {isOwner && (
-            <NavPill color="violet" onClick={openPaymentScheduleWindow} label="Schedule"
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
-              </svg>} />
-          )}
-          {isOwner && (
-            <NavPill color="amber" onClick={openPartnerAccountsWindow} label="Self Loan"
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>} />
-          )}
-          <NavPill color="teal" onClick={openLedgerWindow} label="Hisaab"
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /><line x1="8" y1="8" x2="16" y2="8" /><line x1="8" y1="12" x2="14" y2="12" />
-            </svg>} />
-          <NavPill color="rose" onClick={() => setCreditorOpen(true)} label="Accounts"
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 12V8H6a2 2 0 0 1 0-4h12v4" /><path d="M4 6v12a2 2 0 0 0 2 2h14v-4" /><circle cx="16" cy="14" r="2" />
-            </svg>} />
           <NavPill color="cyan" onClick={openKitchenScreen} label="Kitchen"
             icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
             </svg>} />
+
+          {/* ── Menu dropdown ── */}
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold text-sm transition-colors border border-white/20"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+              Menu
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: menuOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {menuOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-52 rounded-xl shadow-2xl z-50 overflow-hidden"
+                style={{ background: "linear-gradient(160deg, #022c22 0%, #064e3b 100%)", border: "1px solid rgba(255,255,255,0.15)" }}>
+
+                {/* Owner-only section */}
+                {isOwner && <>
+                  <div className="px-3 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-400/60">Owner</div>
+                  <MenuDropItem label="Stats" color="#3b82f6"
+                    icon={<><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>}
+                    onClick={() => { openStatsWindow(); setMenuOpen(false); }} />
+                  <MenuDropItem label="Schedule" color="#8b5cf6"
+                    icon={<><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></>}
+                    onClick={() => { openPaymentScheduleWindow(); setMenuOpen(false); }} />
+                  <MenuDropItem label="Self Loan" color="#f59e0b"
+                    icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>}
+                    onClick={() => { openPartnerAccountsWindow(); setMenuOpen(false); }} />
+                  <div className="mx-3 my-1 border-t border-white/10" />
+                </>}
+
+                {/* All users */}
+                <div className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-400/60">Screens</div>
+                <MenuDropItem label="Hisaab Kitaab" color="#14b8a6"
+                  icon={<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /><line x1="8" y1="8" x2="16" y2="8" /><line x1="8" y1="12" x2="14" y2="12" /></>}
+                  onClick={() => { openLedgerWindow(); setMenuOpen(false); }} />
+                <MenuDropItem label="Accounts" color="#f43f5e"
+                  icon={<><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4" /><path d="M4 6v12a2 2 0 0 0 2 2h14v-4" /><circle cx="16" cy="14" r="2" /></>}
+                  onClick={() => { setCreditorOpen(true); setMenuOpen(false); }} />
+
+                <div className="mx-3 my-1 border-t border-white/10" />
+
+                {/* Session actions */}
+                <MenuDropItem label="Petty Cash" color="#94a3b8"
+                  icon={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></>}
+                  onClick={() => { setPettyCashOpen(true); setMenuOpen(false); }} />
+                <div className="pb-1.5">
+                  <button
+                    onClick={() => { setClosingShift(true); setMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors text-left"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" />
+                    </svg>
+                    Close Shift
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <SyncStatus />
@@ -923,25 +973,6 @@ export function Pos({
             {user.fullName}
             {isOwner && <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-800 bg-emerald-300 px-1.5 py-0.5 rounded">Owner</span>}
           </span>
-          <button
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 font-medium text-sm transition-colors"
-            onClick={() => setPettyCashOpen(true)}
-            title="Print tomorrow's petty cash slip to staple with the drawer float"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-            Petty Cash
-          </button>
-          <button
-            className="px-3 py-1.5 rounded-lg bg-amber-500/90 border border-amber-400/60 text-amber-950 hover:bg-amber-400 font-semibold text-sm transition-colors"
-            onClick={() => setClosingShift(true)}
-            title="End this shift — counts the drawer and closes today's session"
-          >
-            Close shift
-          </button>
           <button
             className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
             onClick={onLogout}
@@ -1140,7 +1171,27 @@ export function Pos({
   );
 }
 
-/** One of the header's colored nav pills (Sales/Stats/Schedule/Hisaab/Accounts/Kitchen) —
+/** A row inside the header Menu dropdown. */
+function MenuDropItem({ label, icon, color, onClick }: {
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-white/85 hover:bg-white/10 transition-colors text-left"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {icon}
+      </svg>
+      {label}
+    </button>
+  );
+}
+
+/** One of the header's colored nav pills (Sales / Kitchen) —
  * a solid color chip rather than ghost-on-dark so each feature is distinguishable at a glance. */
 function NavPill({ onClick, color, icon, label }: {
   onClick: () => void;
