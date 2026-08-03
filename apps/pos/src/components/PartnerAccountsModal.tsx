@@ -170,7 +170,12 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   // there's no natural sign for it; it's only entered/left via its button.
   function onAmountChange(raw: string) {
     setForm((p) => {
-      if (p.type === "RECEIVED_ONLINE") return { ...p, amount: raw };
+      if (p.type === "RECEIVED_ONLINE") {
+        // No sign convention for Online (it always subtracts regardless) —
+        // strip a leading minus immediately so what's shown always matches
+        // what gets saved, instead of silently dropping it at submit time.
+        return { ...p, amount: raw.replace(/^-+/, "") };
+      }
       const evaluated = evalAmountExpr(raw);
       if (evaluated === null) return { ...p, amount: raw };
       return { ...p, amount: raw, type: evaluated < 0 ? "TOOK_FROM_SHOP" : "GAVE_TO_SHOP" };
