@@ -639,18 +639,28 @@ function debtSummaryHtml(data: { totalBilled: number; totalPaid: number; totalDe
 
 // ─── Account Report — thermal (80mm) summary print ─────────────────────────
 
+type ThermalReportEntry = {
+  entryDate: string; productName: string; quantity: string | null;
+  total: number; cashPaid: number; balance: number;
+};
+type ThermalReportGroup = {
+  position: number; name: string; totalAmount: number; totalCashPaid: number;
+  entries: ThermalReportEntry[];
+};
+
 /**
  * A compact 80mm alternative to the full-page Account Report PDF — grand
- * totals plus a per-account breakdown, no line-item detail (that table has
- * 10 columns and doesn't fit any thermal width meaningfully). For a quick
- * printout on the shop's existing thermal printer; use the "Download PDF"
- * button on the report screen for the full, unabridged version.
+ * totals, per-account breakdown, AND a condensed entry-by-entry table (date,
+ * product, total, running balance; cash-paid folded into a one-line note
+ * instead of its own column). Detail is compressed, not dropped — for the
+ * unabridged version with the full 10-column table, use "Download PDF" on
+ * the report screen.
  */
 export function printAccountReportThermal(data: {
   dateRange: string;
   filtersText: string | null;
   rowCount: number;
-  groups: { position: number; name: string; totalAmount: number; totalCashPaid: number }[];
+  groups: ThermalReportGroup[];
   grandTotalAmount: number;
   grandTotalCashPaid: number;
 }) {
@@ -669,7 +679,7 @@ function accountReportThermalHtml(data: {
   dateRange: string;
   filtersText: string | null;
   rowCount: number;
-  groups: { position: number; name: string; totalAmount: number; totalCashPaid: number }[];
+  groups: ThermalReportGroup[];
   grandTotalAmount: number;
   grandTotalCashPaid: number;
 }): string {
@@ -678,7 +688,7 @@ function accountReportThermalHtml(data: {
   const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
   const grandBalance = data.grandTotalAmount - data.grandTotalCashPaid;
 
-  const rows = data.groups.map((g) => {
+  const breakdownRows = data.groups.map((g) => {
     const bal = g.totalAmount - g.totalCashPaid;
     return `
     <tr>
@@ -688,6 +698,31 @@ function accountReportThermalHtml(data: {
       <td class="num ${bal < 0 ? "credit" : ""}">${formatMoney(bal)}</td>
     </tr>`;
   }).join("");
+
+  const groupSections = data.groups.map((g) => {
+    const bal = g.totalAmount - g.totalCashPaid;
+    const entryRows = g.entries.map((e) => {
+      const qtyTxt = e.quantity ? ` ×${escapeHtml(e.quantity)}` : "";
+      return `
+      <tr>
+        <td class="dt">${escapeHtml(formatDateNumeric(e.entryDate))}</td>
+        <td class="prod">${escapeHtml(e.productName)}${qtyTxt}</td>
+        <td class="num">${formatMoney(e.total)}</td>
+        <td class="num ${e.balance < 0 ? "credit" : ""}">${formatMoney(e.balance)}</td>
+      </tr>
+      ${e.cashPaid > 0 ? `<tr class="paid-row"><td colspan="4">Paid: PKR ${formatMoney(e.cashPaid)}</td></tr>` : ""}`;
+    }).join("");
+
+    return `
+    <div class="acct-hdr">
+      <span>${g.position}. ${escapeHtml(g.name)}</span>
+      <span class="acct-bal ${bal < 0 ? "credit" : ""}">Bal: ${formatMoney(bal)}</span>
+    </div>
+    <table class="entries">
+      <tr><th>Date</th><th>Product</th><th>Total</th><th>Bal</th></tr>
+      ${entryRows}
+    </table>`;
+  }).join("<hr />");
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><title>Account Report</title>
@@ -722,6 +757,18 @@ function accountReportThermalHtml(data: {
   table.breakdown td.acct { font-weight: 600; }
   table.breakdown td.num { text-align: right; font-weight: 700; white-space: nowrap; }
   table.breakdown td.num.credit { color: #006600; }
+  .acct-hdr { display: flex; justify-content: space-between; align-items: baseline; font-size: 8.5pt; font-weight: 900; margin: 1.5mm 0 0.5mm; }
+  .acct-bal { font-size: 7.5pt; font-weight: 700; }
+  .acct-bal.credit { color: #006600; }
+  table.entries { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+  table.entries th { text-align: right; font-size: 6.5pt; font-weight: 700; color: #555; padding-bottom: 0.5mm; border-bottom: 1px solid #999; }
+  table.entries th:first-child, table.entries th:nth-child(2) { text-align: left; }
+  table.entries td { padding: 0.5mm 0.5mm 0.5mm 0; vertical-align: top; }
+  table.entries td.dt { white-space: nowrap; color: #444; width: 11mm; }
+  table.entries td.prod { word-break: break-word; }
+  table.entries td.num { text-align: right; font-weight: 700; white-space: nowrap; width: 15mm; }
+  table.entries td.num.credit { color: #006600; }
+  table.entries tr.paid-row td { padding: 0 0 0.8mm 11mm; font-size: 6.5pt; font-style: italic; color: #555; }
   .footer-line { text-align: center; font-size: 7.5pt; font-weight: 700; margin-top: 1mm; }
 </style>
 </head><body>
@@ -746,8 +793,11 @@ function accountReportThermalHtml(data: {
   <div class="section-hdr">BY ACCOUNT (PKR)</div>
   <table class="breakdown">
     <tr><th>Account</th><th>Total</th><th>Paid</th><th>Balance</th></tr>
-    ${rows}
+    ${breakdownRows}
   </table>` : ""}
+  <hr />
+  <div class="section-hdr">ENTRY DETAIL</div>
+  ${groupSections}
   <hr />
   <div class="footer-line">Printed: ${printDate} ${printTime}</div>
 </div>

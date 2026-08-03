@@ -1398,7 +1398,20 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
     if (!data) return;
     printAccountReportThermal({
       dateRange, filtersText, rowCount: data.rowCount,
-      groups: data.groups.map((g) => ({ position: g.account.position, name: g.account.name, totalAmount: parseFloat(g.totalAmount), totalCashPaid: parseFloat(g.totalCashPaid) })),
+      groups: data.groups.map((g) => {
+        let runBal = 0;
+        return {
+          position: g.account.position, name: g.account.name,
+          totalAmount: parseFloat(g.totalAmount), totalCashPaid: parseFloat(g.totalCashPaid),
+          entries: g.entries.map((e) => {
+            runBal += parseFloat(e.total) - parseFloat(e.cashPaid);
+            return {
+              entryDate: e.entryDate, productName: e.productName, quantity: e.quantity,
+              total: parseFloat(e.total), cashPaid: parseFloat(e.cashPaid), balance: runBal,
+            };
+          }),
+        };
+      }),
       grandTotalAmount, grandTotalCashPaid,
     });
   }
