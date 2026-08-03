@@ -53,7 +53,7 @@ type FormState = {
   amount: string;
   note: string;
 };
-const EMPTY_FORM = (): FormState => ({ id: null, entryDate: todayIso(), type: "GAVE_TO_SHOP", amount: "", note: "" });
+const EMPTY_FORM = (entryDate: string): FormState => ({ id: null, entryDate, type: "GAVE_TO_SHOP", amount: "", note: "" });
 
 export function PartnerAccountsModal({ branchId, businessDate, onClose, standalone = false }: {
   branchId: string;
@@ -70,7 +70,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   const [entries, setEntries] = useState<PartnerAccountEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM());
+  const [form, setForm] = useState<FormState>(() => EMPTY_FORM(effectiveBusinessDate));
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -125,7 +125,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
     .filter((r) => r.entryDate === effectiveBusinessDate)
     .reduce((s, r) => s + (r.type === "GAVE_TO_SHOP" ? Number(r.amount) : -Number(r.amount)), 0);
 
-  function resetForm() { setForm(EMPTY_FORM()); }
+  function resetForm() { setForm(EMPTY_FORM(effectiveBusinessDate)); }
 
   async function refreshAfterMutation() {
     await Promise.all([loadAccounts(), selectedId ? loadEntries(selectedId) : Promise.resolve()]);
