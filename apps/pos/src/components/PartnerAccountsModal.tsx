@@ -25,6 +25,20 @@ function formatDateDisplay(iso: string): string {
 function pkr(n: number): string {
   return `PKR ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
 }
+function pkrSigned(n: number): string {
+  return `${n < 0 ? "−" : n > 0 ? "+" : ""}${pkr(Math.abs(n))}`;
+}
+
+// Lets the Amount field take a quick sum like "45+10-60" (Enter records the
+// evaluated total, -5 here) instead of forcing a single already-added-up
+// number. Also how a bare "-500" is recognised as a subtraction.
+function evalAmountExpr(raw: string): number | null {
+  const cleaned = raw.replace(/\s+/g, "");
+  if (!/^[+-]?\d+(\.\d+)?([+-]\d+(\.\d+)?)*$/.test(cleaned)) return null;
+  const tokens = cleaned.match(/[+-]?\d+(\.\d+)?/g);
+  if (!tokens || tokens.length === 0) return null;
+  return tokens.reduce((s, t) => s + parseFloat(t), 0);
+}
 
 const TYPE_META: Record<PartnerAccountEntry["type"], { label: string; short: string; color: string }> = {
   GAVE_TO_SHOP:    { label: "Gave to Shop",          short: "Gave In",  color: "emerald" },
@@ -41,10 +55,16 @@ type FormState = {
 };
 const EMPTY_FORM = (): FormState => ({ id: null, entryDate: todayIso(), type: "GAVE_TO_SHOP", amount: "", note: "" });
 
-export function PartnerAccountsModal({ branchId, onClose, standalone = false }: {
-  branchId: string; onClose: () => void;
+export function PartnerAccountsModal({ branchId, businessDate, onClose, standalone = false }: {
+  branchId: string;
+  /** Shop's current business date (YYYY-MM-DD) — falls back to the real
+   * calendar date if not supplied. Drives the "Today" entries filter and the
+   * business-date net stat below. */
+  businessDate?: string | null;
+  onClose: () => void;
   standalone?: boolean;
 }) {
+  const effectiveBusinessDate = businessDate || todayIso();
   const [accounts, setAccounts] = useState<PartnerAccount[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [entries, setEntries] = useState<PartnerAccountEntry[] | null>(null);
@@ -54,6 +74,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [showAllDates, setShowAllDates] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
 
   const loadAccounts = async () => {
@@ -93,6 +114,17 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
     });
   })();
 
+  // Default view is just the business date's entries; "All dates" shows the
+  // full history (previous behavior). Running balance always reflects the
+  // true all-time position regardless of which rows are shown.
+  const displayedRows = showAllDates ? rows : rows.filter((r) => r.entryDate === effectiveBusinessDate);
+
+  // Business date's net movement — not the running balance, just today's
+  // entries summed the same signed way (gave +, took/online −).
+  const businessDateNet = rows
+    .filter((r) => r.entryDate === effectiveBusinessDate)
+    .reduce((s, r) => s + (r.type === "GAVE_TO_SHOP" ? Number(r.amount) : -Number(r.amount)), 0);
+
   function resetForm() { setForm(EMPTY_FORM()); }
 
   async function refreshAfterMutation() {
@@ -100,12 +132,17 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
   }
 
   async function handleSubmit() {
-    const amt = parseFloat(form.amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setError("Enter a valid amount"); return; }
+    const evaluated = evalAmountExpr(form.amount);
+    if (evaluated === null || evaluated === 0) { setError("Enter a valid amount"); return; }
     if (!selectedId) return;
+    // Sign decides Gave-In vs Took-Out; Online is only ever picked via its
+    // button (there's no sign convention for "paid to a personal account").
+    const type: PartnerAccountEntry["type"] =
+      form.type === "RECEIVED_ONLINE" ? "RECEIVED_ONLINE" : evaluated < 0 ? "TOOK_FROM_SHOP" : "GAVE_TO_SHOP";
+    const amt = Math.abs(evaluated);
     setBusy(true); setError(null);
     try {
-      const payload = { entryDate: form.entryDate, type: form.type, amount: amt, note: form.note.trim() || null };
+      const payload = { entryDate: form.entryDate, type, amount: amt, note: form.note.trim() || null };
       if (form.id) {
         await api.updatePartnerAccountEntry(selectedId, form.id, payload);
       } else {
@@ -121,7 +158,37 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
   }
 
   function startEdit(e: PartnerAccountEntry) {
-    setForm({ id: e.id, entryDate: e.entryDate, type: e.type, amount: e.amount, note: e.note ?? "" });
+    // Show Took Out amounts as negative so the sign-based entry model stays
+    // consistent while editing — the DB always stores a positive magnitude.
+    const amount = e.type === "TOOK_FROM_SHOP" ? `-${e.amount}` : e.amount;
+    setForm({ id: e.id, entryDate: e.entryDate, type: e.type, amount, note: e.note ?? "" });
+    amountRef.current?.focus();
+  }
+
+  // Typing a signed amount picks Gave-In/Took-Out automatically — no need to
+  // click a button first. Online mode is sticky against sign changes since
+  // there's no natural sign for it; it's only entered/left via its button.
+  function onAmountChange(raw: string) {
+    setForm((p) => {
+      if (p.type === "RECEIVED_ONLINE") return { ...p, amount: raw };
+      const evaluated = evalAmountExpr(raw);
+      if (evaluated === null) return { ...p, amount: raw };
+      return { ...p, amount: raw, type: evaluated < 0 ? "TOOK_FROM_SHOP" : "GAVE_TO_SHOP" };
+    });
+  }
+
+  // Clicking a type button still works as an explicit override — it also
+  // flips the amount's sign to match, so the field and the highlighted
+  // button never disagree on the next keystroke's auto-detection.
+  function selectType(t: PartnerAccountEntry["type"]) {
+    setForm((p) => {
+      const evaluated = evalAmountExpr(p.amount);
+      if (evaluated === null || evaluated === 0) return { ...p, type: t };
+      const mag = Math.abs(evaluated);
+      const amount = t === "TOOK_FROM_SHOP" ? String(-mag) : String(mag);
+      return { ...p, type: t, amount };
+    });
+    amountRef.current?.focus();
   }
 
   async function removeEntry(id: string) {
@@ -225,7 +292,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Type</label>
                     <div className="flex rounded-lg overflow-hidden border border-slate-300">
                       {(Object.keys(TYPE_META) as PartnerAccountEntry["type"][]).map((t) => (
-                        <button key={t} type="button" onClick={() => { setForm((p) => ({ ...p, type: t })); amountRef.current?.focus(); }}
+                        <button key={t} type="button" onClick={() => selectType(t)}
                           className={`px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap ${form.type === t
                             ? t === "GAVE_TO_SHOP" ? "bg-emerald-600 text-white" : t === "TOOK_FROM_SHOP" ? "bg-rose-600 text-white" : "bg-cyan-600 text-white"
                             : "bg-white text-slate-600 hover:bg-slate-50"}`}
@@ -235,10 +302,10 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
                   </div>
                   <div className="shrink-0">
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Amount</label>
-                    <input ref={amountRef} type="number" min="0" autoFocus placeholder="0" value={form.amount}
-                      onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+                    <input ref={amountRef} type="text" inputMode="decimal" autoFocus placeholder="0 or 45+10-60" value={form.amount}
+                      onChange={(e) => onAmountChange(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
-                      className="input text-sm w-28 text-right" />
+                      className="input text-sm w-32 text-right font-mono" />
                   </div>
                   <div className="flex-1 min-w-[160px]">
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Note (optional)</label>
@@ -256,11 +323,33 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
                 </div>
               </div>
 
+              {/* Business date net + Today/All toggle */}
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div className="text-sm">
+                  <span className="text-slate-500">{formatDateDisplay(effectiveBusinessDate)} net:</span>{" "}
+                  <span className={`font-mono font-bold ${businessDateNet > 0 ? "text-emerald-700" : businessDateNet < 0 ? "text-red-700" : "text-slate-400"}`}>
+                    {pkrSigned(businessDateNet)}
+                  </span>
+                </div>
+                <div className="flex rounded-lg overflow-hidden border border-slate-300 text-xs font-semibold shrink-0">
+                  <button type="button" onClick={() => setShowAllDates(false)}
+                    className={`px-3 py-1 ${!showAllDates ? "bg-accent-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  >Today</button>
+                  <button type="button" onClick={() => setShowAllDates(true)}
+                    className={`px-3 py-1 ${showAllDates ? "bg-accent-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  >All dates</button>
+                </div>
+              </div>
+
               {loading && <div className="text-slate-400 text-sm text-center py-8">Loading…</div>}
-              {!loading && rows.length === 0 && (
-                <div className="text-slate-400 text-sm text-center py-12">No entries yet for {selectedAccount.name}.</div>
+              {!loading && displayedRows.length === 0 && (
+                <div className="text-slate-400 text-sm text-center py-12">
+                  {showAllDates
+                    ? `No entries yet for ${selectedAccount.name}.`
+                    : `No entries for ${formatDateDisplay(effectiveBusinessDate)}.${rows.length > 0 ? ` (${rows.length} on other dates — switch to "All dates".)` : ""}`}
+                </div>
               )}
-              {!loading && rows.length > 0 && (
+              {!loading && displayedRows.length > 0 && (
                 <table className="table w-full border-collapse">
                   <thead>
                     <tr>
@@ -273,7 +362,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-300">
-                    {[...rows].reverse().map((r) => (
+                    {[...displayedRows].reverse().map((r) => (
                       <tr key={r.id}>
                         <td className="px-3 py-1 text-xs font-mono whitespace-nowrap">{formatDateDisplay(r.entryDate)}</td>
                         <td className="px-3 py-1">

@@ -13,6 +13,7 @@ export function PartnerAccountsWindow() {
   const params = new URLSearchParams(window.location.search);
   const branchId = params.get("branchId");
   const owner = params.get("owner") === "1";
+  const businessDate = params.get("businessDate");
 
   if (!branchId) {
     return (
@@ -32,6 +33,7 @@ export function PartnerAccountsWindow() {
   return (
     <PartnerAccountsModal
       branchId={branchId}
+      businessDate={businessDate}
       standalone
       onClose={() => window.close()}
     />

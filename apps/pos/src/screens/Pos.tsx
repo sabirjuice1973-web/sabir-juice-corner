@@ -763,6 +763,7 @@ export function Pos({
     // who might guess/bookmark the URL — the API is OWNER-only regardless,
     // this is just so a cashier account can't even see the screen.
     const params = new URLSearchParams({ partners: "1", branchId, owner: isOwner ? "1" : "0" });
+    if (businessDate) params.set("businessDate", businessDate);
     const w = window.open(`/?${params}`, "sjc-partner-accounts", "noopener,popup,width=1200,height=800");
     if (!w) {
       setError("Browser blocked the Self Loan window — allow popups for this site.");
