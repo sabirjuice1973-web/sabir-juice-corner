@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type PartnerAccount, type PartnerAccountEntry } from "../api";
 
 /**
@@ -54,6 +54,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const amountRef = useRef<HTMLInputElement>(null);
 
   const loadAccounts = async () => {
     try {
@@ -224,7 +225,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Type</label>
                     <div className="flex rounded-lg overflow-hidden border border-slate-300">
                       {(Object.keys(TYPE_META) as PartnerAccountEntry["type"][]).map((t) => (
-                        <button key={t} type="button" onClick={() => setForm((p) => ({ ...p, type: t }))}
+                        <button key={t} type="button" onClick={() => { setForm((p) => ({ ...p, type: t })); amountRef.current?.focus(); }}
                           className={`px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap ${form.type === t
                             ? t === "GAVE_TO_SHOP" ? "bg-emerald-600 text-white" : t === "TOOK_FROM_SHOP" ? "bg-rose-600 text-white" : "bg-cyan-600 text-white"
                             : "bg-white text-slate-600 hover:bg-slate-50"}`}
@@ -234,7 +235,7 @@ export function PartnerAccountsModal({ branchId, onClose, standalone = false }: 
                   </div>
                   <div className="shrink-0">
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Amount</label>
-                    <input type="number" min="0" autoFocus placeholder="0" value={form.amount}
+                    <input ref={amountRef} type="number" min="0" autoFocus placeholder="0" value={form.amount}
                       onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
                       className="input text-sm w-28 text-right" />
