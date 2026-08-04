@@ -67,17 +67,32 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
 
   const isToday = fromDate === null && toDate === null;
 
-  // Fetch late cash, opening cash, and cash in/out — only meaningful for today's (currently open) shift
+  // Opening cash + cash in/out — genuinely tied to the currently-open shift's
+  // till, so these only make sense for "today," not a historical date/range.
   const refreshShiftStats = () => {
-    if (!isToday) { setLateCashReceived(0); setLateDiscount(0); return; }
+    if (!isToday) return;
     api.todayStats(shiftId).then((s) => {
-      setLateCashReceived(Number(s.lateCashReceived));
-      setLateDiscount(Number(s.lateDiscount));
       setOpeningCash(Number(s.openingCash));
       setCashMovements(s.cashMovements);
     }).catch(() => {});
   };
   useEffect(refreshShiftStats, [shiftId, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Late Cash / Late Discount for the SELECTED period — previously this only
+  // ever showed data for "today" (via /shifts/:id/today-stats, which is
+  // hardcoded to the branch's current business date) and silently reset to
+  // "historical not tracked" for any explicit date, range, or even today's
+  // own date picked via the calendar. This uses a date-range-aware endpoint
+  // instead, same pattern as the Total Expense fetch below.
+  useEffect(() => {
+    let cancelled = false;
+    const from = fromDate ?? todayStr;
+    const to = toDate ?? todayStr;
+    api.latePaymentsSummary(branchId, from, to).then((r) => {
+      if (!cancelled) { setLateCashReceived(Number(r.amount)); setLateDiscount(Number(r.discount)); }
+    }).catch(() => { if (!cancelled) { setLateCashReceived(0); setLateDiscount(0); } });
+    return () => { cancelled = true; };
+  }, [branchId, fromDate, toDate, todayStr]);
 
   // Total Expense — cash paid out across all ledger accounts in the selected
   // period (defaults to today when no range is picked). Uses the ledger report
@@ -413,12 +428,12 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                     </div>
                   </div>
 
-                  {/* Row 2: late cash + late discount (0 for historical dates) + per-day averages (multi-day ranges only) */}
+                  {/* Row 2: late cash + late discount + per-day averages (multi-day ranges only) */}
                   <div className="grid grid-cols-4 gap-3">
                     <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
                       <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateSale > 0 ? `PKR ${lateSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-                      <div className="text-[10px] text-cyan-500 mt-0.5">{isToday ? "from credit accounts" : "historical not tracked"}</div>
+                      <div className="text-[10px] text-cyan-500 mt-0.5">from credit accounts</div>
                     </div>
                     <div className="rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-red-500 font-bold">Late Discount</div>

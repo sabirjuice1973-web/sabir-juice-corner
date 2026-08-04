@@ -168,6 +168,9 @@ export const api = {
     request<any>("GET", `/accounts/${accountId}`),
   recordAccountPayment: (accountId: string | number, args: { amount: number; discount?: number; notes?: string; orderApplications?: { orderId: string; appliedAmount: number }[] }) =>
     request<any>("POST", `/accounts/${accountId}/payments`, { method: "CASH", ...args }),
+  /** Late Cash / Late Discount for ANY date range (not just "today") — used by the Sales screen. */
+  latePaymentsSummary: (branchId: string | number, from: string, to: string) =>
+    request<{ amount: string; discount: string }>("GET", `/accounts/late-payments-summary?branchId=${branchId}&from=${from}&to=${to}`),
   createOrder: (branchId: string | number, shiftId: string | number, waiterBox: number) =>
     request<{ order: Order }>("POST", "/orders", { branchId: Number(branchId), shiftId: Number(shiftId), waiterBox }),
   createOrderWithItems: (args: {

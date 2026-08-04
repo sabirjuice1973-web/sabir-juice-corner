@@ -112,6 +112,38 @@ export async function registerAccountRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * GET /accounts/late-payments-summary?branchId=&from=&to() — sum of
+   * account-payment amount/discount across ALL creditor accounts in a
+   * branch, for payments whose businessDate falls in [from, to]. Powers the
+   * Sales screen's "Late Cash" / "Late Discount" tiles for any date range —
+   * unlike /shifts/:id/today-stats, which is hardcoded to the branch's
+   * CURRENT business date and so can't answer for a past date or a range.
+   */
+  app.get("/late-payments-summary", async (req, reply) => {
+    const q = z.object({
+      branchId: z.coerce.bigint(),
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ error: "branchId, from, to required" });
+
+    const agg = await prisma.accountPayment.aggregate({
+      _sum: { amount: true, discount: true },
+      where: {
+        account: { branchId: q.data.branchId },
+        businessDate: {
+          gte: new Date(`${q.data.from}T00:00:00.000Z`),
+          lte: new Date(`${q.data.to}T00:00:00.000Z`),
+        },
+      },
+    });
+    return toJson({
+      amount: (agg._sum.amount ?? new Prisma.Decimal(0)).toString(),
+      discount: (agg._sum.discount ?? new Prisma.Decimal(0)).toString(),
+    });
+  });
+
   /** GET /accounts/:id — single account with orders + payments + balance. */
   app.get("/:id", async (req, reply) => {
     const id = BigInt((req.params as { id: string }).id);
