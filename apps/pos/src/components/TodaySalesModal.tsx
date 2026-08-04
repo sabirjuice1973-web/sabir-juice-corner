@@ -267,11 +267,22 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const paidOrders    = (orders ?? []).filter((o) => o.status === "PAID");
   const cashOrders    = paidOrders.filter(isCashOrder);
   const creditOrders  = paidOrders.filter(isCreditOrder);
-  const cashSale      = cashOrders.reduce((s, o) => s + Number(o.total), 0);
+  // Cash Sale is the GROSS (pre-discount) subtotal — Discount is subtracted
+  // separately below, once, to reach actual cash collected. o.total in the DB
+  // is already post-discount, so summing that here (as this used to) and then
+  // subtracting discountAmount again double-counted it and understated Total
+  // Cash by the discount amount every day.
+  const cashSale      = cashOrders.reduce((s, o) => s + Number(o.subtotal), 0);
   const creditSale    = creditOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalSale     = paidOrders.reduce((s, o) => s + Number(o.total), 0);
   const totalDiscount = cashOrders.reduce((s, o) => s + Number(o.discountAmount), 0);
-  const totalCashInHand = cashSale + lateCashReceived - totalDiscount - lateDiscount;
+  // Late Cash is likewise shown GROSS — the full value of credit settled today
+  // (cash received + whatever was written off) — with Late Discount subtracted
+  // once below. lateCashReceived from the API is only the "amount" field of
+  // the settlement (already excludes the discount), so adding lateDiscount
+  // back here reconstructs the full settled total for display.
+  const lateSale = lateCashReceived + lateDiscount;
+  const totalCashInHand = cashSale - totalDiscount + lateSale - lateDiscount;
 
   // Cash in Counter: opening float + today's net cash + borrow/lend adjustment
   // − today's expense (cash already paid out of the till to suppliers/accounts).
@@ -406,7 +417,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                   <div className="grid grid-cols-4 gap-3">
                     <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-3 py-2.5 text-center">
                       <div className="text-[10px] uppercase tracking-wider text-cyan-600 font-bold">Late Cash</div>
-                      <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateCashReceived > 0 ? `PKR ${lateCashReceived.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
+                      <div className="font-mono font-bold text-cyan-900 text-base mt-0.5">{lateSale > 0 ? `PKR ${lateSale.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
                       <div className="text-[10px] text-cyan-500 mt-0.5">{isToday ? "from credit accounts" : "historical not tracked"}</div>
                     </div>
                     <div className="rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2.5 text-center">
