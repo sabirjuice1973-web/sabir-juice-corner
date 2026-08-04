@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LedgerAccount, type LedgerEntry } from "../api";
 import { printLedgerEntry, printAccountReportThermal } from "../pos/receipt";
 import { PrinterIcon } from "../components/PrinterIcon";
+import { getPettyCash } from "../lib/pettyCash";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -498,7 +499,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
         <ReportModal branchId={branchId} accounts={accounts} onMinimize={toggleMinimize} onClose={() => setShowReport(false)} />
       )}
       {showCashToday && !win.minimized && (
-        <CashTodayModal branchId={branchId} shiftId={shiftId} onMinimize={toggleMinimize} onClose={() => setShowCashToday(false)} />
+        <CashTodayModal branchId={branchId} shiftId={shiftId} businessDate={businessDate} onMinimize={toggleMinimize} onClose={() => setShowCashToday(false)} />
       )}
     </>
   );
@@ -1682,10 +1683,22 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
 
 // ─── Cash Today Modal ─────────────────────────────────────────────────────────
 
-function CashTodayModal({ branchId, shiftId, onClose, onMinimize }: { branchId: string; shiftId: string; onClose: () => void; onMinimize: () => void }) {
-  const today = todayIso();
+function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }: { branchId: string; shiftId: string; businessDate: string | null; onClose: () => void; onMinimize: () => void }) {
+  const today = businessDate ?? todayIso();
   const OPENING_KEY = `sjc.openingCash.${branchId}.${today}`;
-  const [openingCash, setOpeningCash] = useState<string>(() => localStorage.getItem(OPENING_KEY) ?? "");
+  // Opening Cash defaults to whatever Petty Cash slip was saved FOR today
+  // (printed at yesterday's close) — until the user actually types a value
+  // here, at which point that manual entry takes over. Re-checked fresh
+  // every time this modal mounts, so a later Petty Cash edit (re-saved with
+  // a different amount) is picked up next time this is opened, as long as
+  // Opening Cash was never manually touched for this date.
+  const [openingCash, setOpeningCash] = useState<string>(() => {
+    const saved = localStorage.getItem(OPENING_KEY);
+    if (saved !== null) return saved;
+    return getPettyCash(branchId, today) ?? "";
+  });
+  const [autoFilledFromPetty] = useState(() => localStorage.getItem(OPENING_KEY) === null && getPettyCash(branchId, today) !== null);
+  const [openingEdited, setOpeningEdited] = useState(false);
   const [todaySale, setTodaySale] = useState("0");
   const [totalExpenses, setTotalExpenses] = useState("0");
   const [loading, setLoading] = useState(true);
@@ -1701,7 +1714,7 @@ function CashTodayModal({ branchId, shiftId, onClose, onMinimize }: { branchId: 
     })();
   }, [branchId, shiftId, today]);
 
-  function saveOpening(v: string) { setOpeningCash(v); localStorage.setItem(OPENING_KEY, v); }
+  function saveOpening(v: string) { setOpeningCash(v); setOpeningEdited(true); localStorage.setItem(OPENING_KEY, v); }
 
   const opening = parseFloat(openingCash) || 0;
   const sale = parseFloat(todaySale) || 0;
@@ -1724,7 +1737,9 @@ function CashTodayModal({ branchId, shiftId, onClose, onMinimize }: { branchId: 
               <label className="block text-xs font-medium text-slate-600 mb-1">Opening Cash (Rs)</label>
               <input type="number" value={openingCash} onChange={(e) => saveOpening(e.target.value)}
                 placeholder="0" min="0" step="any" autoFocus className={inputCls} />
-              <p className="text-[10px] text-slate-400 mt-1">Saved automatically per day</p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {autoFilledFromPetty && !openingEdited ? "Auto-filled from yesterday's Petty Cash slip — edit to override" : "Saved automatically per day"}
+              </p>
             </div>
             <div className="rounded-lg bg-slate-50 border divide-y text-sm">
               <div className="flex justify-between px-4 py-2.5">

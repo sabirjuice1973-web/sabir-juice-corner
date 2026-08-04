@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { printPettyCashSlip } from "../pos/receipt";
+import { getPettyCash, setPettyCash } from "../lib/pettyCash";
 
 /**
  * End-of-day petty cash slip — a tiny thermal print (date + amount only) that
  * gets stapled to the cash set aside for tomorrow's opening float. The date
  * on it is deliberately the NEXT business date, not today's, since the slip
  * describes what the cash is *for*, not when it was counted.
+ *
+ * Saving here (on Print) is what lets the Hisaab "Cash Today" widget
+ * auto-fill Opening Cash with this amount the next business day.
  */
 export function PettyCashModal({ branchId, onClose }: { branchId: string; onClose: () => void }) {
   const [nextDate, setNextDate] = useState<string | null>(null);
@@ -18,7 +22,10 @@ export function PettyCashModal({ branchId, onClose }: { branchId: string; onClos
       .then((r) => {
         const d = new Date(`${r.businessDate}T00:00:00Z`);
         d.setUTCDate(d.getUTCDate() + 1);
-        setNextDate(d.toISOString().slice(0, 10));
+        const nd = d.toISOString().slice(0, 10);
+        setNextDate(nd);
+        const saved = getPettyCash(branchId, nd);
+        if (saved !== null) setAmount(saved);
       })
       .catch((e: any) => setError(e.body?.error || e.message || "Could not load business date"));
   }, [branchId]);
@@ -28,6 +35,9 @@ export function PettyCashModal({ branchId, onClose }: { branchId: string; onClos
     if (!Number.isFinite(amt) || amt < 0) { setError("Enter a valid amount"); return; }
     if (!nextDate) return;
     setError(null);
+    // Re-saving with a different amount simply overwrites — only the latest
+    // value for a given date is kept, matching how Opening Cash itself works.
+    setPettyCash(branchId, nextDate, String(amt));
     printPettyCashSlip({ forDate: nextDate, amount: amt });
   }
 
