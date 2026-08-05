@@ -1684,42 +1684,60 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
 // ─── Cash Today Modal ─────────────────────────────────────────────────────────
 
 function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }: { branchId: string; shiftId: string; businessDate: string | null; onClose: () => void; onMinimize: () => void }) {
-  const today = businessDate ?? todayIso();
-  const OPENING_KEY = `sjc.openingCash.${branchId}.${today}`;
-  // Opening Cash defaults to whatever Petty Cash slip was saved FOR today
-  // (printed at yesterday's close) — until the user actually types a value
-  // here, at which point that manual entry takes over. Re-checked fresh
-  // every time this modal mounts, so a later Petty Cash edit (re-saved with
-  // a different amount) is picked up next time this is opened, as long as
-  // Opening Cash was never manually touched for this date.
-  const [openingCash, setOpeningCash] = useState<string>(() => {
-    const saved = localStorage.getItem(OPENING_KEY);
-    if (saved !== null) return saved;
-    return getPettyCash(branchId, today) ?? "";
-  });
-  const [autoFilledFromPetty] = useState(() => localStorage.getItem(OPENING_KEY) === null && getPettyCash(branchId, today) !== null);
+  // Don't trust the businessDate PROP here — if this Ledger window was
+  // already open before the branch's business date rolled over (e.g. the
+  // owner closes up shop, THEN advances the date), the prop is frozen at
+  // whatever it was when this window's URL was built and never updates
+  // again for the life of the window. Fetch the live value fresh on mount
+  // instead, falling back to the prop only until that resolves.
+  const [today, setToday] = useState<string>(businessDate ?? todayIso());
+  const [openingCash, setOpeningCash] = useState("");
+  const [autoFilledFromPetty, setAutoFilledFromPetty] = useState(false);
   const [openingEdited, setOpeningEdited] = useState(false);
   const [todaySale, setTodaySale] = useState("0");
   const [totalExpenses, setTotalExpenses] = useState("0");
+  const [selfLoanNet, setSelfLoanNet] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [s, e] = await Promise.all([api.todayStats(shiftId), api.ledgerCashToday(branchId, today)]);
+        const { businessDate: liveToday } = await api.getBranchBusinessDate(branchId);
+        setToday(liveToday);
+
+        const OPENING_KEY = `sjc.openingCash.${branchId}.${liveToday}`;
+        const savedOpening = localStorage.getItem(OPENING_KEY);
+        const savedPetty = getPettyCash(branchId, liveToday);
+        setOpeningCash(savedOpening ?? savedPetty ?? "");
+        setAutoFilledFromPetty(savedOpening === null && savedPetty !== null);
+
+        // partnerAccountsSummary is OWNER-only and 403s for a cashier — caught
+        // inline (not left in the same Promise.all) so a non-owner opening
+        // this modal still gets Today's Sales/Expenses; the Self Loan row
+        // just stays hidden for them.
+        const [s, e, p] = await Promise.all([
+          api.todayStats(shiftId),
+          api.ledgerCashToday(branchId, liveToday),
+          api.partnerAccountsSummary(branchId, { from: liveToday, to: liveToday }).catch(() => null),
+        ]);
         setTodaySale(s.salesTotal);
         setTotalExpenses(e.totalExpenses);
+        setSelfLoanNet(p?.period ? Number(p.period.net) : 0);
       } catch {}
       setLoading(false);
     })();
-  }, [branchId, shiftId, today]);
+  }, [branchId, shiftId]);
 
-  function saveOpening(v: string) { setOpeningCash(v); setOpeningEdited(true); localStorage.setItem(OPENING_KEY, v); }
+  function saveOpening(v: string) {
+    setOpeningCash(v);
+    setOpeningEdited(true);
+    localStorage.setItem(`sjc.openingCash.${branchId}.${today}`, v);
+  }
 
   const opening = parseFloat(openingCash) || 0;
   const sale = parseFloat(todaySale) || 0;
   const expenses = parseFloat(totalExpenses) || 0;
-  const current = opening + sale - expenses;
+  const current = opening + sale - expenses + selfLoanNet;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4"
@@ -1754,6 +1772,16 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
                 <span className="text-red-600 font-medium">− All Expenses</span>
                 <span className="font-medium text-red-600 tabular-nums">− {fmtPKR(totalExpenses)}</span>
               </div>
+              {selfLoanNet !== 0 && (
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className={`font-medium ${selfLoanNet > 0 ? "text-green-700" : "text-orange-600"}`}>
+                    {selfLoanNet > 0 ? "+ Self Loan (given in)" : "− Self Loan (taken out)"}
+                  </span>
+                  <span className={`font-medium tabular-nums ${selfLoanNet > 0 ? "text-green-700" : "text-orange-600"}`}>
+                    {selfLoanNet > 0 ? "+ " : "− "}{fmtPKR(Math.abs(selfLoanNet).toFixed(2))}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between px-4 py-2.5 bg-slate-100 rounded-b-lg">
                 <span className="font-bold text-slate-800">= Current Cash</span>
                 <span className={`font-bold text-lg tabular-nums ${current >= 0 ? "text-green-700" : "text-red-700"}`}>
@@ -1761,7 +1789,7 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
                 </span>
               </div>
             </div>
-            <p className="text-[10px] text-slate-400">Expenses = sum of all Cash Paid in all 10 accounts today.</p>
+            <p className="text-[10px] text-slate-400">Expenses = sum of all Cash Paid in all 10 accounts today. Self Loan = Usman/Naveed cash in/out for today's business date.</p>
           </>}
         </div>
       </div>
