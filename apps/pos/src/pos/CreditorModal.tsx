@@ -32,10 +32,11 @@ type Props = {
   branchId: string;
   branchName: string;
   cashierName: string;
+  isOwner: boolean;
   onClose: () => void;
 };
 
-export function CreditorModal({ branchId, branchName, cashierName, onClose }: Props) {
+export function CreditorModal({ branchId, branchName, cashierName, isOwner, onClose }: Props) {
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [search, setSearch] = useState("");
   const [selectedAccount, setSelectedAccount] = useState<AccountSummary | null>(null);
@@ -368,6 +369,25 @@ ${printScript}
     void printOrPreview([order], false);
   }
 
+  // ── Delete order (OWNER-only) ────────────────────────────────────────────
+
+  async function deleteOrder(order: AccountOrder) {
+    if (!selectedAccount) return;
+    const ok = window.confirm(
+      `Permanently delete order ${order.orderNo} (PKR ${Number(order.total).toFixed(0)})? This cannot be undone.`,
+    );
+    if (!ok) return;
+    setBusy(true); setError(null);
+    try {
+      await api.deleteOrder(order.id);
+      await loadAccount(selectedAccount);
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not delete order");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // ── Cash-paid flow ─────────────────────────────────────────────────────────
 
   async function recordCashPaid(orderList: AccountOrder[], discount = 0, cashOverride?: number) {
@@ -575,7 +595,7 @@ ${printScript}
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Total</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Paid</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Due</th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide w-28">Actions</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide w-36">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -631,6 +651,18 @@ ${printScript}
                                     className="p-1 rounded hover:bg-accent-100 text-slate-500 hover:text-accent-700 disabled:opacity-40"
                                   >
                                     <PrintCashIcon />
+                                  </button>
+                                )}
+                                {/* Delete order — OWNER-only */}
+                                {isOwner && (
+                                  <button
+                                    type="button"
+                                    title="Delete this order permanently"
+                                    onClick={() => void deleteOrder(o)}
+                                    disabled={busy}
+                                    className="p-1 rounded hover:bg-red-100 text-slate-500 hover:text-red-700 disabled:opacity-40"
+                                  >
+                                    <TrashIcon />
                                   </button>
                                 )}
                               </div>
@@ -818,6 +850,16 @@ function PrintCashIcon() {
       <polyline points="6 9 6 2 18 2 18 9" />
       <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
       <polyline points="9 14 11 16 15 12" />
+    </svg>
+  );
+}
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
     </svg>
   );
 }

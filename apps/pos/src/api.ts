@@ -248,6 +248,9 @@ export const api = {
     request<{ order: Order; change: string }>("POST", `/orders/${orderId}/pay`, { method, amount }),
   voidOrder: (orderId: string | number, reason: string) =>
     request<{ order: Order }>("POST", `/orders/${orderId}/void`, { reason }),
+  /** OWNER-only. 409 if a payment has been applied against this order. */
+  deleteOrder: (orderId: string | number) =>
+    request<{ ok: true }>("DELETE", `/orders/${orderId}`),
 
   // ─── Ledger / Khatabook ────────────────────────────────────────────────
 

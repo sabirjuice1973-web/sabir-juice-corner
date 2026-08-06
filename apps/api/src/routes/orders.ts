@@ -841,4 +841,40 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     });
     return toJson({ order: updated });
   });
+
+  /**
+   * DELETE /orders/:id — permanently remove an order (OWNER-only). For
+   * cleaning up an order pushed to the wrong creditor account, a duplicate,
+   * test data, etc. — a true delete, not a status change.
+   *
+   * Blocked if any settlement payment has ever been applied to this order
+   * (an AccountPaymentOrderLink row) — deleting it then would either fail on
+   * the FK constraint or, if forced, silently orphan the payment from what
+   * it was paying for. The owner must remove/reallocate that payment first.
+   */
+  app.delete("/:id", async (req, reply) => {
+    if (!req.auth?.roles?.some((r) => r.code === "OWNER")) {
+      return reply.code(403).send({ error: "Only OWNER can delete orders" });
+    }
+    const id = BigInt((req.params as { id: string }).id);
+    const order = await prisma.order.findUnique({ where: { id } });
+    if (!order) return reply.code(404).send({ error: "Order not found" });
+
+    const linkCount = await prisma.accountPaymentOrderLink.count({ where: { orderId: id } });
+    if (linkCount > 0) {
+      return reply.code(409).send({ error: "This order has a payment applied against it — remove or reallocate that payment first, then delete." });
+    }
+
+    await prisma.order.delete({ where: { id } });
+    await writeAudit({
+      req, branchId: order.branchId,
+      action: "order.delete",
+      entityType: "Order", entityId: order.id,
+      before: {
+        orderNo: order.orderNo, status: order.status, total: order.total.toString(),
+        accountId: order.accountId?.toString() ?? null, customerName: order.customerName,
+      },
+    });
+    return toJson({ ok: true });
+  });
 }

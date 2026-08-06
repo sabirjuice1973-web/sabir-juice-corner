@@ -1115,6 +1115,7 @@ export function Pos({
           branchId={branchId}
           branchName={branchName}
           cashierName={user.fullName}
+          isOwner={isOwner}
           onClose={() => setCreditorOpen(false)}
         />
       )}
