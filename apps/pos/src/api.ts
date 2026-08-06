@@ -146,8 +146,14 @@ export const api = {
     request<{ items: Item[]; nextCursor: string | null }>("GET", `/items?q=${encodeURIComponent(q)}&limit=${limit}`),
 
   // orders
-  listOpenOrders: (branchId: string | number, shiftId: string | number) =>
-    request<{ orders: Order[] }>("GET", `/orders?branchId=${branchId}&shiftId=${shiftId}&status=OPEN&limit=50`),
+  // Deliberately branch-scoped, not shift-scoped: an OPEN order (e.g. a Box 7
+  // Market order left unpaid) is still physically sitting there regardless of
+  // which shift is currently active. Filtering by shiftId meant those orders
+  // silently vanished from the box view the moment the shift that created
+  // them closed and a new one opened — the order was never actually gone,
+  // just excluded from this query.
+  listOpenOrders: (branchId: string | number) =>
+    request<{ orders: Order[] }>("GET", `/orders?branchId=${branchId}&status=OPEN&limit=100`),
   getOrder: (orderId: string | number) =>
     request<{ order: Order }>("GET", `/orders/${orderId}`),
   replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number })[], toBox?: number) =>

@@ -514,14 +514,17 @@ export function Pos({
     return () => document.removeEventListener("mousedown", onOutside);
   }, [menuOpen]);
 
-  // On mount: fetch all OPEN orders for this shift from the server and rebuild
-  // the boxes from that authoritative list. This ensures a cashier or manager
-  // logging in mid-shift immediately sees every order already in the boxes,
-  // regardless of which browser session placed them.
+  // On mount: fetch all OPEN orders for this BRANCH (not just this shift —
+  // closing a shift doesn't require its open orders to be settled first, so
+  // e.g. a Box 7 Market order left open overnight must still show up after
+  // the next shift starts) and rebuild the boxes from that authoritative
+  // list. This also ensures a cashier or manager logging in mid-shift
+  // immediately sees every order already in the boxes, regardless of which
+  // browser session placed them.
   useEffect(() => {
     async function hydrateFromServer() {
       try {
-        const { orders } = await api.listOpenOrders(branchId, shiftId);
+        const { orders } = await api.listOpenOrders(branchId);
         setState((prev) => {
           // Preserve any offline-queue orders (no serverId) — not yet synced.
           const offline = prev.boxes.map((box) => box.filter((o) => !o.serverId));
