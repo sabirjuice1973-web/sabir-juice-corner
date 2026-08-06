@@ -245,4 +245,44 @@ export async function registerPartnerAccountRoutes(app: FastifyInstance) {
     });
     return toJson({ ok: true });
   });
+
+  /**
+   * GET /partner-accounts/:id/day-notes — every saved date-row description
+   * for this account, for the "All dates" rollup view.
+   */
+  app.get("/:id/day-notes", async (req, reply) => {
+    if (ownerOnly(req, reply)) return;
+    const id = BigInt((req.params as { id: string }).id);
+    const notes = await prisma.partnerAccountDayNote.findMany({ where: { partnerAccountId: id } });
+    return toJson({
+      notes: notes.map((n) => ({ date: n.noteDate.toISOString().slice(0, 10), note: n.note })),
+    });
+  });
+
+  /**
+   * PUT /partner-accounts/:id/day-notes/:date — set (or clear) the
+   * description for one date's rollup row. One overwritable note per date —
+   * an empty/whitespace-only note deletes the row instead of storing "".
+   */
+  app.put("/:id/day-notes/:date", async (req, reply) => {
+    if (ownerOnly(req, reply)) return;
+    const id = BigInt((req.params as { id: string }).id);
+    const dateParam = (req.params as { date: string }).date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return reply.code(400).send({ error: "Invalid date" });
+    const body = z.object({ note: z.string().max(300) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "Invalid body" });
+
+    const noteDate = new Date(`${dateParam}T00:00:00Z`);
+    const trimmed = body.data.note.trim();
+    if (trimmed === "") {
+      await prisma.partnerAccountDayNote.deleteMany({ where: { partnerAccountId: id, noteDate } });
+      return toJson({ note: null });
+    }
+    const saved = await prisma.partnerAccountDayNote.upsert({
+      where: { partnerAccountId_noteDate: { partnerAccountId: id, noteDate } },
+      create: { partnerAccountId: id, noteDate, note: trimmed },
+      update: { note: trimmed },
+    });
+    return toJson({ note: { date: dateParam, note: saved.note } });
+  });
 }

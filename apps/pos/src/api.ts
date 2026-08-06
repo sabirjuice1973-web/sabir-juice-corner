@@ -407,6 +407,10 @@ export const api = {
   }>) => request<{ entry: PartnerAccountEntry }>("PATCH", `/partner-accounts/${accountId}/entries/${entryId}`, args),
   deletePartnerAccountEntry: (accountId: string | number, entryId: string | number) =>
     request<{ ok: true }>("DELETE", `/partner-accounts/${accountId}/entries/${entryId}`),
+  partnerAccountDayNotes: (accountId: string | number) =>
+    request<{ notes: { date: string; note: string }[] }>("GET", `/partner-accounts/${accountId}/day-notes`),
+  savePartnerAccountDayNote: (accountId: string | number, date: string, note: string) =>
+    request<{ note: { date: string; note: string } | null }>("PUT", `/partner-accounts/${accountId}/day-notes/${date}`, { note }),
 };
 
 export type PartnerAccount = {

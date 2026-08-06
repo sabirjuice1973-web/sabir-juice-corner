@@ -1422,11 +1422,28 @@ model PartnerAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch  Branch                @relation(fields: [branchId], references: [id])
-  entries PartnerAccountEntry[]
+  branch    Branch                    @relation(fields: [branchId], references: [id])
+  entries   PartnerAccountEntry[]
+  dayNotes  PartnerAccountDayNote[]
 
   @@unique([branchId, position])
   @@index([branchId])
+}
+
+// Free-text note against a single date's rollup row in the Self Loan "All
+// dates" view — not tied to any one entry, just a few words summarizing that
+// day (e.g. why a Took Out was unusually large). One overwritable note per
+// (account, date), auto-saved as the owner types.
+model PartnerAccountDayNote {
+  id               BigInt   @id @default(autoincrement())
+  partnerAccountId BigInt
+  noteDate         DateTime @db.Date
+  note             String
+  updatedAt        DateTime @updatedAt
+
+  partnerAccount PartnerAccount @relation(fields: [partnerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerAccountId, noteDate])
 }
 
 enum PartnerEntryType {

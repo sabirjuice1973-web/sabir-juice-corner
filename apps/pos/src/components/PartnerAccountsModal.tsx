@@ -123,6 +123,10 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   const [renameValue, setRenameValue] = useState("");
   const [showAllDates, setShowAllDates] = useState(false);
   const [dayDetail, setDayDetail] = useState<string | null>(null);
+  // Free-text description per date row in "All dates" — keyed by entryDate.
+  // Auto-saved shortly after typing stops (see onDayNoteChange).
+  const [dayNotes, setDayNotes] = useState<Record<string, string>>({});
+  const noteSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const amountRef = useRef<HTMLInputElement>(null);
 
   const loadAccounts = async () => {
@@ -148,6 +152,28 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
     }
   };
   useEffect(() => { if (selectedId) void loadEntries(selectedId); }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadDayNotes = async (accountId: string) => {
+    setDayNotes({});
+    try {
+      const { notes } = await api.partnerAccountDayNotes(accountId);
+      setDayNotes(Object.fromEntries(notes.map((n) => [n.date, n.note])));
+    } catch { /* non-fatal — description column just starts blank */ }
+  };
+  useEffect(() => { if (selectedId) void loadDayNotes(selectedId); }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced per-date auto-save — typing resets that date's timer so a
+  // burst of keystrokes only fires one save request, ~600ms after the
+  // owner stops typing.
+  function onDayNoteChange(date: string, value: string) {
+    setDayNotes((p) => ({ ...p, [date]: value }));
+    if (!selectedId) return;
+    const timers = noteSaveTimers.current;
+    if (timers[date]) clearTimeout(timers[date]);
+    timers[date] = setTimeout(() => {
+      void api.savePartnerAccountDayNote(selectedId, date, value).catch(() => {});
+    }, 600);
+  }
 
   const selectedAccount = accounts?.find((a) => a.id === selectedId) ?? null;
 
@@ -427,6 +453,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                       <th className="px-3 py-1.5 text-right w-32">Net</th>
                       <th className="px-3 py-1.5 text-right w-32">Balance</th>
                       <th className="px-3 py-1.5 text-right w-20">Entries</th>
+                      <th className="px-3 py-1.5 pl-5 border-l border-slate-200 text-left">Description</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-300">
@@ -446,6 +473,15 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                           {pkr(Math.abs(g.closingBalance))}
                         </td>
                         <td className="px-3 py-1.5 text-right text-xs text-slate-400">{g.count}</td>
+                        <td className="px-3 py-1.5 pl-5 border-l border-slate-200" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            placeholder="Add a note…"
+                            value={dayNotes[g.date] ?? ""}
+                            onChange={(e) => onDayNoteChange(g.date, e.target.value)}
+                            className="input text-xs w-full py-1"
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
