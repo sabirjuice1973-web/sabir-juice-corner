@@ -1715,12 +1715,24 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
         // inline (not left in the same Promise.all) so a non-owner opening
         // this modal still gets Today's Sales/Expenses; the Self Loan row
         // just stays hidden for them.
-        const [s, e, p] = await Promise.all([
-          api.todayStats(shiftId),
+        const [e, p, ordersRes, lateRes] = await Promise.all([
           api.ledgerCashToday(branchId, liveToday),
           api.partnerAccountsSummary(branchId, { from: liveToday, to: liveToday }).catch(() => null),
+          api.todayOrders(shiftId),
+          api.latePaymentsSummary(branchId, liveToday, liveToday).catch(() => ({ amount: "0", discount: "0" })),
         ]);
-        setTodaySale(s.salesTotal);
+        // "Today's Sales" here must be actual CASH collected, not the total
+        // value of everything sold — a credit-sale order is real revenue but
+        // no cash for it has landed in the till yet, so including it would
+        // overstate what's actually available to reconcile against. Same
+        // gross-minus-discount-once logic as the Sales screen's Total Cash.
+        const isCashOrder = (o: { status: string; payments: { method: string }[] }) =>
+          o.status === "PAID" && o.payments.length > 0 && o.payments.every((pmt) => pmt.method !== "CREDIT");
+        const cashOrders = ordersRes.orders.filter(isCashOrder);
+        const grossCashSale = cashOrders.reduce((sum, o) => sum + Number(o.subtotal), 0);
+        const cashDiscount = cashOrders.reduce((sum, o) => sum + Number(o.discountAmount), 0);
+        const totalCashToday = grossCashSale - cashDiscount + Number(lateRes.amount);
+        setTodaySale(String(totalCashToday));
         setTotalExpenses(e.totalExpenses);
         setSelfLoanNet(p?.period ? Number(p.period.net) : 0);
       } catch {}
@@ -1765,7 +1777,7 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
                 <span className="font-medium tabular-nums">{fmtPKR(opening.toFixed(2))}</span>
               </div>
               <div className="flex justify-between px-4 py-2.5">
-                <span className="text-green-700 font-medium">+ Today's Sales</span>
+                <span className="text-green-700 font-medium">+ Cash Collected</span>
                 <span className="font-medium text-green-700 tabular-nums">+ {fmtPKR(todaySale)}</span>
               </div>
               <div className="flex justify-between px-4 py-2.5">
@@ -1789,7 +1801,7 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
                 </span>
               </div>
             </div>
-            <p className="text-[10px] text-slate-400">Expenses = sum of all Cash Paid in all 10 accounts today. Self Loan = Usman/Naveed cash in/out for today's business date.</p>
+            <p className="text-[10px] text-slate-400">Cash Collected = cash orders + late payments from credit accounts, net of discounts — excludes today's credit sales not yet paid. Expenses = sum of all Cash Paid in all 10 accounts today. Self Loan = Usman/Naveed cash in/out for today's business date.</p>
           </>}
         </div>
       </div>
