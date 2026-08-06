@@ -461,6 +461,11 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
   const total = parseFloat(entry.total) || 0;
   const cashPaid = parseFloat(entry.cashPaid) || 0;
+  // entry.balance is the running balance AFTER this entry (balance = previous
+  // + total − cashPaid, same formula LedgerScreen uses to build it) — back it
+  // out so the voucher shows where the account stood before this transaction,
+  // not just before/after in one undifferentiated number.
+  const previousBalance = entry.balance - total + cashPaid;
   const docType =
     total > 0 && cashPaid === 0 ? "PURCHASE ENTRY" :
     total === 0 && cashPaid > 0 ? "PAYMENT VOUCHER" :
@@ -525,6 +530,7 @@ function ledgerVoucherHtml(entry: LedgerPrintEntry, accountName: string): string
   </table>
   <hr />
   <table class="totals">
+    <tr><td>Previous Balance</td><td class="num">PKR ${formatMoney(previousBalance)}</td></tr>
     ${total > 0 ? `<tr><td>Total Amount</td><td class="num">PKR ${formatMoney(total)}</td></tr>` : ""}
     ${cashPaid > 0 ? `<tr><td>Cash Paid</td><td class="num">PKR ${formatMoney(cashPaid)}</td></tr>` : ""}
     <tr class="balance-row"><td>BALANCE</td><td class="num">PKR ${formatMoney(entry.balance)}</td></tr>
