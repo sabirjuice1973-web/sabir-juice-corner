@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { printPettyCashSlip } from "../pos/receipt";
-import { getPettyCash, setPettyCash } from "../lib/pettyCash";
+import { getPettyCash, setPettyCash, getReserveCash, setReserveCash } from "../lib/pettyCash";
 
 /**
  * End-of-day petty cash slip — a tiny thermal print (date + amount only) that
@@ -11,10 +11,17 @@ import { getPettyCash, setPettyCash } from "../lib/pettyCash";
  *
  * Saving here (on Print) is what lets the Hisaab "Cash Today" widget
  * auto-fill Opening Cash with this amount the next business day.
+ *
+ * Reserve Cash is a second, separate figure entered in the same form — cash
+ * left in the shop locker rather than the till. It's saved alongside Petty
+ * Cash so Cash Today can show both (so whoever reconciles the next morning,
+ * e.g. on a shift after an overnight one, sees the full picture) — but it's
+ * never printed on the slip and never added into any cash total.
  */
 export function PettyCashModal({ branchId, onClose }: { branchId: string; onClose: () => void }) {
   const [nextDate, setNextDate] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
+  const [reserveAmount, setReserveAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,6 +33,8 @@ export function PettyCashModal({ branchId, onClose }: { branchId: string; onClos
         setNextDate(nd);
         const saved = getPettyCash(branchId, nd);
         if (saved !== null) setAmount(saved);
+        const savedReserve = getReserveCash(branchId, nd);
+        if (savedReserve !== null) setReserveAmount(savedReserve);
       })
       .catch((e: any) => setError(e.body?.error || e.message || "Could not load business date"));
   }, [branchId]);
@@ -38,6 +47,10 @@ export function PettyCashModal({ branchId, onClose }: { branchId: string; onClos
     // Re-saving with a different amount simply overwrites — only the latest
     // value for a given date is kept, matching how Opening Cash itself works.
     setPettyCash(branchId, nextDate, String(amt));
+    // Reserve Cash is optional — only save it if something was actually
+    // entered, and it never appears on the printed slip.
+    const reserve = parseFloat(reserveAmount);
+    if (Number.isFinite(reserve) && reserve >= 0) setReserveCash(branchId, nextDate, String(reserve));
     printPettyCashSlip({ forDate: nextDate, amount: amt });
   }
 
@@ -62,6 +75,18 @@ export function PettyCashModal({ branchId, onClose }: { branchId: string; onClos
             onChange={(e) => setAmount(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handlePrint(); }}
           />
+        </label>
+        <label className="block mb-3">
+          <span className="text-sm text-slate-600">Reserve Cash at Shop (PKR)</span>
+          <input
+            type="number" min="0"
+            className="input w-full mt-1 font-mono text-lg"
+            placeholder="0"
+            value={reserveAmount}
+            onChange={(e) => setReserveAmount(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handlePrint(); }}
+          />
+          <span className="text-[10px] text-slate-400 mt-1 block">Cash left in the shop locker — shown on Cash Today, not printed on the slip.</span>
         </label>
         {error && <div className="text-sm text-red-600 mb-3">{error}</div>}
         <button onClick={handlePrint} disabled={!nextDate} className="btn-primary w-full disabled:opacity-50">

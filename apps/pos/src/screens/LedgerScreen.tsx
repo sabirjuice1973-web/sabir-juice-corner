@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LedgerAccount, type LedgerEntry } from "../api";
 import { printLedgerEntry, printAccountReportThermal } from "../pos/receipt";
 import { PrinterIcon } from "../components/PrinterIcon";
-import { getPettyCash } from "../lib/pettyCash";
+import { getPettyCash, getReserveCash } from "../lib/pettyCash";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -1694,6 +1694,7 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
   const [openingCash, setOpeningCash] = useState("");
   const [autoFilledFromPetty, setAutoFilledFromPetty] = useState(false);
   const [openingEdited, setOpeningEdited] = useState(false);
+  const [reserveCash, setReserveCash] = useState<string | null>(null);
   const [todaySale, setTodaySale] = useState("0");
   const [totalExpenses, setTotalExpenses] = useState("0");
   const [selfLoanNet, setSelfLoanNet] = useState(0);
@@ -1710,6 +1711,7 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
         const savedPetty = getPettyCash(branchId, liveToday);
         setOpeningCash(savedOpening ?? savedPetty ?? "");
         setAutoFilledFromPetty(savedOpening === null && savedPetty !== null);
+        setReserveCash(getReserveCash(branchId, liveToday));
 
         // partnerAccountsSummary is OWNER-only and 403s for a cashier — caught
         // inline (not left in the same Promise.all) so a non-owner opening
@@ -1771,6 +1773,15 @@ function CashTodayModal({ branchId, shiftId, businessDate, onClose, onMinimize }
                 {autoFilledFromPetty && !openingEdited ? "Auto-filled from yesterday's Petty Cash slip — edit to override" : "Saved automatically per day"}
               </p>
             </div>
+            {reserveCash !== null && (
+              <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+                <div>
+                  <div className="text-xs font-medium text-amber-800">Reserve Cash at Shop</div>
+                  <div className="text-[10px] text-amber-600">In the locker — separate from the till, not part of Current Cash below</div>
+                </div>
+                <span className="font-bold tabular-nums text-amber-800">{fmtPKR(reserveCash)}</span>
+              </div>
+            )}
             <div className="rounded-lg bg-slate-50 border divide-y text-sm">
               <div className="flex justify-between px-4 py-2.5">
                 <span className="text-slate-600">Opening Cash</span>
