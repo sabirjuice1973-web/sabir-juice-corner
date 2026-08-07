@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { TodayOrder, PartnerAccount } from "../api";
+import type { TodayOrder, PartnerAccount, LedgerEntry } from "../api";
 import { BOX_LABELS } from "../pos/posState";
 import { printDebtSummary } from "../pos/receipt";
 import { PrinterIcon } from "./PrinterIcon";
@@ -63,6 +63,9 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const [yestRev,   setYestRev]   = useState<number | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
+  const [dailyHisaabId, setDailyHisaabId] = useState<string | null>(null);
+  const [dailyHisaabEntries, setDailyHisaabEntries] = useState<LedgerEntry[] | null>(null);
+  const [latePayments, setLatePayments] = useState<{ amount: string; discount: string } | null>(null);
 
   // Main data fetch
   useEffect(() => {
@@ -116,6 +119,34 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
       .catch(() => {});
     return () => { cancelled = true; };
   }, [branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Daily Hisaab account id (position 1) — resolved once per branch, then
+  // reused to pull that account's entries for whatever period is selected.
+  useEffect(() => {
+    let cancelled = false;
+    api.ledgerAccounts(branchId)
+      .then((r) => { if (!cancelled) setDailyHisaabId(r.accounts.find((a) => a.position === 1)?.id ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [branchId]);
+
+  // Daily Hisaab entries for the selected period — source for the Home
+  // Expense / Shop Expense / Salaries breakdown below. And late payments for
+  // the same period, needed (alongside `orders`) to compute Total Cash for
+  // this period, the denominator for that breakdown's percentages.
+  useEffect(() => {
+    if (!dailyHisaabId) return;
+    let cancelled = false;
+    const from = fromDate ?? todayStr;
+    const to = toDate ?? todayStr;
+    api.ledgerEntries(dailyHisaabId, { from, to, limit: 5000 })
+      .then((r) => { if (!cancelled) setDailyHisaabEntries(r.entries); })
+      .catch(() => { if (!cancelled) setDailyHisaabEntries(null); });
+    api.latePaymentsSummary(branchId, from, to)
+      .then((r) => { if (!cancelled) setLatePayments(r); })
+      .catch(() => { if (!cancelled) setLatePayments({ amount: "0", discount: "0" }); });
+    return () => { cancelled = true; };
+  }, [dailyHisaabId, branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Yesterday revenue comparison (only for "Today" view)
   useEffect(() => {
@@ -250,6 +281,28 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   // earnings at all — it's their money, just parked in the till.
   const selfLoanPeriodNet = partnerSummary?.period ? Number(partnerSummary.period.net) : 0;
   const netEarning = periodExp ? revenue - periodExp.total + selfLoanPeriodNet : null;
+
+  // ── Derived: Home/Shop Expense & Salaries (Daily Hisaab account) ─────────────
+  // "Salaries" is the Daily Hisaab account's total for the period, unfiltered —
+  // matching the "TODAY" footer figure on the Hisaab screen (the account is
+  // fundamentally the daily-wage ledger, even though a few of its rows carry
+  // a Shop Expense or Home Expense head). Those two are separately singled out
+  // by headName, so they're subsets shown alongside, not subtracted out.
+  const headIs = (e: LedgerEntry, name: string) => (e.headName ?? "").trim().toLowerCase() === name;
+  const salariesTotal     = (dailyHisaabEntries ?? []).reduce((s, e) => s + Number(e.total), 0);
+  const shopExpenseTotal  = (dailyHisaabEntries ?? []).filter((e) => headIs(e, "shop expense")).reduce((s, e) => s + Number(e.total), 0);
+  const homeExpenseTotal  = (dailyHisaabEntries ?? []).filter((e) => headIs(e, "home expense")).reduce((s, e) => s + Number(e.total), 0);
+
+  // Total Cash for the selected period — same formula as the Sales screen's
+  // Total Cash: gross cash-order subtotal minus discount, plus late payments
+  // actually collected from credit accounts. Denominator for the percentages
+  // below (e.g. "what share of the cash we took in went to salaries").
+  const isCashOrder = (o: TodayOrder) => o.status === "PAID" && o.payments.length > 0 && o.payments.every((p) => p.method !== "CREDIT");
+  const cashOrdersPeriod = (orders ?? []).filter(isCashOrder);
+  const grossCashSalePeriod = cashOrdersPeriod.reduce((s, o) => s + Number(o.subtotal), 0);
+  const cashDiscountPeriod  = cashOrdersPeriod.reduce((s, o) => s + Number(o.discountAmount), 0);
+  const totalCashPeriod = grossCashSalePeriod - cashDiscountPeriod + Number(latePayments?.amount ?? 0);
+  const pctOfCash = (n: number) => totalCashPeriod > 0 ? (n / totalCashPeriod) * 100 : 0;
 
   // ── Derived: Per-account shop debt breakdown ─────────────────────────────────
   const debtBreakdown = (debtGroups ?? [])
@@ -630,6 +683,47 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                         ? `${selfLoanPeriodNet < 0 ? "after" : "incl."} ${pkr(Math.abs(selfLoanPeriodNet))} self loan`
                         : "sales − total expense"}
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── S9.5: Home/Shop Expense & Salaries (Daily Hisaab) ── */}
+              <div>
+                <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab account · % of Total Cash this period</Dim></SH>
+                <div className="card p-4 space-y-4">
+                  {(() => {
+                    const rows = [
+                      { label: "Home Expense",  value: homeExpenseTotal, bar: "bg-rose-500",   text: "text-rose-700"   },
+                      { label: "Shop Expense",  value: shopExpenseTotal, bar: "bg-orange-500", text: "text-orange-700" },
+                      { label: "Salaries",      value: salariesTotal,    bar: "bg-blue-500",   text: "text-blue-700"   },
+                    ];
+                    if (dailyHisaabEntries === null) return <div className="text-slate-400 text-sm text-center py-6">Loading…</div>;
+                    if (rows.every((r) => r.value === 0)) return <Empty>No Daily Hisaab entries for this period</Empty>;
+                    const maxV = Math.max(...rows.map((r) => r.value), 1);
+                    return rows.map((r) => (
+                      <div key={r.label} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">{r.label}</span>
+                          <span className={`font-mono font-bold ${r.text}`}>
+                            {pkr(r.value)}
+                            <span className="text-xs text-slate-400 ml-1.5">({pctOfCash(r.value).toFixed(2)}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-6 bg-slate-100 rounded-lg overflow-hidden">
+                          <div
+                            className={`h-full ${r.bar} rounded-lg flex items-center transition-all`}
+                            style={{ width: `${Math.max(r.value > 0 ? 10 : 0, (r.value / maxV) * 100)}%` }}
+                          >
+                            {r.value > 0 && <span className="text-[11px] text-white font-bold pl-2">{pctOfCash(r.value).toFixed(1)}%</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                  <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">
+                    Salaries = Daily Hisaab's full total for the period (incl. its Shop/Home Expense rows) — Home
+                    Expense and Shop Expense are shown separately by Head, not subtracted out. % is each figure
+                    against Total Cash collected this period ({pkr(totalCashPeriod)}).
                   </div>
                 </div>
               </div>
