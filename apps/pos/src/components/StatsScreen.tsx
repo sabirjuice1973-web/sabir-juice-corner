@@ -339,10 +339,11 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   const fullDebtBreakdown = [...debtBreakdown, ...partnerBreakdown];
 
   // ── Derived: Expense by account, for the selected period ─────────────────────
-  // Total billed (not net of payments) per account — same source query as the
-  // "Total Expense" figure above, just kept per-account instead of summed.
+  // Cash actually PAID out per account — not the total billed. Billed includes
+  // amounts still owed, which isn't money that's left the till yet; paid is
+  // the real expense incurred this period.
   const expenseByAccount = (periodExpGroups ?? [])
-    .map((g) => ({ ...g.account, amount: Number(g.totalAmount) }))
+    .map((g) => ({ ...g.account, amount: Number(g.totalCashPaid) }))
     .filter((g) => g.amount !== 0)
     .sort((a, b) => b.amount - a.amount);
 
@@ -692,8 +693,11 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                   ) : (
                     <DonutChart
                       percentOf={totalCashPeriod}
+                      // Violet/orange/blue instead of red/orange/blue — red and
+                      // orange sit next to each other on the wheel and, as two
+                      // big adjacent slices, blurred into one warm mass.
                       data={[
-                        { label: "Home Expense", value: homeExpenseTotal, color: CAT_COLORS[7] },
+                        { label: "Home Expense", value: homeExpenseTotal, color: CAT_COLORS[6] },
                         { label: "Shop Expense", value: shopExpenseTotal, color: CAT_COLORS[1] },
                         { label: "Salaries",     value: salariesTotal,    color: CAT_COLORS[0] },
                       ]}
@@ -709,7 +713,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
 
               {/* ── S9.6: Expense by Account, for the selected period ── */}
               <div>
-                <SH>Expense by Account <Dim>total billed per account · selected period</Dim></SH>
+                <SH>Expense by Account <Dim>cash paid per account · selected period</Dim></SH>
                 <div className="card p-4">
                   {periodExpGroups === null ? (
                     <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
@@ -717,7 +721,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                     <Empty>No expense entries for this period</Empty>
                   ) : (
                     <DonutChart
-                      centerLabel="Total billed"
+                      centerLabel="Total paid"
                       data={expenseByAccount.map((g) => ({
                         label: `${g.position}. ${g.name}`,
                         value: g.amount,
