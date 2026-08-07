@@ -36,15 +36,32 @@ function boxName(box: number) {
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
-export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: {
+export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalone = false }: {
   shiftId: string;
   branchId: string;
+  /** Shop's business date at the moment this window was opened — just a
+   * fallback until the live value below resolves. */
+  businessDate?: string | null;
   onClose: () => void;
   /** Rendered as the sole content of its own popup window (see StatsWindow) —
    * skips the click-outside-to-close backdrop since there's no POS behind it. */
   standalone?: boolean;
 }) {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // "Today"/the date pickers must mean the shop's BUSINESS date, not the raw
+  // calendar date — the shop trades past midnight, so those two can differ
+  // for a few hours around close. Don't trust the businessDate PROP alone
+  // either — if this window was already open before the date rolled over,
+  // it's frozen at whatever it was when the URL was built. Fetch the live
+  // value fresh on mount, falling back to the prop (then the calendar date)
+  // only until that resolves.
+  const [todayStr, setTodayStr] = useState<string>(businessDate || new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    let cancelled = false;
+    api.getBranchBusinessDate(branchId)
+      .then((r) => { if (!cancelled) setTodayStr(r.businessDate); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [branchId]);
 
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate]     = useState<string | null>(null);
@@ -105,7 +122,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shiftId, branchId, fromDate, toDate]);
+  }, [shiftId, branchId, fromDate, toDate, todayStr]);
 
   // Partner Accounts balances — all-time/live like allDebt (unaffected by
   // the date filter) — plus a period-scoped gave/took/online breakdown for
@@ -120,7 +137,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
       .then((r) => { if (!cancelled) setPartnerSummary(r); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [branchId, fromDate, toDate, todayStr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Daily Hisaab (position 1) and Salary (position 2) account ids — resolved
   // once per branch, then reused to pull each account's entries for whatever
@@ -163,14 +180,15 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
       .then((r) => { if (!cancelled) setLatePayments(r); })
       .catch(() => { if (!cancelled) setLatePayments({ amount: "0", discount: "0" }); });
     return () => { cancelled = true; };
-  }, [dailyHisaabId, salaryAccountId, branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dailyHisaabId, salaryAccountId, branchId, fromDate, toDate, todayStr]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Yesterday revenue comparison (only for "Today" view)
+  // Yesterday revenue comparison (only for "Today" view) — one business date
+  // before todayStr, not one calendar date before now.
   useEffect(() => {
     if (!isToday) { setYestRev(null); return; }
     let cancelled = false;
-    const yd = new Date();
-    yd.setDate(yd.getDate() - 1);
+    const yd = new Date(`${todayStr}T00:00:00Z`);
+    yd.setUTCDate(yd.getUTCDate() - 1);
     const ydStr = yd.toISOString().slice(0, 10);
     api.todayOrders(shiftId, ydStr, ydStr)
       .then((r) => {
@@ -181,7 +199,7 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [shiftId, isToday]);
+  }, [shiftId, isToday, todayStr]);
 
   // ── Derived: Summary ────────────────────────────────────────────────────────
   const paid      = (orders ?? []).filter((o) => o.status === "PAID");

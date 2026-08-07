@@ -9,6 +9,7 @@ export function StatsWindow() {
   const params = new URLSearchParams(window.location.search);
   const branchId = params.get("branchId");
   const shiftId = params.get("shiftId");
+  const businessDate = params.get("businessDate");
 
   if (!branchId || !shiftId) {
     return (
@@ -22,6 +23,7 @@ export function StatsWindow() {
     <StatsScreen
       branchId={branchId}
       shiftId={shiftId}
+      businessDate={businessDate}
       standalone
       onClose={() => window.close()}
     />

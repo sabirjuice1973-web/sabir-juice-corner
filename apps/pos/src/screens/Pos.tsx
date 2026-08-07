@@ -738,6 +738,7 @@ export function Pos({
   // focus the already-open window instead of stacking duplicates.
   function openStatsWindow() {
     const params = new URLSearchParams({ stats: "1", branchId, shiftId });
+    if (businessDate) params.set("businessDate", businessDate);
     const w = window.open(`/?${params}`, "sjc-stats", "noopener,popup,width=1400,height=900");
     if (!w) {
       setError("Browser blocked the statistics window — allow popups for this site.");
