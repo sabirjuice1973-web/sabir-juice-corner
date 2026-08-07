@@ -61,7 +61,15 @@ const CreateOrderWithItemsBody = z.object({
     // Decimal qty allowed (0.25, 0.5, 1.75, etc.) — common for splits and halves
     qty: z.coerce.number().positive().max(99),
     notes: z.string().max(200).optional(),
-  }).refine((d) => !!d.itemCode || !!d.mixOf, "Each item needs either itemCode or mixOf"))
+    // Cashier override for a mix's auto-averaged price — some combinations
+    // (e.g. a flavoring powder added on top rather than blended in equal
+    // parts) genuinely cost more than a straight average implies. Only valid
+    // alongside mixOf: a single itemCode's price always comes from the
+    // catalog, never overridable.
+    unitPriceOverride: z.coerce.number().positive().max(100_000).optional(),
+  })
+    .refine((d) => !!d.itemCode || !!d.mixOf, "Each item needs either itemCode or mixOf")
+    .refine((d) => !d.unitPriceOverride || !!d.mixOf, "unitPriceOverride is only allowed for a mix (mixOf)"))
     .min(1),
 });
 
@@ -307,16 +315,19 @@ export async function registerOrderRoutes(app: FastifyInstance) {
             .map((c) => itemByCode.get(c)!)
             .sort((x, y) => x.name.localeCompare(y.name));
           const sumPrice = sorted.reduce((s, it) => s.plus(it.prices[0].price), decimal(0));
-          // Raw average then round UP to next multiple of 10 (owner's policy).
+          // Raw average then round UP to next multiple of 10 (owner's policy) —
+          // unless the cashier explicitly overrode it (e.g. this specific
+          // combination costs more than a straight average implies).
           const avgPrice = ceilToNext10(sumPrice.dividedBy(sorted.length));
-          const lineTotal = avgPrice.times(qty);
+          const unitPrice = li.unitPriceOverride !== undefined ? decimal(li.unitPriceOverride) : avgPrice;
+          const lineTotal = unitPrice.times(qty);
           subtotal = subtotal.plus(lineTotal);
           await tx.orderItem.create({
             data: {
               orderId: order.id,
               itemId: sorted[0].id,            // FK anchor — alphabetically first
               qty,
-              unitPrice: avgPrice,
+              unitPrice,
               lineTotal,
               isCustomMix: true,
               customMixComponents: sorted.map((it) => ({
@@ -556,15 +567,17 @@ export async function registerOrderRoutes(app: FastifyInstance) {
             .map((c) => itemByCode.get(c)!)
             .sort((x, y) => x.name.localeCompare(y.name));
           const sumPrice = sorted.reduce((s, it) => s.plus(it.prices[0].price), decimal(0));
-          // Raw average then round UP to next multiple of 10 (owner's policy).
+          // Raw average then round UP to next multiple of 10 (owner's policy) —
+          // unless the cashier explicitly overrode it.
           const avgPrice = ceilToNext10(sumPrice.dividedBy(sorted.length));
-          const lineTotal = avgPrice.times(qty);
+          const unitPrice = li.unitPriceOverride !== undefined ? decimal(li.unitPriceOverride) : avgPrice;
+          const lineTotal = unitPrice.times(qty);
           subtotal = subtotal.plus(lineTotal);
           await tx.orderItem.create({
             data: {
               orderId: id,
               itemId: sorted[0].id,
-              qty, unitPrice: avgPrice, lineTotal,
+              qty, unitPrice, lineTotal,
               isCustomMix: true,
               customMixComponents: sorted.map((it) => ({
                 itemCode: it.itemCode,

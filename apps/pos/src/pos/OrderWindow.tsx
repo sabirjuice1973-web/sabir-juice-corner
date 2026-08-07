@@ -71,6 +71,12 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
   const [codeInput, setCodeInput] = useState("");
   const [preview, setPreview] = useState<Item | null>(null);
   const [mixPreview, setMixPreview] = useState<MixPreview | null>(null);
+  // Cashier override for a mix's auto-averaged price — some combinations
+  // (e.g. flavoring powder added on top rather than blended in equal parts)
+  // genuinely don't fit a straight average. null = use the computed average.
+  // Single-item lines have no equivalent — their price always comes straight
+  // from the catalog.
+  const [mixPriceOverride, setMixPriceOverride] = useState<string | null>(null);
   const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<Item[]>([]);
   const [armed, setArmed] = useState(false);
@@ -118,6 +124,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
     const v = codeInput.trim();
     setPreview(null);
     setMixPreview(null);
+    setMixPriceOverride(null);
     setPreviewErr(null);
     setSearchResults([]);
     // Code input changed → previous arming is invalid (it referred to a
@@ -209,6 +216,8 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
 
     let line: DraftLine | null = null;
     if (mixPreview) {
+      const overridden = mixPriceOverride !== null ? parseFloat(mixPriceOverride) : NaN;
+      const effectivePrice = Number.isFinite(overridden) && overridden > 0 ? overridden : mixPreview.averagedPrice;
       const [first] = mixPreview.components;
       line = {
         itemId: first.id,
@@ -216,7 +225,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
         name: mixPreview.displayName + ` ${mixPreview.size === "MEDIUM" ? "Medium" : "Jumbo"}`,
         size: mixPreview.size,
         qty: absQty,
-        unitPrice: mixPreview.averagedPrice.toFixed(2),
+        unitPrice: effectivePrice.toFixed(2),
         isMix: true,
         mixOf: mixPreview.components.map((c) => c.itemCode),
       };
@@ -242,13 +251,14 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
     setQtyInput("1");
     setPreview(null);
     setMixPreview(null);
+    setMixPriceOverride(null);
     setPreviewErr(null);
     setSearchResults([]);
     setTimeout(() => {
       qtyRef.current?.focus();
       qtyRef.current?.select();
     }, 0);
-  }, [preview, mixPreview, qtyInput, draft, onDraftChange]);
+  }, [preview, mixPreview, mixPriceOverride, qtyInput, draft, onDraftChange]);
 
   // Per-input ENTER handlers
   function onQtyKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -362,9 +372,27 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
                     <span className="text-xs uppercase tracking-wider text-sjc-700 font-bold">Mix</span>
                     <span className="ml-3 font-medium text-slate-800">{mixPreview.displayName} {mixPreview.size === "MEDIUM" ? "Medium" : "Jumbo"}</span>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     {armed && <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-white border border-accent-400 px-2 py-0.5 rounded animate-pulse">Press ENTER again</span>}
-                    <span className="font-mono text-lg font-bold">PKR {mixPreview.averagedPrice}</span>
+                    <span className="font-mono text-sm text-slate-500">PKR</span>
+                    <input
+                      type="number" min="0" step="any"
+                      value={mixPriceOverride ?? String(mixPreview.averagedPrice)}
+                      onChange={(e) => setMixPriceOverride(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      // Editing the price is itself a deliberate act — commits
+                      // straight away rather than requiring the usual second
+                      // ENTER (that confirmation is for the code field, where a
+                      // mistyped code is the risk this is guarding against).
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitLine(); } }}
+                      title="Override this mix's price — only affects this line"
+                      className={`font-mono text-lg font-bold text-right w-24 rounded px-1.5 py-0.5 border ${
+                        mixPriceOverride !== null ? "border-amber-400 bg-amber-50 text-amber-800" : "border-transparent hover:border-slate-300"
+                      }`}
+                    />
+                    {mixPriceOverride !== null && (
+                      <button type="button" onClick={() => setMixPriceOverride(null)} title="Reset to the computed average" className="text-slate-400 hover:text-slate-700 text-sm leading-none">↺</button>
+                    )}
                   </div>
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
@@ -372,6 +400,9 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
                   &nbsp;÷ {mixPreview.components.length} = {mixPreview.rawAverage.toFixed(2)}
                   {mixPreview.averagedPrice !== mixPreview.rawAverage && (
                     <span className="ml-1 text-accent-700 font-medium">→ rounded up to {mixPreview.averagedPrice}</span>
+                  )}
+                  {mixPriceOverride !== null && (
+                    <span className="ml-1 text-amber-700 font-medium">→ overridden to {mixPriceOverride || "…"}</span>
                   )}
                 </div>
               </div>

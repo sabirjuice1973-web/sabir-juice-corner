@@ -195,7 +195,7 @@ export function Pos({
           editTarget.serverId,
           draft.lines.map((li) =>
             li.isMix && li.mixOf
-              ? { mixOf: li.mixOf, qty: li.qty }
+              ? { mixOf: li.mixOf, qty: li.qty, unitPriceOverride: Number(li.unitPrice) }
               : { itemCode: li.itemCode, qty: li.qty },
           ),
           boxNumber,
@@ -236,7 +236,7 @@ export function Pos({
         customerName: customerName ?? undefined,
         items: draft.lines.map((li) =>
           li.isMix && li.mixOf
-            ? { mixOf: li.mixOf, qty: li.qty }
+            ? { mixOf: li.mixOf, qty: li.qty, unitPriceOverride: Number(li.unitPrice) }
             : { itemCode: li.itemCode, qty: li.qty },
         ),
       });

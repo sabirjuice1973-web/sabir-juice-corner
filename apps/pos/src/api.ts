@@ -156,7 +156,7 @@ export const api = {
     request<{ orders: Order[] }>("GET", `/orders?branchId=${branchId}&status=OPEN&limit=100`),
   getOrder: (orderId: string | number) =>
     request<{ order: Order }>("GET", `/orders/${orderId}`),
-  replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number })[], toBox?: number) =>
+  replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[], toBox?: number) =>
     request<{ order: Order }>("PUT", `/orders/${orderId}/replace-items`, { items, ...(toBox !== undefined ? { toBox } : {}) }),
   mergeOrders: (orderIds: (string | number)[]) =>
     request<{ order: Order }>("POST", "/orders/merge", { orderIds: orderIds.map(Number) }),
@@ -184,7 +184,7 @@ export const api = {
     shiftId: string | number;
     waiterBox: number;
     customerName?: string;
-    items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number })[];
+    items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[];
   }) =>
     request<{ order: Order }>("POST", "/orders/with-items", {
       branchId: Number(args.branchId),
