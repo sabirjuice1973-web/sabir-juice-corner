@@ -324,7 +324,6 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   const grossCashSalePeriod = cashOrdersPeriod.reduce((s, o) => s + Number(o.subtotal), 0);
   const cashDiscountPeriod  = cashOrdersPeriod.reduce((s, o) => s + Number(o.discountAmount), 0);
   const totalCashPeriod = grossCashSalePeriod - cashDiscountPeriod + Number(latePayments?.amount ?? 0);
-  const pctOfCash = (n: number) => totalCashPeriod > 0 ? (n / totalCashPeriod) * 100 : 0;
 
   // ── Derived: Per-account shop debt breakdown ─────────────────────────────────
   const debtBreakdown = (debtGroups ?? [])
@@ -685,37 +684,22 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
               {/* ── S9.5: Home/Shop Expense & Salaries ── */}
               <div>
                 <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab + Salary accounts · % of Total Cash this period</Dim></SH>
-                <div className="card p-4 space-y-4">
-                  {(() => {
-                    const rows = [
-                      { label: "Home Expense",  value: homeExpenseTotal, bar: "bg-rose-500",   text: "text-rose-700"   },
-                      { label: "Shop Expense",  value: shopExpenseTotal, bar: "bg-orange-500", text: "text-orange-700" },
-                      { label: "Salaries",      value: salariesTotal,    bar: "bg-blue-500",   text: "text-blue-700"   },
-                    ];
-                    if (dailyHisaabEntries === null || salaryAccountEntries === null) return <div className="text-slate-400 text-sm text-center py-6">Loading…</div>;
-                    if (rows.every((r) => r.value === 0)) return <Empty>No entries for this period</Empty>;
-                    const maxV = Math.max(...rows.map((r) => r.value), 1);
-                    return rows.map((r) => (
-                      <div key={r.label} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium">{r.label}</span>
-                          <span className={`font-mono font-bold ${r.text}`}>
-                            {pkr(r.value)}
-                            <span className="text-xs text-slate-400 ml-1.5">({pctOfCash(r.value).toFixed(2)}%)</span>
-                          </span>
-                        </div>
-                        <div className="h-6 bg-slate-100 rounded-lg overflow-hidden">
-                          <div
-                            className={`h-full ${r.bar} rounded-lg flex items-center transition-all`}
-                            style={{ width: `${Math.max(r.value > 0 ? 10 : 0, (r.value / maxV) * 100)}%` }}
-                          >
-                            {r.value > 0 && <span className="text-[11px] text-white font-bold pl-2">{pctOfCash(r.value).toFixed(1)}%</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                  <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">
+                <div className="card p-4">
+                  {dailyHisaabEntries === null || salaryAccountEntries === null ? (
+                    <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
+                  ) : homeExpenseTotal === 0 && shopExpenseTotal === 0 && salariesTotal === 0 ? (
+                    <Empty>No entries for this period</Empty>
+                  ) : (
+                    <DonutChart
+                      percentOf={totalCashPeriod}
+                      data={[
+                        { label: "Home Expense", value: homeExpenseTotal, color: CAT_COLORS[7] },
+                        { label: "Shop Expense", value: shopExpenseTotal, color: CAT_COLORS[1] },
+                        { label: "Salaries",     value: salariesTotal,    color: CAT_COLORS[0] },
+                      ]}
+                    />
+                  )}
+                  <div className="pt-3 mt-3 border-t border-slate-100 text-xs text-slate-400">
                     Home Expense / Shop Expense = Daily Hisaab entries with that Head. Salaries = the Salary
                     account's own total for the period. % is each figure against Total Cash collected this
                     period ({pkr(totalCashPeriod)}).
@@ -726,39 +710,25 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
               {/* ── S9.6: Expense by Account, for the selected period ── */}
               <div>
                 <SH>Expense by Account <Dim>total billed per account · selected period</Dim></SH>
-                <div className="card p-4 space-y-3">
-                  {periodExpGroups === null
-                    ? <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
-                    : expenseByAccount.length === 0
-                    ? <Empty>No expense entries for this period</Empty>
-                    : (() => {
-                        const maxExp = Math.max(...expenseByAccount.map((g) => g.amount), 1);
-                        const totalExp = expenseByAccount.reduce((s, g) => s + g.amount, 0);
-                        return <>
-                          {expenseByAccount.map((g) => (
-                            <div key={g.id} className="space-y-1">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium">{g.position}. {g.name}</span>
-                                <span className="font-mono font-bold text-slate-800 shrink-0 ml-3">
-                                  {pkr(g.amount)}
-                                  <span className="text-xs text-slate-400 ml-1.5">({totalExp > 0 ? ((g.amount / totalExp) * 100).toFixed(1) : "0"}%)</span>
-                                </span>
-                              </div>
-                              <div className="h-5 bg-slate-100 rounded-lg overflow-hidden">
-                                <div
-                                  className="h-full bg-slate-600 rounded-lg flex items-center transition-all"
-                                  style={{ width: `${Math.max(8, (g.amount / maxExp) * 100)}%` }}
-                                >
-                                  <span className="text-[10px] text-white font-bold pl-2">{pkr(g.amount)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          <div className="pt-1 border-t border-slate-100 text-xs text-slate-400 text-right">
-                            Total billed this period: {pkr(totalExp)}
-                          </div>
-                        </>;
-                      })()}
+                <div className="card p-4">
+                  {periodExpGroups === null ? (
+                    <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
+                  ) : expenseByAccount.length === 0 ? (
+                    <Empty>No expense entries for this period</Empty>
+                  ) : (
+                    <DonutChart
+                      centerLabel="Total billed"
+                      data={expenseByAccount.map((g) => ({
+                        label: `${g.position}. ${g.name}`,
+                        value: g.amount,
+                        // Color follows the account's fixed ledger position, not
+                        // its rank in this period's sort — so an account keeps
+                        // the same color across different date ranges. Position
+                        // 9/10 fall back to a neutral gray past the 8 validated slots.
+                        color: g.position >= 1 && g.position <= 8 ? CAT_COLORS[g.position - 1] : "#898781",
+                      }))}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -801,30 +771,23 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                     </div>
                   </div>
 
-                  {fullDebtBreakdown.length > 0 && (() => {
-                    const maxAbsDebt = Math.max(...fullDebtBreakdown.map((g) => Math.abs(g.debt)), 1);
-                    return (
-                      <div className="mt-4 pt-4 border-t border-red-200 space-y-2.5">
-                        <div className="text-xs font-semibold text-slate-600 mb-1">Breakdown by account:</div>
-                        {fullDebtBreakdown.map((g) => (
-                          <div key={g.id} className="space-y-1">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
-                              <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                                {pkr(g.debt)}
-                              </span>
-                            </div>
-                            <div className="h-2 bg-red-100/60 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${g.debt > 0 ? "bg-red-500" : "bg-emerald-500"}`}
-                                style={{ width: `${(Math.abs(g.debt) / maxAbsDebt) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
+                  {fullDebtBreakdown.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-red-200 space-y-1.5">
+                      {/* Values span too wide a range here (tens of thousands to
+                          millions) for a bar's length to stay meaningful — a
+                          plain color-coded list reads more honestly than a bar
+                          that makes the smaller accounts invisible. */}
+                      <div className="text-xs font-semibold text-slate-600 mb-2">Breakdown by account:</div>
+                      {fullDebtBreakdown.map((g) => (
+                        <div key={g.id} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
+                          <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                            {pkr(g.debt)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -860,6 +823,80 @@ function StatCard({ label, value, color, children }: {
       <div className={`text-[10px] uppercase tracking-wider font-bold ${sub}`}>{label}</div>
       <div className={`font-mono font-bold text-base mt-0.5 ${val}`}>{value}</div>
       {children && <div className={`text-[11px] mt-0.5 leading-tight ${sub}`}>{children}</div>}
+    </div>
+  );
+}
+
+// Fixed categorical hue order (validated: worst adjacent CVD ΔE 9.1, worst
+// adjacent normal-vision ΔE 19.6 — see the dataviz skill's palette.md).
+// Assigned by POSITION, never re-cycled/re-sorted by value.
+const CAT_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
+
+// Donut chart — share-of-whole for a handful of categories, paired with a
+// legend (color is never the only identity cue). No external library.
+function DonutChart({ data, centerLabel, percentOf, size = 168, thickness = 26 }: {
+  data: { label: string; value: number; color: string }[];
+  /** Shown under the center total, e.g. "Total billed". Omit for charts where
+   * the sum of the slices isn't itself a meaningful standalone figure. */
+  centerLabel?: string;
+  /** What the legend's % is computed against — defaults to the sum of the
+   * slices. Pass this when the meaningful denominator is a DIFFERENT figure
+   * (e.g. "% of Total Cash," where the slices don't add up to that total). */
+  percentOf?: number;
+  size?: number;
+  thickness?: number;
+}) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const pctBase = percentOf ?? total;
+  const r = (size - thickness) / 2;
+  const C = 2 * Math.PI * r;
+  const GAP = 3; // px gap between adjacent segments
+  let cumulative = 0;
+
+  return (
+    <div className="flex items-center gap-5 flex-wrap">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+          {total <= 0 ? (
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e1e0d9" strokeWidth={thickness} />
+          ) : data.filter((d) => d.value > 0).map((d) => {
+            const frac = d.value / total;
+            const dash = Math.max(0, frac * C - GAP);
+            const dashOffset = -cumulative;
+            cumulative += frac * C;
+            return (
+              <circle
+                key={d.label}
+                cx={size / 2} cy={size / 2} r={r}
+                fill="none" stroke={d.color} strokeWidth={thickness}
+                strokeDasharray={`${dash} ${C - dash}`}
+                strokeDashoffset={dashOffset}
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </g>
+        {centerLabel && total > 0 && (
+          <>
+            <text x={size / 2} y={size / 2 - 4} textAnchor="middle" fontSize="16" fontWeight="700" fill="#0b0b0b">{pkr(total)}</text>
+            <text x={size / 2} y={size / 2 + 14} textAnchor="middle" fontSize="9" fill="#898781">{centerLabel}</text>
+          </>
+        )}
+      </svg>
+      <div className="flex-1 min-w-[180px] space-y-2">
+        {data.map((d) => (
+          <div key={d.label} className="flex items-center justify-between text-sm gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+              <span className="font-medium truncate">{d.label}</span>
+            </div>
+            <span className="font-mono font-bold text-slate-800 shrink-0">
+              {pkr(d.value)}
+              <span className="text-xs text-slate-400 ml-1.5">({pctBase > 0 ? ((d.value / pctBase) * 100).toFixed(1) : "0"}%)</span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
