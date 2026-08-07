@@ -76,7 +76,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
     partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number;
     period: { gave: string; took: string; online: string; net: string } | null;
   } | null>(null);
-  const [periodExp, setPeriodExp] = useState<{ total: number; paid: number } | null>(null);
+  const [periodExpGroups, setPeriodExpGroups] = useState<DebtGroup[] | null>(null);
   const [yestRev,   setYestRev]   = useState<number | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
@@ -113,7 +113,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
         setAccounts(accRes.accounts as AccSummary[]);
         setAllDebt({ total: Number(debtRes.grandTotalAmount), paid: Number(debtRes.grandTotalCashPaid) });
         setDebtGroups(debtRes.groups as DebtGroup[]);
-        setPeriodExp({ total: Number(expRes.grandTotalAmount), paid: Number(expRes.grandTotalCashPaid) });
+        setPeriodExpGroups(expRes.groups as DebtGroup[]);
       })
       .catch((e: any) => {
         if (!cancelled) setError(e.body?.error || e.message || "Failed to load statistics");
@@ -305,17 +305,6 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   // is money payable by the shop just like a supplier's ledger balance.
   const partnerNet = partnerSummary ? partnerSummary.totalOwedToPartners - partnerSummary.totalOwedByPartners : 0;
   const shopDebt     = (allDebt ? allDebt.total - allDebt.paid : 0) + partnerNet;
-  const periodExpOut = periodExp  ? periodExp.total - periodExp.paid : 0;
-
-  // ── Derived: Net Earning ─────────────────────────────────────────────────────
-  // Sales in the selected range minus all expenses billed (not just paid) in that
-  // same range — accrual-style net earning, matching "Total Expense" above.
-  // Self Loan net (gave − took − online) for the same range is folded in: cash
-  // a partner took out or received online during the period isn't sitting in
-  // the shop anymore even though it was earned, and cash they gave in isn't
-  // earnings at all — it's their money, just parked in the till.
-  const selfLoanPeriodNet = partnerSummary?.period ? Number(partnerSummary.period.net) : 0;
-  const netEarning = periodExp ? revenue - periodExp.total + selfLoanPeriodNet : null;
 
   // ── Derived: Home/Shop Expense & Salaries ─────────────────────────────────────
   // Home Expense / Shop Expense are singled out by Head within Daily Hisaab.
@@ -349,6 +338,14 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
     .map((p) => ({ id: p.id, position: 100 + p.position, name: `${p.name} (Self Loan)`, debt: Number(p.balance) }))
     .filter((p) => p.debt !== 0);
   const fullDebtBreakdown = [...debtBreakdown, ...partnerBreakdown];
+
+  // ── Derived: Expense by account, for the selected period ─────────────────────
+  // Total billed (not net of payments) per account — same source query as the
+  // "Total Expense" figure above, just kept per-account instead of summed.
+  const expenseByAccount = (periodExpGroups ?? [])
+    .map((g) => ({ ...g.account, amount: Number(g.totalAmount) }))
+    .filter((g) => g.amount !== 0)
+    .sort((a, b) => b.amount - a.amount);
 
   // ── Date label ───────────────────────────────────────────────────────────────
   const dateLabel = isToday ? "Today"
@@ -685,41 +682,6 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 </div>
               </div>
 
-              {/* ── S9: Period Expenses ── */}
-              <div>
-                <SH>Expenses in Selected Period</SH>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="card p-4 text-center">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1.5">Total Expense</div>
-                    <div className="text-xl font-bold text-slate-900 font-mono">{periodExp ? pkr(periodExp.total) : "—"}</div>
-                    <div className="text-xs text-slate-400 mt-1">billed in ledger</div>
-                  </div>
-                  <div className="card p-4 text-center">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1.5">Paid</div>
-                    <div className="text-xl font-bold text-emerald-700 font-mono">{periodExp ? pkr(periodExp.paid) : "—"}</div>
-                    <div className="text-xs text-slate-400 mt-1">cash paid to suppliers</div>
-                  </div>
-                  <div className="card p-4 text-center border-2 border-orange-200 bg-orange-50">
-                    <div className="text-[10px] text-orange-600 uppercase tracking-wider font-bold mb-1.5">Still to Pay</div>
-                    <div className={`text-xl font-bold font-mono ${periodExpOut > 0 ? "text-orange-700" : "text-emerald-700"}`}>
-                      {pkr(periodExpOut)}
-                    </div>
-                    <div className="text-xs text-orange-400 mt-1">from this period's entries</div>
-                  </div>
-                  <div className={`card p-4 text-center border-2 ${netEarning !== null && netEarning < 0 ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
-                    <div className={`text-[10px] uppercase tracking-wider font-bold mb-1.5 ${netEarning !== null && netEarning < 0 ? "text-red-600" : "text-emerald-600"}`}>Net Earning</div>
-                    <div className={`text-xl font-bold font-mono ${netEarning !== null && netEarning < 0 ? "text-red-700" : "text-emerald-700"}`}>
-                      {netEarning !== null ? pkr(netEarning) : "—"}
-                    </div>
-                    <div className={`text-xs mt-1 ${netEarning !== null && netEarning < 0 ? "text-red-400" : "text-emerald-500"}`}>
-                      {selfLoanPeriodNet !== 0
-                        ? `${selfLoanPeriodNet < 0 ? "after" : "incl."} ${pkr(Math.abs(selfLoanPeriodNet))} self loan`
-                        : "sales − total expense"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* ── S9.5: Home/Shop Expense & Salaries ── */}
               <div>
                 <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab + Salary accounts · % of Total Cash this period</Dim></SH>
@@ -758,6 +720,45 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                     account's own total for the period. % is each figure against Total Cash collected this
                     period ({pkr(totalCashPeriod)}).
                   </div>
+                </div>
+              </div>
+
+              {/* ── S9.6: Expense by Account, for the selected period ── */}
+              <div>
+                <SH>Expense by Account <Dim>total billed per account · selected period</Dim></SH>
+                <div className="card p-4 space-y-3">
+                  {periodExpGroups === null
+                    ? <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
+                    : expenseByAccount.length === 0
+                    ? <Empty>No expense entries for this period</Empty>
+                    : (() => {
+                        const maxExp = Math.max(...expenseByAccount.map((g) => g.amount), 1);
+                        const totalExp = expenseByAccount.reduce((s, g) => s + g.amount, 0);
+                        return <>
+                          {expenseByAccount.map((g) => (
+                            <div key={g.id} className="space-y-1">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium">{g.position}. {g.name}</span>
+                                <span className="font-mono font-bold text-slate-800 shrink-0 ml-3">
+                                  {pkr(g.amount)}
+                                  <span className="text-xs text-slate-400 ml-1.5">({totalExp > 0 ? ((g.amount / totalExp) * 100).toFixed(1) : "0"}%)</span>
+                                </span>
+                              </div>
+                              <div className="h-5 bg-slate-100 rounded-lg overflow-hidden">
+                                <div
+                                  className="h-full bg-slate-600 rounded-lg flex items-center transition-all"
+                                  style={{ width: `${Math.max(8, (g.amount / maxExp) * 100)}%` }}
+                                >
+                                  <span className="text-[10px] text-white font-bold pl-2">{pkr(g.amount)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="pt-1 border-t border-slate-100 text-xs text-slate-400 text-right">
+                            Total billed this period: {pkr(totalExp)}
+                          </div>
+                        </>;
+                      })()}
                 </div>
               </div>
 
@@ -800,19 +801,30 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                     </div>
                   </div>
 
-                  {fullDebtBreakdown.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-red-200 space-y-1.5">
-                      <div className="text-xs font-semibold text-slate-600 mb-2">Breakdown by account:</div>
-                      {fullDebtBreakdown.map((g) => (
-                        <div key={g.id} className="flex items-center justify-between text-sm">
-                          <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
-                          <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                            {pkr(g.debt)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {fullDebtBreakdown.length > 0 && (() => {
+                    const maxAbsDebt = Math.max(...fullDebtBreakdown.map((g) => Math.abs(g.debt)), 1);
+                    return (
+                      <div className="mt-4 pt-4 border-t border-red-200 space-y-2.5">
+                        <div className="text-xs font-semibold text-slate-600 mb-1">Breakdown by account:</div>
+                        {fullDebtBreakdown.map((g) => (
+                          <div key={g.id} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
+                              <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                                {pkr(g.debt)}
+                              </span>
+                            </div>
+                            <div className="h-2 bg-red-100/60 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${g.debt > 0 ? "bg-red-500" : "bg-emerald-500"}`}
+                                style={{ width: `${(Math.abs(g.debt) / maxAbsDebt) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </>
