@@ -65,6 +65,8 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const [error,     setError]     = useState<string | null>(null);
   const [dailyHisaabId, setDailyHisaabId] = useState<string | null>(null);
   const [dailyHisaabEntries, setDailyHisaabEntries] = useState<LedgerEntry[] | null>(null);
+  const [salaryAccountId, setSalaryAccountId] = useState<string | null>(null);
+  const [salaryAccountEntries, setSalaryAccountEntries] = useState<LedgerEntry[] | null>(null);
   const [latePayments, setLatePayments] = useState<{ amount: string; discount: string } | null>(null);
 
   // Main data fetch
@@ -120,33 +122,48 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
     return () => { cancelled = true; };
   }, [branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Daily Hisaab account id (position 1) — resolved once per branch, then
-  // reused to pull that account's entries for whatever period is selected.
+  // Daily Hisaab (position 1) and Salary (position 2) account ids — resolved
+  // once per branch, then reused to pull each account's entries for whatever
+  // period is selected. Two separate accounts: Home/Shop Expense come from
+  // Daily Hisaab, but Salaries is its own dedicated account — Daily Hisaab's
+  // total is NOT the same figure (it also carries non-salary rows), confirmed
+  // against the Salary account's own Account Report total.
   useEffect(() => {
     let cancelled = false;
     api.ledgerAccounts(branchId)
-      .then((r) => { if (!cancelled) setDailyHisaabId(r.accounts.find((a) => a.position === 1)?.id ?? null); })
+      .then((r) => {
+        if (cancelled) return;
+        setDailyHisaabId(r.accounts.find((a) => a.position === 1)?.id ?? null);
+        setSalaryAccountId(r.accounts.find((a) => a.position === 2)?.id ?? null);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [branchId]);
 
-  // Daily Hisaab entries for the selected period — source for the Home
-  // Expense / Shop Expense / Salaries breakdown below. And late payments for
-  // the same period, needed (alongside `orders`) to compute Total Cash for
-  // this period, the denominator for that breakdown's percentages.
+  // Daily Hisaab entries for the selected period — source for the Home/Shop
+  // Expense breakdown below. Salary account entries — source for Salaries.
+  // And late payments for the same period, needed (alongside `orders`) to
+  // compute Total Cash for this period, the denominator for percentages.
   useEffect(() => {
-    if (!dailyHisaabId) return;
+    if (!dailyHisaabId && !salaryAccountId) return;
     let cancelled = false;
     const from = fromDate ?? todayStr;
     const to = toDate ?? todayStr;
-    api.ledgerEntries(dailyHisaabId, { from, to, limit: 5000 })
-      .then((r) => { if (!cancelled) setDailyHisaabEntries(r.entries); })
-      .catch(() => { if (!cancelled) setDailyHisaabEntries(null); });
+    if (dailyHisaabId) {
+      api.ledgerEntries(dailyHisaabId, { from, to, limit: 5000 })
+        .then((r) => { if (!cancelled) setDailyHisaabEntries(r.entries); })
+        .catch(() => { if (!cancelled) setDailyHisaabEntries(null); });
+    }
+    if (salaryAccountId) {
+      api.ledgerEntries(salaryAccountId, { from, to, limit: 5000 })
+        .then((r) => { if (!cancelled) setSalaryAccountEntries(r.entries); })
+        .catch(() => { if (!cancelled) setSalaryAccountEntries(null); });
+    }
     api.latePaymentsSummary(branchId, from, to)
       .then((r) => { if (!cancelled) setLatePayments(r); })
       .catch(() => { if (!cancelled) setLatePayments({ amount: "0", discount: "0" }); });
     return () => { cancelled = true; };
-  }, [dailyHisaabId, branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dailyHisaabId, salaryAccountId, branchId, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Yesterday revenue comparison (only for "Today" view)
   useEffect(() => {
@@ -282,14 +299,12 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
   const selfLoanPeriodNet = partnerSummary?.period ? Number(partnerSummary.period.net) : 0;
   const netEarning = periodExp ? revenue - periodExp.total + selfLoanPeriodNet : null;
 
-  // ── Derived: Home/Shop Expense & Salaries (Daily Hisaab account) ─────────────
-  // "Salaries" is the Daily Hisaab account's total for the period, unfiltered —
-  // matching the "TODAY" footer figure on the Hisaab screen (the account is
-  // fundamentally the daily-wage ledger, even though a few of its rows carry
-  // a Shop Expense or Home Expense head). Those two are separately singled out
-  // by headName, so they're subsets shown alongside, not subtracted out.
+  // ── Derived: Home/Shop Expense & Salaries ─────────────────────────────────────
+  // Home Expense / Shop Expense are singled out by Head within Daily Hisaab.
+  // Salaries is a DIFFERENT account entirely (position 2, "Salary") — its own
+  // total for the period, confirmed against that account's Account Report.
   const headIs = (e: LedgerEntry, name: string) => (e.headName ?? "").trim().toLowerCase() === name;
-  const salariesTotal     = (dailyHisaabEntries ?? []).reduce((s, e) => s + Number(e.total), 0);
+  const salariesTotal     = (salaryAccountEntries ?? []).reduce((s, e) => s + Number(e.total), 0);
   const shopExpenseTotal  = (dailyHisaabEntries ?? []).filter((e) => headIs(e, "shop expense")).reduce((s, e) => s + Number(e.total), 0);
   const homeExpenseTotal  = (dailyHisaabEntries ?? []).filter((e) => headIs(e, "home expense")).reduce((s, e) => s + Number(e.total), 0);
 
@@ -687,9 +702,9 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                 </div>
               </div>
 
-              {/* ── S9.5: Home/Shop Expense & Salaries (Daily Hisaab) ── */}
+              {/* ── S9.5: Home/Shop Expense & Salaries ── */}
               <div>
-                <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab account · % of Total Cash this period</Dim></SH>
+                <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab + Salary accounts · % of Total Cash this period</Dim></SH>
                 <div className="card p-4 space-y-4">
                   {(() => {
                     const rows = [
@@ -697,8 +712,8 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                       { label: "Shop Expense",  value: shopExpenseTotal, bar: "bg-orange-500", text: "text-orange-700" },
                       { label: "Salaries",      value: salariesTotal,    bar: "bg-blue-500",   text: "text-blue-700"   },
                     ];
-                    if (dailyHisaabEntries === null) return <div className="text-slate-400 text-sm text-center py-6">Loading…</div>;
-                    if (rows.every((r) => r.value === 0)) return <Empty>No Daily Hisaab entries for this period</Empty>;
+                    if (dailyHisaabEntries === null || salaryAccountEntries === null) return <div className="text-slate-400 text-sm text-center py-6">Loading…</div>;
+                    if (rows.every((r) => r.value === 0)) return <Empty>No entries for this period</Empty>;
                     const maxV = Math.max(...rows.map((r) => r.value), 1);
                     return rows.map((r) => (
                       <div key={r.label} className="space-y-1">
@@ -721,9 +736,9 @@ export function StatsScreen({ shiftId, branchId, onClose, standalone = false }: 
                     ));
                   })()}
                   <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">
-                    Salaries = Daily Hisaab's full total for the period (incl. its Shop/Home Expense rows) — Home
-                    Expense and Shop Expense are shown separately by Head, not subtracted out. % is each figure
-                    against Total Cash collected this period ({pkr(totalCashPeriod)}).
+                    Home Expense / Shop Expense = Daily Hisaab entries with that Head. Salaries = the Salary
+                    account's own total for the period. % is each figure against Total Cash collected this
+                    period ({pkr(totalCashPeriod)}).
                   </div>
                 </div>
               </div>
