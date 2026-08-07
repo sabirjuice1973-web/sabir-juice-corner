@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { TodayOrder, PartnerAccount, LedgerEntry } from "../api";
 import { BOX_LABELS } from "../pos/posState";
-import { printDebtSummary } from "../pos/receipt";
+import { printDebtSummary, printStatsSummary } from "../pos/receipt";
 import { PrinterIcon } from "./PrinterIcon";
 
 type ItemRow = {
@@ -355,6 +355,24 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
     : !toDate || fromDate === toDate ? (fromDate ?? "")
     : `${fromDate} → ${toDate}`;
 
+  // Thermal paper can't show the donuts/bar charts — this is a values-only
+  // dump of the same figures/breakdowns, section by section, for the
+  // shop's printer.
+  function handlePrintSummary() {
+    printStatsSummary({
+      dateLabel,
+      revenue, orderCnt, aov,
+      top5: top5.map((it) => ({ name: it.name, glasses: it.glasses, revenue: it.revenue })),
+      boxStats: boxStats.map((b) => ({ label: boxName(b.box), rev: b.rev, cnt: b.cnt })),
+      medQty, jumboQty,
+      cashRev, creditRev, fpRev,
+      shopDebt, totalCredit, netShopPosition,
+      debtBreakdown: fullDebtBreakdown.map((g) => ({ position: g.position, name: g.name, debt: g.debt })),
+      homeExpenseTotal, shopExpenseTotal, salariesTotal, totalCashPeriod,
+      expenseByAccount: expenseByAccount.map((g) => ({ position: g.position, name: g.name, amount: g.amount })),
+    });
+  }
+
   return (
     <div
       className={`fixed inset-0 flex items-start justify-center z-50 overflow-auto ${standalone ? "bg-white p-0" : "bg-black/50 p-3"}`}
@@ -409,6 +427,15 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
               />
             </div>
           </div>
+
+          <button
+            onClick={handlePrintSummary}
+            disabled={loading || !orders}
+            title="Print a values-only thermal summary of this page"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 text-white border border-white/25 hover:bg-white/20 disabled:opacity-40 flex-shrink-0"
+          >
+            <PrinterIcon className="w-3.5 h-3.5" /> Print
+          </button>
 
           <button onClick={onClose} className="text-white/60 hover:text-white text-2xl leading-none flex-shrink-0">×</button>
         </div>

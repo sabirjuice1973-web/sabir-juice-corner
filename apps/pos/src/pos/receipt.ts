@@ -895,3 +895,177 @@ function pettyCashSlipHtml(data: { forDate: string; amount: number }): string {
 </script>
 </body></html>`;
 }
+
+// ─── Statistics Summary — thermal (80mm) print ──────────────────────────────
+
+/**
+ * A values-only, no-charts summary of the Statistics page for the shop's
+ * thermal printer — the donuts/bar charts on screen don't mean anything on
+ * 80mm paper, so this just lists every figure and breakdown the page shows,
+ * section by section, in the same order as the screen.
+ */
+export function printStatsSummary(data: {
+  dateLabel: string;
+  revenue: number; orderCnt: number; aov: number;
+  top5: { name: string; glasses: number; revenue: number }[];
+  boxStats: { label: string; rev: number; cnt: number }[];
+  medQty: number; jumboQty: number;
+  cashRev: number; creditRev: number; fpRev: number;
+  shopDebt: number; totalCredit: number; netShopPosition: number;
+  debtBreakdown: { position: number; name: string; debt: number }[];
+  homeExpenseTotal: number; shopExpenseTotal: number; salariesTotal: number; totalCashPeriod: number;
+  expenseByAccount: { position: number; name: string; amount: number }[];
+}) {
+  const html = statsSummaryHtml(data);
+  const win = getPrintWindow();
+  if (!win) return;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+  lastPrintAt = Date.now();
+}
+
+function statsSummaryHtml(data: Parameters<typeof printStatsSummary>[0]): string {
+  const printedAt = new Date();
+  const printDate = printedAt.toLocaleDateString("en-PK", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const printTime = printedAt.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const totalGlass = data.medQty + data.jumboQty;
+  const payTotal = data.cashRev + data.creditRev + data.fpRev;
+  const pct = (n: number, base: number) => base > 0 ? ((n / base) * 100).toFixed(1) : "0";
+
+  const top5Rows = data.top5.map((it, i) => `
+    <tr>
+      <td class="rank">${i + 1}</td>
+      <td class="name">${escapeHtml(it.name)}</td>
+      <td class="num">${it.glasses % 1 === 0 ? it.glasses : it.glasses.toFixed(1)}g</td>
+      <td class="num">${formatMoney(it.revenue)}</td>
+    </tr>`).join("");
+
+  const boxRows = data.boxStats.map((b) => `
+    <tr>
+      <td class="name" colspan="2">${escapeHtml(b.label)}</td>
+      <td class="num">${b.cnt}</td>
+      <td class="num">${formatMoney(b.rev)}</td>
+    </tr>`).join("");
+
+  const debtRows = data.debtBreakdown.map((g) => `
+    <tr>
+      <td class="name" colspan="3">${g.position}. ${escapeHtml(g.name)}</td>
+      <td class="num ${g.debt < 0 ? "credit" : ""}">${formatMoney(g.debt)}</td>
+    </tr>`).join("");
+
+  const expRows = data.expenseByAccount.map((g) => `
+    <tr>
+      <td class="name" colspan="3">${g.position}. ${escapeHtml(g.name)}</td>
+      <td class="num">${formatMoney(g.amount)}</td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Statistics Summary</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  @media screen { .receipt { visibility: hidden; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 500 9pt/1.4 "Arial Narrow", Arial, sans-serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt, .receipt * { page-break-inside: avoid !important; break-inside: avoid !important; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 2mm; }
+  .logo { width: 14mm; height: auto; flex-shrink: 0; filter: contrast(2); -webkit-print-color-adjust: exact; }
+  h1 { font-size: 11pt; margin: 0; letter-spacing: 0.5px; font-weight: 900; }
+  hr { border: 0; border-top: 1px dashed #444; margin: 1.5mm 0; }
+  .doc-title { text-align: center; font-size: 9.5pt; font-weight: 900; letter-spacing: 0.5px; }
+  .meta { text-align: center; font-size: 8pt; margin-top: 0.5mm; color: #333; }
+  .section-hdr { font-size: 8pt; font-weight: 900; letter-spacing: 0.5px; margin: 2mm 0 0.8mm; border-bottom: 1px solid #000; padding-bottom: 0.5mm; }
+  table.totals { width: 100%; border-collapse: collapse; }
+  table.totals td { padding: 0.6mm 0; font-size: 9pt; font-weight: 700; }
+  table.totals .num { text-align: right; }
+  table.totals tr.hero td { font-size: 11pt; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1mm 0; }
+  table.rows { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  table.rows td { padding: 0.5mm 0; }
+  table.rows td.rank { width: 5mm; color: #666; }
+  table.rows td.name { font-weight: 600; }
+  table.rows td.num { text-align: right; font-weight: 700; white-space: nowrap; padding-left: 2mm; }
+  table.rows td.num.credit { color: #006600; }
+  .footer-line { text-align: center; font-size: 7.5pt; font-weight: 700; margin-top: 2mm; }
+</style>
+</head><body>
+<div class="receipt">
+  <div class="header-row">
+    <img class="logo" src="${LOGO_MONO_DATA_URI}" alt="Sabir Juice Corner" />
+    <h1>SABIR JUICE CORNER</h1>
+    <div style="width:14mm"></div>
+  </div>
+  <hr />
+  <div class="doc-title">STATISTICS SUMMARY</div>
+  <div class="meta">${escapeHtml(data.dateLabel)}</div>
+  <hr />
+
+  <div class="section-hdr">OVERVIEW</div>
+  <table class="totals">
+    <tr><td>Total Revenue</td><td class="num">PKR ${formatMoney(data.revenue)}</td></tr>
+    <tr><td>Paid Orders</td><td class="num">${data.orderCnt}</td></tr>
+    <tr><td>Avg Order Value</td><td class="num">PKR ${formatMoney(data.aov)}</td></tr>
+  </table>
+
+  ${data.top5.length > 0 ? `
+  <div class="section-hdr">TOP 5 ITEMS</div>
+  <table class="rows">${top5Rows}</table>` : ""}
+
+  ${data.boxStats.length > 0 ? `
+  <div class="section-hdr">BOX / WAITER LEADERBOARD</div>
+  <table class="rows">${boxRows}</table>` : ""}
+
+  ${totalGlass > 0 ? `
+  <div class="section-hdr">GLASS SIZE MIX</div>
+  <table class="totals">
+    <tr><td>Medium</td><td class="num">${data.medQty} (${pct(data.medQty, totalGlass)}%)</td></tr>
+    <tr><td>Jumbo</td><td class="num">${data.jumboQty} (${pct(data.jumboQty, totalGlass)}%)</td></tr>
+  </table>` : ""}
+
+  ${payTotal > 0 ? `
+  <div class="section-hdr">PAYMENT SPLIT</div>
+  <table class="totals">
+    ${data.cashRev > 0 ? `<tr><td>Cash</td><td class="num">PKR ${formatMoney(data.cashRev)} (${pct(data.cashRev, payTotal)}%)</td></tr>` : ""}
+    ${data.creditRev > 0 ? `<tr><td>Credit (Accounts)</td><td class="num">PKR ${formatMoney(data.creditRev)} (${pct(data.creditRev, payTotal)}%)</td></tr>` : ""}
+    ${data.fpRev > 0 ? `<tr><td>Food Panda</td><td class="num">PKR ${formatMoney(data.fpRev)} (${pct(data.fpRev, payTotal)}%)</td></tr>` : ""}
+  </table>` : ""}
+
+  <div class="section-hdr">TOTAL SHOP DEBT (all-time)</div>
+  <table class="totals">
+    <tr><td>Payable by shop</td><td class="num">PKR ${formatMoney(data.shopDebt)}</td></tr>
+    <tr><td>Receivable from customers</td><td class="num">PKR ${formatMoney(data.totalCredit)}</td></tr>
+    <tr class="hero"><td>${data.netShopPosition < 0 ? "NET OWED TO SHOP" : "NET OWED BY SHOP"}</td><td class="num">PKR ${formatMoney(Math.abs(data.netShopPosition))}</td></tr>
+  </table>
+  ${data.debtBreakdown.length > 0 ? `<table class="rows">${debtRows}</table>` : ""}
+
+  ${(data.homeExpenseTotal !== 0 || data.shopExpenseTotal !== 0 || data.salariesTotal !== 0) ? `
+  <div class="section-hdr">HOME/SHOP EXPENSE &amp; SALARIES (period)</div>
+  <table class="totals">
+    <tr><td>Home Expense</td><td class="num">PKR ${formatMoney(data.homeExpenseTotal)} (${pct(data.homeExpenseTotal, data.totalCashPeriod)}%)</td></tr>
+    <tr><td>Shop Expense</td><td class="num">PKR ${formatMoney(data.shopExpenseTotal)} (${pct(data.shopExpenseTotal, data.totalCashPeriod)}%)</td></tr>
+    <tr><td>Salaries</td><td class="num">PKR ${formatMoney(data.salariesTotal)} (${pct(data.salariesTotal, data.totalCashPeriod)}%)</td></tr>
+  </table>` : ""}
+
+  ${data.expenseByAccount.length > 0 ? `
+  <div class="section-hdr">EXPENSE BY ACCOUNT (cash paid, period)</div>
+  <table class="rows">${expRows}</table>` : ""}
+
+  <hr />
+  <div class="footer-line">Printed: ${printDate} ${printTime}</div>
+</div>
+<script>
+  window.addEventListener('afterprint', function () {
+    if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+    window.blur();
+  }, { once: true });
+</script>
+</body></html>`;
+}
