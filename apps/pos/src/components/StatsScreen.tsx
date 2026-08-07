@@ -305,6 +305,9 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   // is money payable by the shop just like a supplier's ledger balance.
   const partnerNet = partnerSummary ? partnerSummary.totalOwedToPartners - partnerSummary.totalOwedByPartners : 0;
   const shopDebt     = (allDebt ? allDebt.total - allDebt.paid : 0) + partnerNet;
+  // Orders sitting in creditor accounts are money customers still owe the
+  // shop — an asset offsetting what the shop itself owes suppliers/partners.
+  const netShopPosition = shopDebt - totalCredit;
 
   // ── Derived: Home/Shop Expense & Salaries ─────────────────────────────────────
   // Home Expense / Shop Expense are singled out by Head within Daily Hisaab.
@@ -648,41 +651,129 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                   </div>
                 </div>
 
-                {/* ── S8: Credit Exposure ── */}
-                <div>
-                  <SH>Credit Exposure <Dim>customers owe us — always live</Dim></SH>
-                  <div className="card p-4">
-                    {accounts === null
-                      ? <div className="text-slate-400 text-sm">Loading…</div>
-                      : (
-                          <div className="space-y-3">
-                            <div className="text-center py-2">
-                              <div className={`text-3xl font-bold font-mono ${totalCredit > 0 ? "text-red-600" : "text-emerald-600"}`}>
-                                {pkr(totalCredit)}
-                              </div>
-                              <div className="text-xs text-slate-500 mt-1">total outstanding across all creditor accounts</div>
-                            </div>
-                            {top3.length > 0 && (
-                              <div className="space-y-2 border-t border-slate-100 pt-3">
-                                <div className="text-xs text-slate-500 font-semibold">Top 3 by balance owed:</div>
-                                {top3.map((acc) => (
-                                  <div key={acc.id} className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-700 font-medium truncate">{acc.name}</span>
-                                    <span className="font-mono font-bold text-red-600 ml-3 shrink-0">{pkr(Number(acc.currentBalance))}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {totalCredit === 0 && (
-                              <div className="text-center text-xs text-emerald-600 font-medium">All accounts are settled ✓</div>
-                            )}
-                          </div>
-                        )}
+              </div>
+
+              {/* ── Total Shop Debt — All-time, always live ── */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <SH>Total Shop Debt <Dim>all-time · always live · ignores date filter</Dim></SH>
+                  {allDebt && (
+                    <button
+                      onClick={() => printDebtSummary({
+                        totalBilled: allDebt.total,
+                        totalPaid: allDebt.paid,
+                        totalDebt: shopDebt,
+                        breakdown: fullDebtBreakdown.map((g) => ({ position: g.position, name: g.name, debt: g.debt })),
+                      })}
+                      title="Print a thermal-slip summary of this debt breakdown"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800 bg-white border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1 mb-2"
+                    >
+                      <PrinterIcon className="w-3.5 h-3.5" /> Print
+                    </button>
+                  )}
+                </div>
+                <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800">Payable by shop (suppliers, salaries, self loan)</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Live outstanding balance across all ledger accounts, regardless of the selected date range.
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`text-4xl font-bold font-mono ${shopDebt > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                        {allDebt ? pkr(shopDebt) : "—"}
+                      </div>
+                      {allDebt && (
+                        <div className="text-xs text-slate-500 mt-1">
+                          {pkr(allDebt.total)} billed − {pkr(allDebt.paid)} paid
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Receivable — orders sitting in creditor accounts that customers
+                      still owe the shop for. Same live totalCredit as Credit Exposure
+                      below, surfaced here too so payable and receivable sit side by side. */}
+                  <div className="mt-4 pt-4 border-t border-red-200 flex items-center justify-between gap-4 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800">Receivable from customers</div>
+                      <div className="text-xs text-slate-500 mt-1">Outstanding balance across all creditor accounts — orders not yet paid for.</div>
+                    </div>
+                    <div className="text-3xl font-bold font-mono text-emerald-700 shrink-0">
+                      {accounts ? pkr(totalCredit) : "—"}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t-2 border-red-300 flex items-center justify-between gap-4 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-slate-900">Net shop position</div>
+                      <div className="text-xs text-slate-500 mt-1">Payable minus receivable.</div>
+                    </div>
+                    <div className={`text-4xl font-bold font-mono shrink-0 ${netShopPosition > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                      {allDebt && accounts ? pkr(Math.abs(netShopPosition)) : "—"}
+                      {allDebt && accounts && (
+                        <div className="text-xs font-semibold text-right mt-0.5">
+                          {netShopPosition > 0 ? "owed BY shop" : netShopPosition < 0 ? "owed TO shop" : "settled"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {fullDebtBreakdown.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-red-200 space-y-1.5">
+                      {/* Values span too wide a range here (tens of thousands to
+                          millions) for a bar's length to stay meaningful — a
+                          plain color-coded list reads more honestly than a bar
+                          that makes the smaller accounts invisible. */}
+                      <div className="text-xs font-semibold text-slate-600 mb-2">Breakdown by account:</div>
+                      {fullDebtBreakdown.map((g) => (
+                        <div key={g.id} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
+                          <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                            {pkr(g.debt)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* ── S9.5: Home/Shop Expense & Salaries ── */}
+              {/* ── Credit Exposure — detail behind the Receivable figure above ── */}
+              <div>
+                <SH>Credit Exposure <Dim>customers owe us — always live</Dim></SH>
+                <div className="card p-4">
+                  {accounts === null
+                    ? <div className="text-slate-400 text-sm">Loading…</div>
+                    : (
+                        <div className="space-y-3">
+                          <div className="text-center py-2">
+                            <div className={`text-3xl font-bold font-mono ${totalCredit > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                              {pkr(totalCredit)}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">total outstanding across all creditor accounts</div>
+                          </div>
+                          {top3.length > 0 && (
+                            <div className="space-y-2 border-t border-slate-100 pt-3">
+                              <div className="text-xs text-slate-500 font-semibold">Top 3 by balance owed:</div>
+                              {top3.map((acc) => (
+                                <div key={acc.id} className="flex items-center justify-between text-sm">
+                                  <span className="text-slate-700 font-medium truncate">{acc.name}</span>
+                                  <span className="font-mono font-bold text-red-600 ml-3 shrink-0">{pkr(Number(acc.currentBalance))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {totalCredit === 0 && (
+                            <div className="text-center text-xs text-emerald-600 font-medium">All accounts are settled ✓</div>
+                          )}
+                        </div>
+                      )}
+                </div>
+              </div>
+
+              {/* ── Home/Shop Expense & Salaries ── */}
               <div>
                 <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab + Salary accounts · % of Total Cash this period</Dim></SH>
                 <div className="card p-4">
@@ -736,64 +827,6 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 </div>
               </div>
 
-              {/* ── S10: Total Shop Debt — All-time, always live ── */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <SH>Total Shop Debt <Dim>all-time · always live · ignores date filter</Dim></SH>
-                  {allDebt && (
-                    <button
-                      onClick={() => printDebtSummary({
-                        totalBilled: allDebt.total,
-                        totalPaid: allDebt.paid,
-                        totalDebt: shopDebt,
-                        breakdown: fullDebtBreakdown.map((g) => ({ position: g.position, name: g.name, debt: g.debt })),
-                      })}
-                      title="Print a thermal-slip summary of this debt breakdown"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800 bg-white border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1 mb-2"
-                    >
-                      <PrinterIcon className="w-3.5 h-3.5" /> Print
-                    </button>
-                  )}
-                </div>
-                <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-800">Total amount payable by shop since accounts were opened</div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        This is the live outstanding balance across all ledger accounts, regardless of the selected date range.
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className={`text-4xl font-bold font-mono ${shopDebt > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                        {allDebt ? pkr(shopDebt) : "—"}
-                      </div>
-                      {allDebt && (
-                        <div className="text-xs text-slate-500 mt-1">
-                          {pkr(allDebt.total)} billed − {pkr(allDebt.paid)} paid
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {fullDebtBreakdown.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-red-200 space-y-1.5">
-                      {/* Values span too wide a range here (tens of thousands to
-                          millions) for a bar's length to stay meaningful — a
-                          plain color-coded list reads more honestly than a bar
-                          that makes the smaller accounts invisible. */}
-                      <div className="text-xs font-semibold text-slate-600 mb-2">Breakdown by account:</div>
-                      {fullDebtBreakdown.map((g) => (
-                        <div key={g.id} className="flex items-center justify-between text-sm">
-                          <span className="text-slate-700 font-medium">{g.position}. {g.name}</span>
-                          <span className={`font-mono font-bold ${g.debt > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                            {pkr(g.debt)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
             </>
           )}
         </div>
@@ -838,7 +871,7 @@ const CAT_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008
 
 // Donut chart — share-of-whole for a handful of categories, paired with a
 // legend (color is never the only identity cue). No external library.
-function DonutChart({ data, centerLabel, percentOf, size = 168, thickness = 26 }: {
+function DonutChart({ data, centerLabel, percentOf, size = 220, thickness = 34 }: {
   data: { label: string; value: number; color: string }[];
   /** Shown under the center total, e.g. "Total billed". Omit for charts where
    * the sum of the slices isn't itself a meaningful standalone figure. */
@@ -882,21 +915,21 @@ function DonutChart({ data, centerLabel, percentOf, size = 168, thickness = 26 }
         </g>
         {centerLabel && total > 0 && (
           <>
-            <text x={size / 2} y={size / 2 - 4} textAnchor="middle" fontSize="16" fontWeight="700" fill="#0b0b0b">{pkr(total)}</text>
-            <text x={size / 2} y={size / 2 + 14} textAnchor="middle" fontSize="9" fill="#898781">{centerLabel}</text>
+            <text x={size / 2} y={size / 2 - 5} textAnchor="middle" fontSize="22" fontWeight="700" fill="#0b0b0b">{pkr(total)}</text>
+            <text x={size / 2} y={size / 2 + 18} textAnchor="middle" fontSize="12" fill="#898781">{centerLabel}</text>
           </>
         )}
       </svg>
-      <div className="flex-1 min-w-[180px] space-y-2">
+      <div className="flex-1 min-w-[220px] space-y-4">
         {data.map((d) => (
-          <div key={d.label} className="flex items-center justify-between text-sm gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-              <span className="font-medium truncate">{d.label}</span>
+          <div key={d.label} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+              <span className="font-semibold text-base truncate">{d.label}</span>
             </div>
-            <span className="font-mono font-bold text-slate-800 shrink-0">
+            <span className="font-mono font-bold text-xl text-slate-900 shrink-0">
               {pkr(d.value)}
-              <span className="text-xs text-slate-400 ml-1.5">({pctBase > 0 ? ((d.value / pctBase) * 100).toFixed(1) : "0"}%)</span>
+              <span className="text-sm font-semibold text-slate-500 ml-2">({pctBase > 0 ? ((d.value / pctBase) * 100).toFixed(1) : "0"}%)</span>
             </span>
           </div>
         ))}
