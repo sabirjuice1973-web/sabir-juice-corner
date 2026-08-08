@@ -167,6 +167,16 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
     if (selectedId) void loadEntries(selectedId);
   }, [selectedId, loadEntries]);
 
+  // Switching accounts must always drop any in-progress entry/edit — otherwise
+  // the InlineEntryForm below (keyed on editingEntry?.id / formResetKey, not on
+  // the account) survives the switch and keeps its stale internal state. That
+  // was the cause of a real bug: the Head Account box *displays* the new
+  // account's locked fixedHeadName correctly (it renders straight from the
+  // prop), but the old form.headName value — e.g. "" from a non-locked account
+  // — was still what got submitted, so entries saved with a blank Head Account
+  // despite the field visibly showing "Salary"/"Shop Expense".
+  useEffect(() => { resetForm(); }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Running balance across ALL entries (all time, sorted ASC), grouped by
   // supplierName for most accounts — but Daily Hisaab (position 1) and Salary
   // (position 2) group by productName instead: those two accounts log
