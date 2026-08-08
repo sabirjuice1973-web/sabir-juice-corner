@@ -172,7 +172,14 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
       try {
         if (tab === "orders" || tab === "boxes") {
           const r = await api.todayOrders(shiftId, fromDate ?? undefined, toDate ?? undefined);
-          if (!cancelled) setOrders(r.orders);
+          // Sort by paid time (closedAt) descending — the order paid most
+          // recently leads, regardless of when it was originally punched.
+          // Orders not yet paid (closedAt null: OPEN/CANCELLED/VOIDED) fall
+          // back to openedAt so they still slot in sensibly.
+          const sorted = [...r.orders].sort((a, b) =>
+            new Date(b.closedAt ?? b.openedAt).getTime() - new Date(a.closedAt ?? a.openedAt).getTime()
+          );
+          if (!cancelled) setOrders(sorted);
         } else {
           const typeParam = orderTypeFilter !== "ALL" ? orderTypeFilter : undefined;
           const r = await api.itemSummary(shiftId, fromDate ?? undefined, toDate ?? undefined, typeParam);
