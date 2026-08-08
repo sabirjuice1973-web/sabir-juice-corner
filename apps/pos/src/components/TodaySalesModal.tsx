@@ -855,6 +855,15 @@ function CashCounterPopup({
 
 // ─── One order row + expanded line items ──────────────────────────────────
 
+// Order # like "B3-20260808-0174" → "174". The Date/Time columns already
+// carry the day and moment, so the branch/date prefix here is pure noise —
+// the trailing sequence is all that's needed to tell today's orders apart.
+function shortOrderNo(orderNo: string): string {
+  const seq = orderNo.split("-").pop();
+  const n = seq ? parseInt(seq, 10) : NaN;
+  return Number.isFinite(n) ? String(n) : orderNo;
+}
+
 type OrderLine = { name: string; size: string; qty: string; unitPrice: string; lineTotal: string };
 
 function OrderRow({ order, expanded, items, onToggle, onPrint, printing }: {
@@ -866,8 +875,19 @@ function OrderRow({ order, expanded, items, onToggle, onPrint, printing }: {
   printing: boolean;
 }) {
   const date = new Date(order.businessDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short" });
-  const time = new Date(order.openedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+  // Show the paid time (closedAt) when available — the list is sorted on this
+  // key, so displaying openedAt instead would make the order look scrambled.
+  // Still-open/cancelled/voided orders have no paid time, so fall back.
+  const time = new Date(order.closedAt ?? order.openedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+  // "PAID" is the order's lifecycle status (finalized/closed) — it does NOT
+  // mean cash was collected. A credit order (pushed to a creditor account) is
+  // just as "PAID" in that sense, which reads as misleading to the cashier.
+  // Relabel those specifically as "CREDIT" so the column reflects real
+  // payment status, not just the internal order state.
+  const isCredit = order.payments.some((p) => p.method === "CREDIT");
+  const statusLabel = order.status === "PAID" && isCredit ? "CREDIT" : order.status;
   const statusPill =
+    order.status === "PAID" && isCredit ? "bg-violet-100 text-violet-800" :
     order.status === "PAID"      ? "bg-emerald-100 text-emerald-800" :
     order.status === "OPEN"      ? "bg-amber-100 text-amber-800"     :
     order.status === "CANCELLED" ? "bg-slate-200 text-slate-600"     :
@@ -880,9 +900,9 @@ function OrderRow({ order, expanded, items, onToggle, onPrint, printing }: {
       <tr className="cursor-pointer hover:bg-slate-50" onClick={onToggle}>
         <td className="text-xs font-mono text-slate-500">{date}</td>
         <td className="text-xs font-mono">{time}</td>
-        <td className="font-medium">{order.orderNo}</td>
+        <td className="font-medium font-mono" title={order.orderNo}>{shortOrderNo(order.orderNo)}</td>
         <td className="text-xs text-slate-500">{order.waiterBox ? `Box ${order.waiterBox}` : "—"}</td>
-        <td><span className={`pill text-[10px] ${statusPill}`}>{order.status}</span></td>
+        <td><span className={`pill text-[10px] ${statusPill}`}>{statusLabel}</span></td>
         <td className="text-right font-mono">{Number(order.discountAmount) > 0 ? `−${order.discountAmount}` : "—"}</td>
         <td className="text-right font-mono font-medium">PKR {order.total}</td>
         <td className="text-xs text-slate-600 truncate">{methods}</td>
