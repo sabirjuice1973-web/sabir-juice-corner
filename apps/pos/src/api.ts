@@ -156,6 +156,8 @@ export const api = {
     request<{ orders: Order[] }>("GET", `/orders?branchId=${branchId}&status=OPEN&limit=100`),
   getOrder: (orderId: string | number) =>
     request<{ order: Order }>("GET", `/orders/${orderId}`),
+  nextOrderNumber: (branchId: string | number) =>
+    request<{ businessDate: string; nextSeq: number }>("GET", `/orders/next-number?branchId=${branchId}`),
   replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[], toBox?: number) =>
     request<{ order: Order }>("PUT", `/orders/${orderId}/replace-items`, { items, ...(toBox !== undefined ? { toBox } : {}) }),
   mergeOrders: (orderIds: (string | number)[]) =>

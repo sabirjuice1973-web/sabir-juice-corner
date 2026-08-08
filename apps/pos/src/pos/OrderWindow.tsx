@@ -62,9 +62,12 @@ type Props = {
   // When set, the window operates in EDIT mode: header shows the order being
   // edited and the box buttons say "Move to Box N" instead of "Box N".
   editTarget?: { orderNo: string | null; serverId: string } | null;
+  // The order number the NEXT order pushed (for the current business date)
+  // will receive — shown as a live "Next Order #N" badge. null while loading.
+  nextOrderSeq?: number | null;
 };
 
-export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBox, editTarget }: Props) {
+export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBox, editTarget, nextOrderSeq }: Props) {
   const qtyRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const [qtyInput, setQtyInput] = useState("1");
@@ -320,7 +323,15 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
               )}
             </div>
           </div>
-          <button onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="text-slate-400 hover:text-slate-700 text-xl leading-none cursor-pointer">×</button>
+          <div className="flex items-center gap-3">
+            {!editTarget && nextOrderSeq != null && (
+              <div className="text-right leading-tight" title="Order number this business date, for the next order pushed">
+                <div className="text-[9px] uppercase tracking-wide text-slate-400">Next Order</div>
+                <div className="font-mono font-bold text-lg text-accent-700">#{nextOrderSeq}</div>
+              </div>
+            )}
+            <button onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="text-slate-400 hover:text-slate-700 text-xl leading-none cursor-pointer">×</button>
+          </div>
         </div>
 
         <div className="p-5 grid grid-cols-12 gap-3">

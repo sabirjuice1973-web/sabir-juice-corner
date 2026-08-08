@@ -155,6 +155,15 @@ export function Pos({
     setState((s) => ({ ...s, windowOpen: open }));
   }, []);
 
+  // Live "this will be order #N" counter for the Order Window — refetched on
+  // mount and after every successful push, so it stays accurate even across
+  // page refreshes or a business-date rollover mid-shift.
+  const [nextOrderSeq, setNextOrderSeq] = useState<number | null>(null);
+  const refreshNextOrderSeq = useCallback(() => {
+    api.nextOrderNumber(branchId).then((r) => setNextOrderSeq(r.nextSeq)).catch(() => {});
+  }, [branchId]);
+  useEffect(() => { refreshNextOrderSeq(); }, [refreshNextOrderSeq]);
+
   /**
    * Public push: validates the draft, then either:
    *   - opens the name-prompt modal (box 6/7) and waits for the cashier to enter
@@ -258,6 +267,7 @@ export function Pos({
         return { ...s, boxes: nextBoxes, draft: clearDraft(), windowOpen: true };
       });
       setPendingPush(null);
+      refreshNextOrderSeq();
     } catch (e: any) {
       if (isNetworkError(e)) {
         try {
@@ -301,7 +311,7 @@ export function Pos({
     } finally {
       setBusy(false);
     }
-  }, [branchId, shiftId, editTarget]);
+  }, [branchId, shiftId, editTarget, refreshNextOrderSeq]);
 
   // ─── Edit-order flow (click row → Shift+C) ──────────────────────────────
   //
@@ -1142,6 +1152,7 @@ export function Pos({
           onClear={() => setDraft(clearDraft())}
           onPushToBox={pushDraftToBox}
           editTarget={editTarget ? { orderNo: editTarget.orderNo, serverId: editTarget.serverId } : null}
+          nextOrderSeq={nextOrderSeq}
         />
       )}
 

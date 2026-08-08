@@ -177,6 +177,17 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     return toJson({ orders });
   });
 
+  /** GET /orders/next-number?branchId= — the order number the NEXT order
+   *  pushed for this branch's current business date will receive. Lets the
+   *  Order Window show a live "this will be order #N" counter. Must be
+   *  registered before GET /:id or Fastify would route "next-number" there. */
+  app.get("/next-number", async (req) => {
+    const q = z.object({ branchId: z.coerce.bigint() }).parse(req.query);
+    const businessDate = await getBranchBusinessDate(q.branchId);
+    const taken = await prisma.order.count({ where: { branchId: q.branchId, businessDate } });
+    return { businessDate: yyyymmdd(businessDate), nextSeq: taken + 1 };
+  });
+
   /** GET /orders/:id */
   app.get("/:id", async (req, reply) => {
     const id = BigInt((req.params as { id: string }).id);
