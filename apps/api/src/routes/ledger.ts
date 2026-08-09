@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "@sjc/db";
+import { Prisma } from "@prisma/client";
 import { requireAuth } from "../lib/guards.js";
 import { toJson } from "../lib/serialize.js";
 import { createWriteStream, mkdirSync, createReadStream, existsSync } from "node:fs";
@@ -492,6 +493,28 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
     if (q.data.supplierName) where.supplierName = { contains: q.data.supplierName, mode: "insensitive" };
     if (q.data.productName) where.productName = { contains: q.data.productName, mode: "insensitive" };
 
+    // Per-account totals come from a DB-level aggregate, NOT from summing the
+    // (capped) entries list below. A branch's all-time entry count comfortably
+    // exceeds `limit` after a few months, and summing only the fetched page
+    // silently dropped whichever accounts' rows fell past the cutoff — e.g.
+    // an account with few entries sorting after high-volume accounts would
+    // vanish from the report entirely, understating "Payable by shop" and
+    // omitting the account from its breakdown with no error or indication.
+    const sums = await prisma.ledgerEntry.groupBy({
+      by: ["ledgerAccountId"],
+      where,
+      _sum: { total: true, cashPaid: true },
+    });
+
+    const accountIds = sums.map((s) => s.ledgerAccountId);
+    const accountMetas = accountIds.length
+      ? await prisma.ledgerAccount.findMany({
+          where: { id: { in: accountIds } },
+          select: { id: true, position: true, name: true },
+        })
+      : [];
+    const metaById = new Map(accountMetas.map((a) => [a.id.toString(), a]));
+
     const entries = await prisma.ledgerEntry.findMany({
       where,
       include: { ledgerAccount: { select: { id: true, position: true, name: true } } },
@@ -499,7 +522,9 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
       take: q.data.limit,
     });
 
-    // Group by account and compute running balance per account
+    // Group by account — seeded from the accurate aggregate (so every account
+    // with matching entries appears, even one whose rows all fell past the
+    // entries cutoff), then filled in with whatever detail rows made the cut.
     type AccountGroup = {
       account: { id: string; position: number; name: string };
       entries: ReturnType<typeof serializeReportEntry>[];
@@ -508,35 +533,31 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
     };
     const groups = new Map<string, AccountGroup>();
 
-    for (const e of entries) {
-      const key = e.ledgerAccountId.toString();
-      if (!groups.has(key)) {
-        groups.set(key, {
-          account: {
-            id: e.ledgerAccount.id.toString(),
-            position: e.ledgerAccount.position,
-            name: e.ledgerAccount.name,
-          },
-          entries: [],
-          totalAmount: "0",
-          totalCashPaid: "0",
-        });
-      }
-      const g = groups.get(key)!;
-      g.entries.push(serializeReportEntry(e));
-      g.totalAmount = (parseFloat(g.totalAmount) + parseFloat(e.total.toString())).toFixed(2);
-      g.totalCashPaid = (parseFloat(g.totalCashPaid) + parseFloat(e.cashPaid.toString())).toFixed(2);
+    for (const s of sums) {
+      const key = s.ledgerAccountId.toString();
+      const meta = metaById.get(key);
+      if (!meta) continue;
+      groups.set(key, {
+        account: { id: meta.id.toString(), position: meta.position, name: meta.name },
+        entries: [],
+        totalAmount: (s._sum.total ?? new Prisma.Decimal(0)).toFixed(2),
+        totalCashPaid: (s._sum.cashPaid ?? new Prisma.Decimal(0)).toFixed(2),
+      });
     }
 
-    const grandTotalAmount = [...groups.values()]
-      .reduce((sum, g) => sum + parseFloat(g.totalAmount), 0)
+    for (const e of entries) {
+      groups.get(e.ledgerAccountId.toString())?.entries.push(serializeReportEntry(e));
+    }
+
+    const grandTotalAmount = sums
+      .reduce((sum, s) => sum + Number(s._sum.total ?? 0), 0)
       .toFixed(2);
-    const grandTotalCashPaid = [...groups.values()]
-      .reduce((sum, g) => sum + parseFloat(g.totalCashPaid), 0)
+    const grandTotalCashPaid = sums
+      .reduce((sum, s) => sum + Number(s._sum.cashPaid ?? 0), 0)
       .toFixed(2);
 
     return toJson({
-      groups: [...groups.values()],
+      groups: [...groups.values()].sort((a, b) => a.account.position - b.account.position),
       grandTotalAmount,
       grandTotalCashPaid,
       rowCount: entries.length,
