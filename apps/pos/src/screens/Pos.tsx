@@ -177,8 +177,16 @@ export function Pos({
       setTimeout(() => setError(null), 1500);
       return;
     }
-    // In edit mode skip the name prompt — just move the order to the chosen box.
+    // In edit mode, skip the name prompt — the order being moved already has
+    // whatever name it started with. EXCEPT: Box 7 requires a shopkeeper name,
+    // so an order that doesn't already have one (e.g. it started in another
+    // box, or was pushed to Box 7 before this check existed) must still be
+    // prompted — otherwise it silently lands in Box 7 nameless.
     if (editTarget) {
+      if (boxNumber === 7 && !editTarget.customerName) {
+        setPendingPush({ boxNumber });
+        return;
+      }
       await performPushToBox(boxNumber, null);
       return;
     }
@@ -208,6 +216,7 @@ export function Pos({
               : { itemCode: li.itemCode, qty: li.qty },
           ),
           boxNumber,
+          customerName ?? undefined,
         );
         emitOrdersChanged();
         const o = result.order;
@@ -218,7 +227,7 @@ export function Pos({
           subtotal: o.subtotal,
           discountAmount: o.discountAmount,
           total: o.total,
-          customerName: editTarget.customerName,
+          customerName: customerName ?? editTarget.customerName,
           lines: buildBoxOrderLines(o.items),
           openedAt: o.openedAt,
           deliveredAt: null,

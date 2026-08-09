@@ -516,6 +516,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     const parsed = z.object({
       items: CreateOrderWithItemsBody.shape.items,
       toBox: z.number().int().min(1).max(9).optional(),
+      customerName: z.string().trim().min(1).max(120).optional(),
     }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "Invalid body", details: parsed.error.flatten() });
 
@@ -613,6 +614,11 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       // Move to a different box if requested.
       if (parsed.data.toBox !== undefined) {
         await tx.order.update({ where: { id }, data: { waiterBox: parsed.data.toBox } });
+      }
+      // e.g. an order moved into Box 7 (shopkeeper name required) that didn't
+      // already have one — the client prompts for it and passes it here.
+      if (parsed.data.customerName !== undefined) {
+        await tx.order.update({ where: { id }, data: { customerName: parsed.data.customerName } });
       }
 
       // Re-apply any existing discount, recompute total.

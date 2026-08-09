@@ -158,8 +158,8 @@ export const api = {
     request<{ order: Order }>("GET", `/orders/${orderId}`),
   nextOrderNumber: (branchId: string | number) =>
     request<{ businessDate: string; nextSeq: number }>("GET", `/orders/next-number?branchId=${branchId}`),
-  replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[], toBox?: number) =>
-    request<{ order: Order }>("PUT", `/orders/${orderId}/replace-items`, { items, ...(toBox !== undefined ? { toBox } : {}) }),
+  replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[], toBox?: number, customerName?: string) =>
+    request<{ order: Order }>("PUT", `/orders/${orderId}/replace-items`, { items, ...(toBox !== undefined ? { toBox } : {}), ...(customerName !== undefined ? { customerName } : {}) }),
   mergeOrders: (orderIds: (string | number)[]) =>
     request<{ order: Order }>("POST", "/orders/merge", { orderIds: orderIds.map(Number) }),
 
