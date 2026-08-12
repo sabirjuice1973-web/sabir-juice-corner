@@ -887,15 +887,14 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
 
 function SH({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-700 mb-2.5">
-      <span className="w-1 h-3.5 rounded-full bg-emerald-500 shrink-0" />
+    <h3 className="inline-block bg-emerald-900 text-white text-xs font-bold uppercase tracking-wider rounded-md px-3 py-1.5 mb-3">
       {children}
     </h3>
   );
 }
 
 function Dim({ children }: { children: React.ReactNode }) {
-  return <span className="text-slate-400 normal-case font-normal text-[10px] ml-1">{children}</span>;
+  return <span className="text-emerald-300/80 normal-case font-normal text-[10px] ml-1">{children}</span>;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
