@@ -456,6 +456,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
             branchId={branchId}
             from={fromDate ?? todayStr}
             to={toDate ?? todayStr}
+            totalCashCollected={totalCashPeriod}
             onClose={() => setShowFruitPurchases(false)}
           />
         )}
@@ -1098,8 +1099,8 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
 
 const FRUIT_BAR_COLOR = CAT_COLORS[1]; // orange — distinct from Top 5 Items' emerald
 
-function FruitPurchasesModal({ branchId, from, to, onClose }: {
-  branchId: string; from: string; to: string; onClose: () => void;
+function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }: {
+  branchId: string; from: string; to: string; totalCashCollected: number; onClose: () => void;
 }) {
   const [items, setItems] = useState<{ product: string; quantity: string; totalAmount: string }[] | null>(null);
   const [grandTotal, setGrandTotal] = useState("0.00");
@@ -1154,7 +1155,10 @@ function FruitPurchasesModal({ branchId, from, to, onClose }: {
             <div className="space-y-3">
               {ranked.map((it, i) => {
                 const amount = Number(it.totalAmount);
-                const pct = grand > 0 ? (amount / grand) * 100 : 0;
+                // % of TOTAL CASH COLLECTED for the period (same figure as the
+                // Sales screen's "Total Cash" tile) — not % of fruit spend —
+                // so this reads as "how much of what we took in went here."
+                const pct = totalCashCollected > 0 ? (amount / totalCashCollected) * 100 : 0;
                 return (
                   <div key={it.product}>
                     <div className="flex items-center justify-between text-sm mb-1">
@@ -1165,7 +1169,7 @@ function FruitPurchasesModal({ branchId, from, to, onClose }: {
                       </div>
                       <div className="text-right shrink-0 ml-3">
                         <span className="font-bold text-slate-900 font-mono tabular-nums">{pkr(amount)}</span>
-                        <span className="text-[10px] text-slate-400 ml-1.5 tabular-nums">{pct.toFixed(0)}%</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5 tabular-nums">{pct.toFixed(1)}%</span>
                       </div>
                     </div>
                     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -1184,7 +1188,14 @@ function FruitPurchasesModal({ branchId, from, to, onClose }: {
         {!loading && !error && ranked.length > 0 && (
           <div className="px-4 py-3.5 bg-slate-900 flex items-center justify-between shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Invested</span>
-            <span className="text-xl font-bold text-white font-mono tabular-nums">{pkr(grand)}</span>
+            <div className="text-right">
+              <span className="text-xl font-bold text-white font-mono tabular-nums">{pkr(grand)}</span>
+              {totalCashCollected > 0 && (
+                <span className="text-xs font-semibold text-orange-300 ml-2 tabular-nums">
+                  {((grand / totalCashCollected) * 100).toFixed(1)}% of cash collected
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
