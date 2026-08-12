@@ -527,25 +527,25 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 </div>
               </div>
 
-              {/* ── S2: Sales Chart + Order Count, side by side and column-aligned ── */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div>
-                  <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"}</SH>
-                  <div className="card p-4">
-                    {chartData.every((d) => d.value === 0)
-                      ? <div className="text-slate-400 text-sm text-center py-8">No sales data for this period</div>
-                      : <BarChart data={chartData} color="#10b981" />
-                    }
-                  </div>
+              {/* ── S2: Sales Chart, then Order Count — stacked, each full width so
+                  the axis labels stay legible (a half-width chart squeezed the
+                  tick text down to the point of being hard to read) ── */}
+              <div>
+                <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"}</SH>
+                <div className="card p-4">
+                  {chartData.every((d) => d.value === 0)
+                    ? <div className="text-slate-400 text-sm text-center py-8">No sales data for this period</div>
+                    : <BarChart data={chartData} color="#10b981" />
+                  }
                 </div>
-                <div>
-                  <SH>{isMultiDay ? "Daily Orders" : "Busiest Hours"} <Dim>order count</Dim></SH>
-                  <div className="card p-4">
-                    {orderCountChartData.every((d) => d.value === 0)
-                      ? <Empty>No orders yet</Empty>
-                      : <BarChart data={orderCountChartData} color="#7c3aed" formatValue={(n) => `${n} order${n === 1 ? "" : "s"}`} />
-                    }
-                  </div>
+              </div>
+              <div>
+                <SH>{isMultiDay ? "Daily Orders" : "Busiest Hours"} <Dim>order count</Dim></SH>
+                <div className="card p-4">
+                  {orderCountChartData.every((d) => d.value === 0)
+                    ? <Empty>No orders yet</Empty>
+                    : <BarChart data={orderCountChartData} color="#7c3aed" formatValue={(n) => `${n} order${n === 1 ? "" : "s"}`} />
+                  }
                 </div>
               </div>
 
@@ -886,7 +886,12 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
 // ── Small helper components ────────────────────────────────────────────────────
 
 function SH({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">{children}</h3>;
+  return (
+    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-700 mb-2.5">
+      <span className="w-1 h-3.5 rounded-full bg-emerald-500 shrink-0" />
+      {children}
+    </h3>
+  );
 }
 
 function Dim({ children }: { children: React.ReactNode }) {
