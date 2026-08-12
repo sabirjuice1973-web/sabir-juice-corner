@@ -218,6 +218,10 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   }
   const bestDay = [...dailyRevMap.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
   const isMultiDay = fromDate !== null && fromDate !== (toDate ?? fromDate);
+  // Order count per hour — feeds the order-count chart below and the "no
+  // orders in the last 2 hours" alert further down.
+  const hourCnt = new Array(24).fill(0);
+  for (const o of paid) hourCnt[new Date(o.openedAt).getHours()]++;
 
   const chartData: { label: string; value: number; tooltipLabel?: string }[] = [];
   if (isMultiDay) {
@@ -231,6 +235,25 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
     // 11pm — spell that out in the tooltip so it isn't read as a single instant.
     for (const h of HOUR_SEQUENCE) {
       chartData.push({ label: hLabel(h), value: hourly[h], tooltipLabel: `${hLabel(h)}–${hLabel((h + 1) % 24)}` });
+    }
+  }
+
+  // Order-count twin of the chart above — same hour/day buckets, same
+  // isMultiDay switch, so the two charts stay column-aligned when shown
+  // side by side.
+  const dailyCntMap = new Map<string, number>();
+  for (const o of paid) {
+    const day = o.openedAt.slice(0, 10);
+    dailyCntMap.set(day, (dailyCntMap.get(day) ?? 0) + 1);
+  }
+  const orderCountChartData: { label: string; value: number; tooltipLabel?: string }[] = [];
+  if (isMultiDay) {
+    for (const [day, cnt] of [...dailyCntMap.entries()].sort()) {
+      orderCountChartData.push({ label: day.slice(5).replace("-", "/"), value: cnt });
+    }
+  } else {
+    for (const h of HOUR_SEQUENCE) {
+      orderCountChartData.push({ label: hLabel(h), value: hourCnt[h], tooltipLabel: `${hLabel(h)}–${hLabel((h + 1) % 24)}` });
     }
   }
 
@@ -255,14 +278,6 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   }
   const boxStats  = [...boxMap.entries()].sort((a, b) => b[1].rev - a[1].rev).map(([box, d]) => ({ box, ...d }));
   const maxBoxRev = Math.max(boxStats[0]?.rev ?? 1, 1);
-
-  // ── Derived: Busiest Hours ───────────────────────────────────────────────────
-  const hourCnt = new Array(24).fill(0);
-  for (const o of paid) hourCnt[new Date(o.openedAt).getHours()]++;
-  const busyHours = HOUR_SEQUENCE
-    .filter((h) => hourCnt[h] > 0)
-    .map((h) => ({ h, cnt: hourCnt[h] as number }));
-  const maxBusy = Math.max(...busyHours.map((d) => d.cnt), 1);
 
   // Alert: no orders in the last 2 business hours. Guarded to roughly the
   // shop's real trading window (~11am to ~3am, i.e. NOT ~4am-8am) — and using
@@ -512,14 +527,25 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 </div>
               </div>
 
-              {/* ── S2: Sales Chart ── */}
-              <div>
-                <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"}</SH>
-                <div className="card p-4">
-                  {chartData.every((d) => d.value === 0)
-                    ? <div className="text-slate-400 text-sm text-center py-8">No sales data for this period</div>
-                    : <BarChart data={chartData} color="#10b981" />
-                  }
+              {/* ── S2: Sales Chart + Order Count, side by side and column-aligned ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div>
+                  <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"}</SH>
+                  <div className="card p-4">
+                    {chartData.every((d) => d.value === 0)
+                      ? <div className="text-slate-400 text-sm text-center py-8">No sales data for this period</div>
+                      : <BarChart data={chartData} color="#10b981" />
+                    }
+                  </div>
+                </div>
+                <div>
+                  <SH>{isMultiDay ? "Daily Orders" : "Busiest Hours"} <Dim>order count</Dim></SH>
+                  <div className="card p-4">
+                    {orderCountChartData.every((d) => d.value === 0)
+                      ? <Empty>No orders yet</Empty>
+                      : <BarChart data={orderCountChartData} color="#7c3aed" formatValue={(n) => `${n} order${n === 1 ? "" : "s"}`} />
+                    }
+                  </div>
                 </div>
               </div>
 
@@ -584,32 +610,6 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                             </div>
                           </div>
                         ))}
-                  </div>
-                </div>
-
-                {/* ── S5: Busiest Hours ── */}
-                <div>
-                  <SH>Busiest Hours <Dim>order count by hour</Dim></SH>
-                  <div className="card p-4">
-                    {busyHours.length === 0
-                      ? <Empty>No orders yet</Empty>
-                      : (
-                          <div className="space-y-1.5">
-                            {busyHours.map(({ h, cnt }) => (
-                              <div key={h} className="flex items-center gap-2">
-                                <span className="text-xs text-slate-500 w-10 text-right font-mono shrink-0">{hLabel(h)}</span>
-                                <div className="flex-1 h-6 bg-slate-100 rounded-lg overflow-hidden">
-                                  <div
-                                    className="h-full bg-violet-500 rounded-lg flex items-center transition-all"
-                                    style={{ width: `${Math.max(14, (cnt / maxBusy) * 100)}%` }}
-                                  >
-                                    <span className="text-[11px] text-white font-bold pl-2">{cnt}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                   </div>
                 </div>
 
@@ -987,7 +987,7 @@ function DonutChart({ data, centerLabel, percentOf, size = 220, thickness = 34 }
 }
 
 // SVG bar chart — no external library
-function BarChart({ data, color }: { data: { label: string; value: number; tooltipLabel?: string }[]; color: string }) {
+function BarChart({ data, color, formatValue = pkr }: { data: { label: string; value: number; tooltipLabel?: string }[]; color: string; formatValue?: (n: number) => string }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   const W = 800, H = 160, PL = 56, PB = 24, PT = 10, PR = 8;
@@ -1066,7 +1066,7 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
                 onFocus={() => setHoverIdx(i)}
                 onBlur={() => setHoverIdx((cur) => (cur === i ? null : cur))}
                 style={{ cursor: "pointer", outline: "none" }}
-                aria-label={`${d.tooltipLabel ?? d.label}: ${pkr(d.value)}`}
+                aria-label={`${d.tooltipLabel ?? d.label}: ${formatValue(d.value)}`}
               />
             </g>
           );
@@ -1081,7 +1081,7 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
           className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] rounded-md bg-slate-800 px-2.5 py-1.5 shadow-lg whitespace-nowrap"
           style={{ left: `${anchorXPct}%`, top: `${anchorYPct}%` }}
         >
-          <div className="text-sm font-bold text-white leading-tight">{pkr(hovered.value)}</div>
+          <div className="text-sm font-bold text-white leading-tight">{formatValue(hovered.value)}</div>
           <div className="text-[10px] text-slate-300 leading-tight">{hovered.tooltipLabel ?? hovered.label}</div>
           {hoverIdx === peakIdx && (
             <div className="text-[10px] font-semibold leading-tight mt-0.5" style={{ color: PEAK_COLOR }}>★ Best of the period</div>
