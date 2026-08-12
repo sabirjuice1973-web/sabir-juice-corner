@@ -1096,6 +1096,8 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
 // accounts' `total`, not `cashPaid`) — this is about what was committed to
 // buy over the period, not what's been settled in cash so far.
 
+const FRUIT_BAR_COLOR = CAT_COLORS[1]; // orange — distinct from Top 5 Items' emerald
+
 function FruitPurchasesModal({ branchId, from, to, onClose }: {
   branchId: string; from: string; to: string; onClose: () => void;
 }) {
@@ -1120,48 +1122,69 @@ function FruitPurchasesModal({ branchId, from, to, onClose }: {
     return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
   }
 
+  // Ranked by spend — "which fruit costs us most" is the question this
+  // popup exists to answer, so lead with the biggest line, not menu order.
+  const ranked = [...(items ?? [])].sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount));
+  const maxAmount = Math.max(...ranked.map((it) => Number(it.totalAmount)), 1);
+  const grand = Number(grandTotal);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="card w-full max-w-md p-0 rounded-xl bg-white flex flex-col max-h-[85vh]">
-        <div className="px-4 py-3 border-b flex items-center justify-between shrink-0">
+      <div className="card w-full max-w-md p-0 rounded-xl bg-white flex flex-col max-h-[85vh] overflow-hidden">
+        <div className="px-4 py-3.5 border-b border-slate-100 flex items-start justify-between shrink-0 bg-gradient-to-r from-orange-50 to-white">
           <div>
-            <div className="text-sm font-bold text-slate-800">Fruits Purchased</div>
-            <div className="text-[11px] text-slate-400">{from === to ? from : `${from} → ${to}`} · at purchase price, Market + Mandi</div>
+            <div className="text-base font-bold text-slate-800">Fruits Purchased</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              <span className="font-medium text-slate-600">{from === to ? from : `${from} → ${to}`}</span>
+              <span className="text-slate-300 mx-1.5">·</span>
+              at purchase price · Market + Mandi
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none -mt-0.5">×</button>
         </div>
-        <div className="overflow-y-auto flex-1 min-h-0">
+
+        <div className="overflow-y-auto flex-1 min-h-0 px-4 py-3">
           {loading ? (
             <div className="text-slate-400 text-sm text-center py-8">Loading…</div>
           ) : error ? (
             <div className="text-red-600 text-sm text-center py-8">{error}</div>
-          ) : !items || items.length === 0 ? (
-            <div className="text-slate-400 text-sm text-center py-8">No fruit purchases in this period</div>
+          ) : ranked.length === 0 ? (
+            <Empty>No fruit purchases in this period</Empty>
           ) : (
-            <table className="table w-full">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th className="text-right">Quantity</th>
-                  <th className="text-right">Total Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it) => (
-                  <tr key={it.product}>
-                    <td className="font-medium">{it.product}</td>
-                    <td className="text-right font-mono tabular-nums">{qtyLabel(it.quantity)}</td>
-                    <td className="text-right font-mono tabular-nums">{pkr(Number(it.totalAmount))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="space-y-3">
+              {ranked.map((it, i) => {
+                const amount = Number(it.totalAmount);
+                const pct = grand > 0 ? (amount / grand) * 100 : 0;
+                return (
+                  <div key={it.product}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <div className="flex items-center gap-1.5 font-medium min-w-0">
+                        <span className="text-slate-300 w-5 text-xs font-mono shrink-0">#{i + 1}</span>
+                        <span className="truncate text-slate-800">{it.product}</span>
+                        <span className="text-[10px] text-slate-400 font-mono shrink-0">{qtyLabel(it.quantity)} qty</span>
+                      </div>
+                      <div className="text-right shrink-0 ml-3">
+                        <span className="font-bold text-slate-900 font-mono tabular-nums">{pkr(amount)}</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5 tabular-nums">{pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${(amount / maxAmount) * 100}%`, backgroundColor: FRUIT_BAR_COLOR }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
-        {!loading && !error && items && items.length > 0 && (
-          <div className="px-4 py-3 border-t bg-slate-50 flex items-center justify-between shrink-0">
-            <span className="text-sm font-bold text-slate-700">Total</span>
-            <span className="text-lg font-bold text-emerald-700 font-mono">{pkr(Number(grandTotal))}</span>
+
+        {!loading && !error && ranked.length > 0 && (
+          <div className="px-4 py-3.5 bg-slate-900 flex items-center justify-between shrink-0">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Invested</span>
+            <span className="text-xl font-bold text-white font-mono tabular-nums">{pkr(grand)}</span>
           </div>
         )}
       </div>
