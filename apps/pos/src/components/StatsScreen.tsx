@@ -85,6 +85,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   const [salaryAccountId, setSalaryAccountId] = useState<string | null>(null);
   const [salaryAccountEntries, setSalaryAccountEntries] = useState<LedgerEntry[] | null>(null);
   const [latePayments, setLatePayments] = useState<{ amount: string; discount: string } | null>(null);
+  const [showFruitPurchases, setShowFruitPurchases] = useState(false);
 
   // Main data fetch
   useEffect(() => {
@@ -431,6 +432,14 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
           </div>
 
           <button
+            onClick={() => setShowFruitPurchases(true)}
+            title="How much was invested in fruit/nut stock over this period, at purchase price"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 text-white border border-white/25 hover:bg-white/20 flex-shrink-0"
+          >
+            Fruits Purchased
+          </button>
+
+          <button
             onClick={handlePrintSummary}
             disabled={loading || !orders}
             title="Print a values-only thermal summary of this page"
@@ -441,6 +450,15 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
 
           <button onClick={onClose} className="text-white/60 hover:text-white text-2xl leading-none flex-shrink-0">×</button>
         </div>
+
+        {showFruitPurchases && (
+          <FruitPurchasesModal
+            branchId={branchId}
+            from={fromDate ?? todayStr}
+            to={toDate ?? todayStr}
+            onClose={() => setShowFruitPurchases(false)}
+          />
+        )}
 
         {/* ── Body ── */}
         <div className="p-5 bg-slate-50 rounded-b-2xl space-y-5">
@@ -1069,6 +1087,84 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Fruits Purchased popup ────────────────────────────────────────────────
+// Product/Quantity/Total table, valued at PURCHASE price (Market + Mandi
+// accounts' `total`, not `cashPaid`) — this is about what was committed to
+// buy over the period, not what's been settled in cash so far.
+
+function FruitPurchasesModal({ branchId, from, to, onClose }: {
+  branchId: string; from: string; to: string; onClose: () => void;
+}) {
+  const [items, setItems] = useState<{ product: string; quantity: string; totalAmount: string }[] | null>(null);
+  const [grandTotal, setGrandTotal] = useState("0.00");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    api.fruitPurchases(branchId, from, to)
+      .then((r) => { if (!cancelled) { setItems(r.items); setGrandTotal(r.grandTotal); } })
+      .catch((e: any) => { if (!cancelled) setError(e.body?.error || e.message || "Could not load"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [branchId, from, to]);
+
+  function qtyLabel(q: string) {
+    const n = Number(q);
+    return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="card w-full max-w-md p-0 rounded-xl bg-white flex flex-col max-h-[85vh]">
+        <div className="px-4 py-3 border-b flex items-center justify-between shrink-0">
+          <div>
+            <div className="text-sm font-bold text-slate-800">Fruits Purchased</div>
+            <div className="text-[11px] text-slate-400">{from === to ? from : `${from} → ${to}`} · at purchase price, Market + Mandi</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 min-h-0">
+          {loading ? (
+            <div className="text-slate-400 text-sm text-center py-8">Loading…</div>
+          ) : error ? (
+            <div className="text-red-600 text-sm text-center py-8">{error}</div>
+          ) : !items || items.length === 0 ? (
+            <div className="text-slate-400 text-sm text-center py-8">No fruit purchases in this period</div>
+          ) : (
+            <table className="table w-full">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="text-right">Quantity</th>
+                  <th className="text-right">Total Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it) => (
+                  <tr key={it.product}>
+                    <td className="font-medium">{it.product}</td>
+                    <td className="text-right font-mono tabular-nums">{qtyLabel(it.quantity)}</td>
+                    <td className="text-right font-mono tabular-nums">{pkr(Number(it.totalAmount))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {!loading && !error && items && items.length > 0 && (
+          <div className="px-4 py-3 border-t bg-slate-50 flex items-center justify-between shrink-0">
+            <span className="text-sm font-bold text-slate-700">Total</span>
+            <span className="text-lg font-bold text-emerald-700 font-mono">{pkr(Number(grandTotal))}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -359,6 +359,16 @@ export const api = {
   ledgerCashToday: (branchId: string | number, date: string) =>
     request<{ date: string; totalExpenses: string }>("GET", `/ledger/cash-today?branchId=${branchId}&date=${date}`),
 
+  fruitPurchases: (branchId: string | number, from?: string, to?: string) => {
+    const qs = new URLSearchParams({ branchId: String(branchId) });
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    return request<{
+      items: { product: string; quantity: string; totalAmount: string }[];
+      grandTotal: string;
+    }>("GET", `/ledger/fruit-purchases?${qs}`);
+  },
+
   // ─── Payment Schedule — owner's cash-flow planner (OWNER-only, enforced server-side) ──
   paymentSchedule: (branchId: string | number, from: string, to: string) =>
     request<{ entries: PaymentScheduleEntry[] }>("GET", `/payment-schedule?branchId=${branchId}&from=${from}&to=${to}`),

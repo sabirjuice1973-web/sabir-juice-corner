@@ -14,6 +14,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = join(__dirname, "..", "..", "uploads", "ledger");
 mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// Fixed product whitelist for the "Fruit Purchases" stats popup — owner-given
+// list of exactly which productName values in the Market/Mandi accounts count
+// as fruit/nut stock (not rent, cash settlements, or other misc entries those
+// same two accounts also carry). Display order below is the order to show
+// them in; lookup keys are lowercased/trimmed for case-insensitive matching.
+const FRUIT_PRODUCTS_ORDERED = [
+  // Market account (position 3)
+  "Pineapple", "Mix Fruit Cocktail", "Almond", "Cashew",
+  // Mandi account (position 4)
+  "Apple", "Red Pomegranate", "White Pomegranate", "Peach", "Plum", "Mango",
+  "Strawberry", "Cherry", "Lychee", "Banana", "Dates", "Falsa", "Orange",
+  "Musammi", "Chico", "Jaman", "Papaya",
+];
+const FRUIT_PRODUCT_LOOKUP = new Map(FRUIT_PRODUCTS_ORDERED.map((name) => [name.toLowerCase(), name]));
+
 /**
  * Khatabook / Ledger — 10 named account books per branch.
  *
@@ -562,6 +577,71 @@ export async function registerLedgerRoutes(app: FastifyInstance) {
       grandTotalCashPaid,
       rowCount: entries.length,
     });
+  });
+
+  // ─── Fruit Purchases ───────────────────────────────────────────────────
+
+  /**
+   * GET /ledger/fruit-purchases?branchId=&from=&to= — how much was invested in
+   * raw fruit/nuts over a period, regardless of whether cashPaid has caught up
+   * with total yet (i.e. valued at PURCHASE price, not payment made so far).
+   * Sourced from the Market (position 3) and Mandi (position 4) accounts —
+   * the only two accounts where these product names are ever logged — and
+   * restricted to a fixed product whitelist so unrelated entries in those
+   * same accounts (rent, cash settlements, misc supplies) don't leak in.
+   *
+   * Uses a DB-level groupBy (not a capped findMany + client sum) so this stays
+   * accurate over any date range — see the /report route's comment for why a
+   * row-limited entries list previously caused a real silent-undercount bug
+   * ("Total Shop Debt silently dropped accounts past a 500-row entry cap").
+   */
+  app.get("/fruit-purchases", async (req, reply) => {
+    const q = z.object({
+      branchId: z.coerce.bigint(),
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }).safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ error: "Invalid query", details: q.error.flatten() });
+
+    const accounts = await prisma.ledgerAccount.findMany({
+      where: { branchId: q.data.branchId, position: { in: [3, 4] } },
+      select: { id: true },
+    });
+    if (accounts.length === 0) return toJson({ items: [], grandTotal: "0.00" });
+
+    const where: any = { ledgerAccountId: { in: accounts.map((a) => a.id) } };
+    if (q.data.from || q.data.to) {
+      where.entryDate = {};
+      if (q.data.from) where.entryDate.gte = new Date(q.data.from);
+      if (q.data.to) where.entryDate.lte = new Date(q.data.to);
+    }
+
+    const grouped = await prisma.ledgerEntry.groupBy({
+      by: ["productName"],
+      where,
+      _sum: { quantity: true, total: true },
+    });
+
+    const matched = new Map<string, { quantity: Prisma.Decimal; total: Prisma.Decimal }>();
+    for (const g of grouped) {
+      const canonical = FRUIT_PRODUCT_LOOKUP.get(g.productName.trim().toLowerCase());
+      if (!canonical) continue;
+      const prev = matched.get(canonical) ?? { quantity: new Prisma.Decimal(0), total: new Prisma.Decimal(0) };
+      matched.set(canonical, {
+        quantity: prev.quantity.plus(g._sum.quantity ?? 0),
+        total: prev.total.plus(g._sum.total ?? 0),
+      });
+    }
+
+    const items = FRUIT_PRODUCTS_ORDERED
+      .filter((name) => matched.has(name))
+      .map((name) => {
+        const m = matched.get(name)!;
+        return { product: name, quantity: m.quantity.toString(), totalAmount: m.total.toFixed(2) };
+      });
+    const grandTotal = items.reduce((s, it) => s + Number(it.totalAmount), 0).toFixed(2);
+
+    return toJson({ items, grandTotal });
   });
 
   // ─── Cash Today ────────────────────────────────────────────────────────
