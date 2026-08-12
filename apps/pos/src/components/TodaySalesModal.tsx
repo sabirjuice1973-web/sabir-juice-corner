@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, type TodayOrder, type CashMovement } from "../api";
+import { api, type TodayOrder } from "../api";
 import { ORDERS_CHANGED } from "../lib/events";
 import { displayItemName, BOX_LABELS, BOX_COUNT, type BoxOrder } from "../pos/posState";
 import { printReceipt } from "../pos/receipt";
 import { PrinterIcon } from "./PrinterIcon";
+import { CashTodayModal } from "./CashTodayModal";
 
 const LABELS_KEY = "sjc.boxLabels";
 function getBoxLabel(boxNumber: number): string {
@@ -54,29 +55,10 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const [lateCashReceived, setLateCashReceived] = useState(0);
   const [lateDiscount, setLateDiscount] = useState(0);
   const [todayExpense, setTodayExpense] = useState(0);
-  const [openingCash, setOpeningCash] = useState(0);
-  const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
-  const [openingCashDraft, setOpeningCashDraft] = useState("");
-  const [editingOpeningCash, setEditingOpeningCash] = useState(false);
-  const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
-  const [movementAmount, setMovementAmount] = useState("");
-  const [movementReason, setMovementReason] = useState("");
-  const [movementBusy, setMovementBusy] = useState(false);
-  const [showCashCounter, setShowCashCounter] = useState(false);
+  const [showCashToday, setShowCashToday] = useState(false);
   const [selfLoanPeriodNet, setSelfLoanPeriodNet] = useState(0);
 
   const isToday = fromDate === null && toDate === null;
-
-  // Opening cash + cash in/out — genuinely tied to the currently-open shift's
-  // till, so these only make sense for "today," not a historical date/range.
-  const refreshShiftStats = () => {
-    if (!isToday) return;
-    api.todayStats(shiftId).then((s) => {
-      setOpeningCash(Number(s.openingCash));
-      setCashMovements(s.cashMovements);
-    }).catch(() => {});
-  };
-  useEffect(refreshShiftStats, [shiftId, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Late Cash / Late Discount for the SELECTED period — previously this only
   // ever showed data for "today" (via /shifts/:id/today-stats, which is
@@ -122,48 +104,6 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
     }).catch(() => { if (!cancelled) setSelfLoanPeriodNet(0); });
     return () => { cancelled = true; };
   }, [branchId, fromDate, toDate, todayStr]);
-
-  async function saveOpeningCash() {
-    const v = Number(openingCashDraft);
-    if (!Number.isFinite(v) || v < 0) return;
-    setMovementBusy(true);
-    try {
-      await api.setOpeningCash(shiftId, v);
-      setOpeningCash(v);
-      setEditingOpeningCash(false);
-    } catch (e: any) {
-      setError(e.body?.error || e.message || "Could not update opening cash");
-    } finally {
-      setMovementBusy(false);
-    }
-  }
-
-  async function addMovement() {
-    const amt = Number(movementAmount);
-    if (!Number.isFinite(amt) || amt <= 0) return;
-    setMovementBusy(true);
-    try {
-      await api.addCashMovement(shiftId, movementType, amt, movementReason.trim() || undefined);
-      setMovementAmount(""); setMovementReason("");
-      refreshShiftStats();
-    } catch (e: any) {
-      setError(e.body?.error || e.message || "Could not add entry");
-    } finally {
-      setMovementBusy(false);
-    }
-  }
-
-  async function removeMovement(id: string) {
-    setMovementBusy(true);
-    try {
-      await api.deleteCashMovement(shiftId, id);
-      refreshShiftStats();
-    } catch (e: any) {
-      setError(e.body?.error || e.message || "Could not remove entry");
-    } finally {
-      setMovementBusy(false);
-    }
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -306,14 +246,6 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const lateSale = lateCashReceived + lateDiscount;
   const totalCashInHand = cashSale - totalDiscount + lateSale - lateDiscount;
 
-  // Cash in Counter: opening float + today's net cash + borrow/lend adjustment
-  // − today's expense (cash already paid out of the till to suppliers/accounts).
-  // "IN" = cash borrowed into the till — still owed back out, so it's subtracted
-  // from the true cash position. "OUT" = shop cash loaned to someone — still an
-  // asset owed back TO the shop, so it's added back even though it physically left.
-  const cashInTotal  = cashMovements.filter((m) => m.type === "IN").reduce((s, m) => s + Number(m.amount), 0);
-  const cashOutTotal = cashMovements.filter((m) => m.type === "OUT").reduce((s, m) => s + Number(m.amount), 0);
-  const cashInCounter = openingCash + totalCashInHand + (cashOutTotal - cashInTotal) - todayExpense;
   // Self Loan net (gave − took − online, for the selected period) folded in:
   // a partner's withdrawal or online receipt for this period reduces what's
   // actually left with the shop; money they gave in isn't earnings.
@@ -491,39 +423,23 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                 </div>
               )}
 
-              {/* ── Cash in Counter: tucked behind a button, opens its own popup ── */}
+              {/* ── Cash Today: tucked behind a button, opens the same popup that used to live in the Hisaab window header ── */}
               {isToday && (
                 <button
-                  className="mb-4 w-full flex items-center justify-between rounded-xl border-2 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-4 py-2.5 text-left transition-colors"
-                  onClick={() => setShowCashCounter(true)}
+                  className="mb-4 w-full flex items-center justify-between rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-4 py-2.5 text-left transition-colors"
+                  onClick={() => setShowCashToday(true)}
                 >
-                  <span className="text-sm font-semibold text-indigo-800">Want to calculate Cash in Counter?</span>
-                  <span className="text-xs text-indigo-500">opening cash · borrow/loan entries →</span>
+                  <span className="text-sm font-semibold text-emerald-800">Cash Today</span>
+                  <span className="text-xs text-emerald-600">opening cash · cash collected · expenses →</span>
                 </button>
               )}
 
-              {showCashCounter && (
-                <CashCounterPopup
-                  cashInCounter={cashInCounter}
-                  openingCash={openingCash}
-                  cashInTotal={cashInTotal}
-                  cashOutTotal={cashOutTotal}
-                  cashMovements={cashMovements}
-                  editingOpeningCash={editingOpeningCash}
-                  openingCashDraft={openingCashDraft}
-                  setOpeningCashDraft={setOpeningCashDraft}
-                  setEditingOpeningCash={setEditingOpeningCash}
-                  saveOpeningCash={saveOpeningCash}
-                  movementType={movementType}
-                  setMovementType={setMovementType}
-                  movementAmount={movementAmount}
-                  setMovementAmount={setMovementAmount}
-                  movementReason={movementReason}
-                  setMovementReason={setMovementReason}
-                  movementBusy={movementBusy}
-                  addMovement={addMovement}
-                  removeMovement={removeMovement}
-                  onClose={() => setShowCashCounter(false)}
+              {showCashToday && (
+                <CashTodayModal
+                  branchId={branchId}
+                  shiftId={shiftId}
+                  businessDate={null}
+                  onClose={() => setShowCashToday(false)}
                 />
               )}
 
@@ -718,133 +634,6 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                   </table>
                 </>
               )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Cash in Counter popup ──────────────────────────────────────────────────
-
-function CashCounterPopup({
-  cashInCounter, openingCash, cashInTotal, cashOutTotal, cashMovements,
-  editingOpeningCash, openingCashDraft, setOpeningCashDraft, setEditingOpeningCash, saveOpeningCash,
-  movementType, setMovementType, movementAmount, setMovementAmount, movementReason, setMovementReason,
-  movementBusy, addMovement, removeMovement, onClose,
-}: {
-  cashInCounter: number; openingCash: number; cashInTotal: number; cashOutTotal: number;
-  cashMovements: CashMovement[];
-  editingOpeningCash: boolean; openingCashDraft: string;
-  setOpeningCashDraft: (v: string) => void; setEditingOpeningCash: (v: boolean) => void;
-  saveOpeningCash: () => void | Promise<void>;
-  movementType: "IN" | "OUT"; setMovementType: (v: "IN" | "OUT") => void;
-  movementAmount: string; setMovementAmount: (v: string) => void;
-  movementReason: string; setMovementReason: (v: string) => void;
-  movementBusy: boolean;
-  addMovement: () => void | Promise<void>;
-  removeMovement: (id: string) => void | Promise<void>;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="card w-full max-w-lg p-0 rounded-xl border-2 border-indigo-200 bg-indigo-50">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-200">
-          <div className="text-sm font-bold text-indigo-800">Cash in Counter</div>
-          <button onClick={onClose} className="text-indigo-400 hover:text-indigo-700 text-xl leading-none">×</button>
-        </div>
-
-        <div className="p-4">
-          <div className="text-center mb-4">
-            <div className="font-mono font-bold text-indigo-900 text-2xl">
-              PKR {cashInCounter.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
-            </div>
-            <div className="text-[10px] text-indigo-400 mt-0.5">opening + total cash in hand + (cash out − cash in) − today's expense</div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-            {/* Opening cash */}
-            <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Opening Cash</div>
-              {editingOpeningCash ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number" autoFocus
-                    className="input text-sm py-1 px-2 w-full"
-                    value={openingCashDraft}
-                    onChange={(e) => setOpeningCashDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") void saveOpeningCash(); if (e.key === "Escape") setEditingOpeningCash(false); }}
-                  />
-                  <button className="text-xs px-2 py-1 rounded bg-indigo-600 text-white disabled:opacity-50" disabled={movementBusy} onClick={() => void saveOpeningCash()}>Save</button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-slate-900">PKR {openingCash.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
-                  <button
-                    className="text-xs text-indigo-600 hover:underline"
-                    onClick={() => { setOpeningCashDraft(String(openingCash)); setEditingOpeningCash(true); }}
-                  >Edit</button>
-                </div>
-              )}
-            </div>
-            {/* Cash borrowed in (liability) */}
-            <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Cash Borrowed In</div>
-              <div className="font-mono font-bold text-red-600">{cashInTotal > 0 ? `−PKR ${cashInTotal.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-            </div>
-            {/* Cash loaned out (asset) */}
-            <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Cash Loaned Out</div>
-              <div className="font-mono font-bold text-emerald-600">{cashOutTotal > 0 ? `+PKR ${cashOutTotal.toLocaleString("en-PK", { maximumFractionDigits: 0 })}` : "—"}</div>
-            </div>
-          </div>
-
-          {/* Add a Cash In/Out entry */}
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            <div className="flex rounded-lg overflow-hidden border border-indigo-300">
-              <button
-                className={`px-3 py-1.5 text-xs font-semibold ${movementType === "IN" ? "bg-red-600 text-white" : "bg-white text-slate-600"}`}
-                onClick={() => setMovementType("IN")}
-              >Cash In (borrowed)</button>
-              <button
-                className={`px-3 py-1.5 text-xs font-semibold ${movementType === "OUT" ? "bg-emerald-600 text-white" : "bg-white text-slate-600"}`}
-                onClick={() => setMovementType("OUT")}
-              >Cash Out (loaned)</button>
-            </div>
-            <input
-              type="number" placeholder="Amount"
-              className="input text-sm py-1 px-2 w-28"
-              value={movementAmount}
-              onChange={(e) => setMovementAmount(e.target.value)}
-            />
-            <input
-              type="text" placeholder="Reason (optional)"
-              className="input text-sm py-1 px-2 flex-1 min-w-[140px]"
-              value={movementReason}
-              onChange={(e) => setMovementReason(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void addMovement(); }}
-            />
-            <button
-              className="text-xs px-3 py-1.5 rounded bg-indigo-600 text-white disabled:opacity-50"
-              disabled={movementBusy || !movementAmount}
-              onClick={() => void addMovement()}
-            >Add</button>
-          </div>
-
-          {/* Entries list */}
-          {cashMovements.length > 0 && (
-            <div className="space-y-1 max-h-40 overflow-auto">
-              {cashMovements.map((m) => (
-                <div key={m.id} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1 border border-indigo-100">
-                  <span className={`font-semibold ${m.type === "IN" ? "text-red-600" : "text-emerald-600"}`}>
-                    {m.type === "IN" ? "Cash In" : "Cash Out"}
-                  </span>
-                  <span className="font-mono">PKR {Number(m.amount).toLocaleString("en-PK", { maximumFractionDigits: 0 })}</span>
-                  <span className="text-slate-400 truncate flex-1 mx-2">{m.reason ?? ""}</span>
-                  <button className="text-slate-400 hover:text-red-600" onClick={() => void removeMovement(m.id)}>✕</button>
-                </div>
-              ))}
             </div>
           )}
         </div>
