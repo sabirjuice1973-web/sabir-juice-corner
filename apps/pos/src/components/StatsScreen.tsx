@@ -1130,24 +1130,24 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="card w-full max-w-md p-0 rounded-xl bg-white flex flex-col max-h-[85vh] overflow-hidden">
-        <div className="px-4 py-3.5 border-b border-slate-100 flex items-start justify-between shrink-0 bg-gradient-to-r from-orange-50 to-white">
+      <div className="card w-full max-w-2xl p-0 rounded-xl bg-white flex flex-col max-h-[85vh] overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between shrink-0 bg-gradient-to-r from-orange-50 to-white">
           <div>
-            <div className="text-base font-bold text-slate-800">Fruits Purchased</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
+            <div className="text-xl font-bold text-slate-800">Fruits Purchased</div>
+            <div className="text-sm text-slate-500 mt-1">
               <span className="font-medium text-slate-600">{from === to ? from : `${from} → ${to}`}</span>
               <span className="text-slate-300 mx-1.5">·</span>
               at purchase price · Market + Mandi
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none -mt-0.5">×</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none -mt-0.5">×</button>
         </div>
 
-        <div className="overflow-y-auto flex-1 min-h-0 px-4 py-3">
+        <div className="overflow-y-auto flex-1 min-h-0 px-6 py-4">
           {loading ? (
-            <div className="text-slate-400 text-sm text-center py-8">Loading…</div>
+            <div className="text-slate-400 text-base text-center py-10">Loading…</div>
           ) : error ? (
-            <div className="text-red-600 text-sm text-center py-8">{error}</div>
+            <div className="text-red-600 text-base text-center py-10">{error}</div>
           ) : ranked.length === 0 ? (
             <Empty>No fruit purchases in this period</Empty>
           ) : (
@@ -1159,11 +1159,11 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
                 // so this reads as "how much of what we took in went here."
                 const pct = totalCashCollected > 0 ? (amount / totalCashCollected) * 100 : 0;
                 return (
-                  <div key={it.product} className="flex items-center justify-between text-sm py-1">
-                    <div className="flex items-center gap-2 font-medium min-w-0">
-                      <span className="text-slate-300 w-5 text-xs font-mono shrink-0">#{i + 1}</span>
+                  <div key={it.product} className="flex items-center justify-between text-base py-2.5">
+                    <div className="flex items-center gap-3 font-medium min-w-0">
+                      <span className="text-slate-300 w-7 text-sm font-mono shrink-0">#{i + 1}</span>
                       <span
-                        className="inline-flex items-center justify-center rounded-full text-white font-bold text-[11px] leading-none min-w-[22px] h-[22px] px-1.5 shrink-0 tabular-nums"
+                        className="inline-flex items-center justify-center rounded-full text-white font-bold text-sm leading-none min-w-[32px] h-[32px] px-2 shrink-0 tabular-nums"
                         style={{ backgroundColor: FRUIT_BAR_COLOR }}
                       >
                         {qtyLabel(it.quantity)}
@@ -1172,7 +1172,7 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <span className="font-bold text-slate-900 font-mono tabular-nums">{pkr(amount)}</span>
-                      <span className="text-[10px] text-slate-400 ml-1.5 tabular-nums">{pct.toFixed(1)}%</span>
+                      <span className="text-xs text-slate-400 ml-2 tabular-nums">{pct.toFixed(1)}%</span>
                     </div>
                   </div>
                 );
@@ -1182,12 +1182,12 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
         </div>
 
         {!loading && !error && ranked.length > 0 && (
-          <div className="px-4 py-3.5 bg-slate-900 flex items-center justify-between shrink-0">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Invested</span>
+          <div className="px-6 py-5 bg-slate-900 flex items-center justify-between shrink-0">
+            <span className="text-sm font-bold uppercase tracking-wider text-slate-400">Total Invested</span>
             <div className="text-right">
-              <span className="text-xl font-bold text-white font-mono tabular-nums">{pkr(grand)}</span>
+              <span className="text-2xl font-bold text-white font-mono tabular-nums">{pkr(grand)}</span>
               {totalCashCollected > 0 && (
-                <span className="text-xs font-semibold text-orange-300 ml-2 tabular-nums">
+                <span className="text-sm font-semibold text-orange-300 ml-2 tabular-nums">
                   {((grand / totalCashCollected) * 100).toFixed(1)}% of cash collected
                 </span>
               )}
