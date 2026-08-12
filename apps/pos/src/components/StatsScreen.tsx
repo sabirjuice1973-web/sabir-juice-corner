@@ -218,7 +218,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   const bestDay = [...dailyRevMap.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
   const isMultiDay = fromDate !== null && fromDate !== (toDate ?? fromDate);
 
-  const chartData: { label: string; value: number }[] = [];
+  const chartData: { label: string; value: number; tooltipLabel?: string }[] = [];
   if (isMultiDay) {
     for (const [day, rev] of [...dailyRevMap.entries()].sort()) {
       chartData.push({ label: day.slice(5).replace("-", "/"), value: rev });
@@ -226,8 +226,10 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
   } else {
     const hourly = new Array(24).fill(0);
     for (const o of paid) hourly[new Date(o.openedAt).getHours()] += Number(o.total);
+    // The bucket labeled "10pm" holds sales from 10pm up to (not including)
+    // 11pm — spell that out in the tooltip so it isn't read as a single instant.
     for (const h of HOUR_SEQUENCE) {
-      chartData.push({ label: hLabel(h), value: hourly[h] });
+      chartData.push({ label: hLabel(h), value: hourly[h], tooltipLabel: `${hLabel(h)}–${hLabel((h + 1) % 24)}` });
     }
   }
 
@@ -966,7 +968,7 @@ function DonutChart({ data, centerLabel, percentOf, size = 220, thickness = 34 }
 }
 
 // SVG bar chart — no external library
-function BarChart({ data, color }: { data: { label: string; value: number }[]; color: string }) {
+function BarChart({ data, color }: { data: { label: string; value: number; tooltipLabel?: string }[]; color: string }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   const W = 800, H = 160, PL = 56, PB = 24, PT = 10, PR = 8;
@@ -1037,7 +1039,7 @@ function BarChart({ data, color }: { data: { label: string; value: number }[]; c
                 onFocus={() => setHoverIdx(i)}
                 onBlur={() => setHoverIdx((cur) => (cur === i ? null : cur))}
                 style={{ cursor: "pointer", outline: "none" }}
-                aria-label={`${d.label}: ${pkr(d.value)}`}
+                aria-label={`${d.tooltipLabel ?? d.label}: ${pkr(d.value)}`}
               />
             </g>
           );
@@ -1053,7 +1055,7 @@ function BarChart({ data, color }: { data: { label: string; value: number }[]; c
           style={{ left: `${anchorXPct}%`, top: `${anchorYPct}%` }}
         >
           <div className="text-sm font-bold text-white leading-tight">{pkr(hovered.value)}</div>
-          <div className="text-[10px] text-slate-300 leading-tight">{hovered.label}</div>
+          <div className="text-[10px] text-slate-300 leading-tight">{hovered.tooltipLabel ?? hovered.label}</div>
         </div>
       )}
     </div>
