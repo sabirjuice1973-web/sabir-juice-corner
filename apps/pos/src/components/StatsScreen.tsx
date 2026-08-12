@@ -991,6 +991,13 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
   // Show every Nth label when crowded
   const labelEvery = data.length <= 18 ? 1 : Math.ceil(data.length / 18);
 
+  // Call out the single best bar (highest-selling hour, or highest-selling
+  // day in the multi-day view) with the brand accent color + a gentle pulse.
+  // Ties go to the earliest occurrence. No peak when every bar is zero.
+  const realMax = Math.max(...data.map((d) => d.value));
+  const peakIdx = realMax > 0 ? data.findIndex((d) => d.value === realMax) : -1;
+  const PEAK_COLOR = "#dc2626"; // brand accent red — already used for high-attention badges
+
   const hovered = hoverIdx != null ? data[hoverIdx] : null;
   // Tooltip anchor: top of the hovered bar (or the baseline for a zero bar),
   // expressed as a % of the viewBox so it tracks correctly at any rendered
@@ -1019,10 +1026,11 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
             <g key={i}>
               {d.value > 0 && (
                 <rect
-                  x={x} y={y} width={barW} height={barH} fill={color} rx="2"
+                  x={x} y={y} width={barW} height={barH} fill={i === peakIdx ? PEAK_COLOR : color} rx="2"
                   opacity={hoverIdx === i ? 1 : 0.82}
-                  stroke={hoverIdx === i ? color : "none"}
+                  stroke={hoverIdx === i ? (i === peakIdx ? PEAK_COLOR : color) : "none"}
                   strokeWidth={hoverIdx === i ? 1.5 : 0}
+                  className={i === peakIdx ? "animate-pulse motion-reduce:animate-none" : undefined}
                 />
               )}
               {i % labelEvery === 0 && (
@@ -1056,6 +1064,9 @@ function BarChart({ data, color }: { data: { label: string; value: number; toolt
         >
           <div className="text-sm font-bold text-white leading-tight">{pkr(hovered.value)}</div>
           <div className="text-[10px] text-slate-300 leading-tight">{hovered.tooltipLabel ?? hovered.label}</div>
+          {hoverIdx === peakIdx && (
+            <div className="text-[10px] font-semibold leading-tight mt-0.5" style={{ color: PEAK_COLOR }}>★ Best of the period</div>
+          )}
         </div>
       )}
     </div>
