@@ -1126,7 +1126,6 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
   // Ranked by spend — "which fruit costs us most" is the question this
   // popup exists to answer, so lead with the biggest line, not menu order.
   const ranked = [...(items ?? [])].sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount));
-  const maxAmount = Math.max(...ranked.map((it) => Number(it.totalAmount)), 1);
   const grand = Number(grandTotal);
 
   return (
@@ -1152,7 +1151,7 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
           ) : ranked.length === 0 ? (
             <Empty>No fruit purchases in this period</Empty>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-slate-100">
               {ranked.map((it, i) => {
                 const amount = Number(it.totalAmount);
                 // % of TOTAL CASH COLLECTED for the period (same figure as the
@@ -1160,23 +1159,20 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
                 // so this reads as "how much of what we took in went here."
                 const pct = totalCashCollected > 0 ? (amount / totalCashCollected) * 100 : 0;
                 return (
-                  <div key={it.product}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <div className="flex items-center gap-1.5 font-medium min-w-0">
-                        <span className="text-slate-300 w-5 text-xs font-mono shrink-0">#{i + 1}</span>
-                        <span className="truncate text-slate-800">{it.product}</span>
-                        <span className="text-[10px] text-slate-400 font-mono shrink-0">{qtyLabel(it.quantity)} qty</span>
-                      </div>
-                      <div className="text-right shrink-0 ml-3">
-                        <span className="font-bold text-slate-900 font-mono tabular-nums">{pkr(amount)}</span>
-                        <span className="text-[10px] text-slate-400 ml-1.5 tabular-nums">{pct.toFixed(1)}%</span>
-                      </div>
+                  <div key={it.product} className="flex items-center justify-between text-sm py-1">
+                    <div className="flex items-center gap-2 font-medium min-w-0">
+                      <span className="text-slate-300 w-5 text-xs font-mono shrink-0">#{i + 1}</span>
+                      <span
+                        className="inline-flex items-center justify-center rounded-full text-white font-bold text-[11px] leading-none min-w-[22px] h-[22px] px-1.5 shrink-0 tabular-nums"
+                        style={{ backgroundColor: FRUIT_BAR_COLOR }}
+                      >
+                        {qtyLabel(it.quantity)}
+                      </span>
+                      <span className="truncate text-slate-800">{it.product}</span>
                     </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${(amount / maxAmount) * 100}%`, backgroundColor: FRUIT_BAR_COLOR }}
-                      />
+                    <div className="text-right shrink-0 ml-3">
+                      <span className="font-bold text-slate-900 font-mono tabular-nums">{pkr(amount)}</span>
+                      <span className="text-[10px] text-slate-400 ml-1.5 tabular-nums">{pct.toFixed(1)}%</span>
                     </div>
                   </div>
                 );
