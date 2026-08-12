@@ -894,7 +894,7 @@ function SH({ children }: { children: React.ReactNode }) {
 }
 
 function Dim({ children }: { children: React.ReactNode }) {
-  return <span className="text-emerald-300/80 normal-case font-normal text-[10px] ml-1">{children}</span>;
+  return <span className="text-emerald-50 normal-case font-medium text-[11px] ml-1.5">{children}</span>;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
