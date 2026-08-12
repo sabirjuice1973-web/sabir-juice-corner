@@ -967,6 +967,7 @@ function DonutChart({ data, centerLabel, percentOf, size = 220, thickness = 34 }
 
 // SVG bar chart — no external library
 function BarChart({ data, color }: { data: { label: string; value: number }[]; color: string }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   const W = 800, H = 160, PL = 56, PB = 24, PT = 10, PR = 8;
   const cW = W - PL - PR;
@@ -988,35 +989,73 @@ function BarChart({ data, color }: { data: { label: string; value: number }[]; c
   // Show every Nth label when crowded
   const labelEvery = data.length <= 18 ? 1 : Math.ceil(data.length / 18);
 
+  const hovered = hoverIdx != null ? data[hoverIdx] : null;
+  // Tooltip anchor: top of the hovered bar (or the baseline for a zero bar),
+  // expressed as a % of the viewBox so it tracks correctly at any rendered
+  // size — the wrapping div always matches the SVG's own aspect ratio.
+  const hoverBarH = hovered ? Math.max(hovered.value > 0 ? 2 : 0, (hovered.value / maxVal) * cH) : 0;
+  const anchorXPct = hoverIdx != null ? ((PL + hoverIdx * slotW + slotW / 2) / W) * 100 : 0;
+  const anchorYPct = hoverIdx != null ? ((PT + cH - hoverBarH) / H) * 100 : 0;
+
   return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
-      {/* Gridlines + Y labels */}
-      {yTicks.map((t, i) => (
-        <g key={i}>
-          <line x1={PL} y1={t.y} x2={W - PR} y2={t.y} stroke="#e2e8f0" strokeWidth={i === 0 ? 1 : 1} />
-          <text x={PL - 4} y={t.y + 3.5} textAnchor="end" fontSize="9" fill="#94a3b8">{t.label}</text>
-        </g>
-      ))}
-
-      {/* Bars + X labels */}
-      {data.map((d, i) => {
-        const barH = Math.max(d.value > 0 ? 2 : 0, (d.value / maxVal) * cH);
-        const x    = PL + i * slotW + (slotW - barW) / 2;
-        const y    = PT + cH - barH;
-        return (
+    <div style={{ position: "relative" }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
+        {/* Gridlines + Y labels */}
+        {yTicks.map((t, i) => (
           <g key={i}>
-            {d.value > 0 && (
-              <rect x={x} y={y} width={barW} height={barH} fill={color} rx="2" opacity="0.82" />
-            )}
-            {i % labelEvery === 0 && (
-              <text x={x + barW / 2} y={H - 5} textAnchor="middle" fontSize="9" fill="#94a3b8">{d.label}</text>
-            )}
+            <line x1={PL} y1={t.y} x2={W - PR} y2={t.y} stroke="#e2e8f0" strokeWidth={i === 0 ? 1 : 1} />
+            <text x={PL - 4} y={t.y + 3.5} textAnchor="end" fontSize="9" fill="#94a3b8">{t.label}</text>
           </g>
-        );
-      })}
+        ))}
 
-      {/* X axis line */}
-      <line x1={PL} y1={PT + cH} x2={W - PR} y2={PT + cH} stroke="#cbd5e1" strokeWidth="1" />
-    </svg>
+        {/* Bars + X labels */}
+        {data.map((d, i) => {
+          const barH = Math.max(d.value > 0 ? 2 : 0, (d.value / maxVal) * cH);
+          const x    = PL + i * slotW + (slotW - barW) / 2;
+          const y    = PT + cH - barH;
+          return (
+            <g key={i}>
+              {d.value > 0 && (
+                <rect
+                  x={x} y={y} width={barW} height={barH} fill={color} rx="2"
+                  opacity={hoverIdx === i ? 1 : 0.82}
+                  stroke={hoverIdx === i ? color : "none"}
+                  strokeWidth={hoverIdx === i ? 1.5 : 0}
+                />
+              )}
+              {i % labelEvery === 0 && (
+                <text x={x + barW / 2} y={H - 5} textAnchor="middle" fontSize="9" fill="#94a3b8">{d.label}</text>
+              )}
+              {/* Hit target spans the whole column (not just the bar), so a
+                  short/zero bar is just as easy to hover as a tall one. */}
+              <rect
+                x={PL + i * slotW} y={PT} width={slotW} height={cH}
+                fill="transparent"
+                tabIndex={0}
+                onMouseEnter={() => setHoverIdx(i)}
+                onMouseLeave={() => setHoverIdx((cur) => (cur === i ? null : cur))}
+                onFocus={() => setHoverIdx(i)}
+                onBlur={() => setHoverIdx((cur) => (cur === i ? null : cur))}
+                style={{ cursor: "pointer", outline: "none" }}
+                aria-label={`${d.label}: ${pkr(d.value)}`}
+              />
+            </g>
+          );
+        })}
+
+        {/* X axis line */}
+        <line x1={PL} y1={PT + cH} x2={W - PR} y2={PT + cH} stroke="#cbd5e1" strokeWidth="1" />
+      </svg>
+
+      {hovered && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] rounded-md bg-slate-800 px-2.5 py-1.5 shadow-lg whitespace-nowrap"
+          style={{ left: `${anchorXPct}%`, top: `${anchorYPct}%` }}
+        >
+          <div className="text-sm font-bold text-white leading-tight">{pkr(hovered.value)}</div>
+          <div className="text-[10px] text-slate-300 leading-tight">{hovered.label}</div>
+        </div>
+      )}
+    </div>
   );
 }
