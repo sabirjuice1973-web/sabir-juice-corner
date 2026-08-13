@@ -406,6 +406,7 @@ export const api = {
     request<{
       partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number;
       period: { gave: string; took: string; online: string; net: string } | null;
+      periodByPartner: { id: string; name: string; net: string }[] | null;
     }>(
       "GET", `/partner-accounts/summary?branchId=${branchId}${range ? `&from=${range.from}&to=${range.to}` : ""}`,
     ),

@@ -141,22 +141,31 @@ export async function registerPartnerAccountRoutes(app: FastifyInstance) {
     const totalOwedByPartners = partners.reduce((s, p) => s + Math.max(0, -Number(p.balance)), 0);
 
     let period: { gave: string; took: string; online: string; net: string } | null = null;
+    // Same gave/took/online/net breakdown as `period`, but split out per
+    // partner — lets the UI say WHICH partner the self-loan net came from
+    // instead of just a combined figure that could hide one partner giving
+    // in while the other takes out.
+    let periodByPartner: { id: string; name: string; net: string }[] | null = null;
     if (q.data.from && q.data.to) {
       const from = q.data.from, to = q.data.to;
       let gave = new Prisma.Decimal(0), took = new Prisma.Decimal(0), online = new Prisma.Decimal(0);
+      const perPartner: { id: string; name: string; net: string }[] = [];
       for (const a of accounts) {
+        let pGave = new Prisma.Decimal(0), pTook = new Prisma.Decimal(0), pOnline = new Prisma.Decimal(0);
         for (const e of a.entries) {
           const iso = e.entryDate.toISOString().slice(0, 10);
           if (iso < from || iso > to) continue;
-          if (e.type === "GAVE_TO_SHOP") gave = gave.plus(e.amount);
-          else if (e.type === "TOOK_FROM_SHOP") took = took.plus(e.amount);
-          else online = online.plus(e.amount);
+          if (e.type === "GAVE_TO_SHOP") { gave = gave.plus(e.amount); pGave = pGave.plus(e.amount); }
+          else if (e.type === "TOOK_FROM_SHOP") { took = took.plus(e.amount); pTook = pTook.plus(e.amount); }
+          else { online = online.plus(e.amount); pOnline = pOnline.plus(e.amount); }
         }
+        perPartner.push({ id: a.id.toString(), name: a.name, net: pGave.minus(pTook).minus(pOnline).toString() });
       }
       period = { gave: gave.toString(), took: took.toString(), online: online.toString(), net: gave.minus(took).minus(online).toString() };
+      periodByPartner = perPartner;
     }
 
-    return toJson({ partners, totalOwedToPartners, totalOwedByPartners, period });
+    return toJson({ partners, totalOwedToPartners, totalOwedByPartners, period, periodByPartner });
   });
 
   /** GET /partner-accounts/:id/entries — full history, oldest first (for running-balance display client-side) */

@@ -57,6 +57,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   const [todayExpense, setTodayExpense] = useState(0);
   const [showCashToday, setShowCashToday] = useState(false);
   const [selfLoanPeriodNet, setSelfLoanPeriodNet] = useState(0);
+  const [selfLoanByPartner, setSelfLoanByPartner] = useState<{ name: string; net: number }[]>([]);
 
   const isToday = fromDate === null && toDate === null;
 
@@ -100,8 +101,10 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
     const from = fromDate ?? todayStr;
     const to = toDate ?? todayStr;
     api.partnerAccountsSummary(branchId, { from, to }).then((r) => {
-      if (!cancelled) setSelfLoanPeriodNet(r.period ? Number(r.period.net) : 0);
-    }).catch(() => { if (!cancelled) setSelfLoanPeriodNet(0); });
+      if (cancelled) return;
+      setSelfLoanPeriodNet(r.period ? Number(r.period.net) : 0);
+      setSelfLoanByPartner((r.periodByPartner ?? []).map((p) => ({ name: p.name, net: Number(p.net) })));
+    }).catch(() => { if (!cancelled) { setSelfLoanPeriodNet(0); setSelfLoanByPartner([]); } });
     return () => { cancelled = true; };
   }, [branchId, fromDate, toDate, todayStr]);
 
@@ -414,9 +417,24 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                           ? "—"
                           : `${selfLoanPeriodNet > 0 ? "+" : "−"}PKR ${Math.abs(selfLoanPeriodNet).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`}
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {selfLoanPeriodNet > 0 ? "given to shop" : selfLoanPeriodNet < 0 ? "taken from shop" : "no activity"}
-                      </div>
+                      {/* Who it was — the combined net above can hide one partner
+                          giving in while the other takes out, so name each
+                          partner with nonzero activity this period. */}
+                      {selfLoanByPartner.some((p) => p.net !== 0) ? (
+                        <div className="text-[9px] text-slate-400 mt-0.5 leading-tight">
+                          {selfLoanByPartner.filter((p) => p.net !== 0).map((p, i) => (
+                            <span key={p.name}>
+                              {i > 0 && " · "}
+                              {p.name}{" "}
+                              <span className={p.net > 0 ? "text-emerald-400" : "text-orange-400"}>
+                                {p.net > 0 ? "+" : "−"}{Math.abs(p.net).toLocaleString("en-PK", { maximumFractionDigits: 0 })}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-slate-400 mt-0.5">no activity</div>
+                      )}
                     </div>
                     <div className="text-center">
                       <div className={`text-[10px] uppercase tracking-wider font-bold ${netEarningToday < 0 ? "text-red-400" : "text-emerald-300"}`}>Net Earning</div>
