@@ -1056,7 +1056,18 @@ export function Pos({
           onSave={saveOnly}
           onPrintAndSave={printAndSave}
           onOpenDetails={openDetails}
-          onSelect={(boxIdx, localId) => setSelectedRow({ boxIdx, localId })}
+          onSelect={(boxIdx, localId) => {
+            // Selecting a row is a clear signal the cashier wants keyboard
+            // shortcuts (Shift+C) active, not text entry — but if some input
+            // elsewhere (a box-rename field, a name-prompt input, etc.) is
+            // still focused, the global keydown handler's isTypingInInput()
+            // guard silently swallows Shift+C with zero feedback. Clicking a
+            // row doesn't reliably blur a stray focused input on its own
+            // (a handler upstream may have preventDefault'd the natural
+            // focus-shift), so force it here.
+            (document.activeElement as HTMLElement | null)?.blur?.();
+            setSelectedRow({ boxIdx, localId });
+          }}
           onTogglePrepaid={togglePrepaid}
           onPushAllFoodPanda={pushAllFoodPandaOrders}
           selectedKey={mergeMode ? null : selectedRow}
