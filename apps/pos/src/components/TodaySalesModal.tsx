@@ -395,16 +395,27 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                     </div>
                   </div>
 
-                  {/* ── The Results: Total Cash, Total Expense, Net Earning — one line, distinct from the breakdown cards above ── */}
-                  <div className="grid grid-cols-3 gap-3 rounded-xl bg-slate-900 px-3 py-3">
+                  {/* ── The Results: Total Cash, Total Expense, Self Loan, Net Earning — one line, distinct from the breakdown cards above ── */}
+                  <div className="grid grid-cols-4 gap-3 divide-x divide-white/10 rounded-xl bg-slate-900 px-3 py-3">
                     <div className="text-center">
                       <div className="text-[10px] uppercase tracking-wider text-teal-300 font-bold">Total Cash</div>
                       <div className="font-mono font-bold text-white text-xl mt-0.5">PKR {totalCashInHand.toLocaleString("en-PK", { maximumFractionDigits: 0 })}</div>
                     </div>
-                    <div className="text-center border-x border-white/10">
+                    <div className="text-center">
                       <div className="text-[10px] uppercase tracking-wider text-rose-300 font-bold">Total Expense</div>
                       <div className="font-mono font-bold text-white text-xl mt-0.5">
                         PKR {todayExpense.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[10px] uppercase tracking-wider text-amber-300 font-bold">Self Loan</div>
+                      <div className={`font-mono font-bold text-xl mt-0.5 ${selfLoanPeriodNet > 0 ? "text-emerald-300" : selfLoanPeriodNet < 0 ? "text-orange-400" : "text-white"}`}>
+                        {selfLoanPeriodNet === 0
+                          ? "—"
+                          : `${selfLoanPeriodNet > 0 ? "+" : "−"}PKR ${Math.abs(selfLoanPeriodNet).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {selfLoanPeriodNet > 0 ? "given to shop" : selfLoanPeriodNet < 0 ? "taken from shop" : "no activity"}
                       </div>
                     </div>
                     <div className="text-center">
@@ -412,12 +423,6 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                       <div className={`font-mono font-bold text-xl mt-0.5 ${netEarningToday < 0 ? "text-red-400" : "text-white"}`}>
                         PKR {netEarningToday.toLocaleString("en-PK", { maximumFractionDigits: 0 })}
                       </div>
-                      {selfLoanPeriodNet !== 0 && (
-                        <div className="text-[10px] text-amber-300/80 mt-0.5">
-                          {selfLoanPeriodNet < 0 ? "after " : "incl. "}
-                          PKR {Math.abs(selfLoanPeriodNet).toLocaleString("en-PK", { maximumFractionDigits: 0 })} self loan
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
