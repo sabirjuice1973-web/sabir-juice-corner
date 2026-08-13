@@ -385,6 +385,27 @@ export function Pos({
     return /^Order is (PAID|VOIDED|CANCELLED)|already fully paid/i.test(msg);
   }
 
+  // Always-current snapshot of everything the global keyboard handler needs.
+  // openLedgerWindow/openPartnerAccountsWindow are plain function declarations
+  // (a new reference every render) and pushDraftToBox/enterEditMode change on
+  // nearly every order update — depending on them directly in the effect below
+  // meant the document keydown listener was torn down and re-attached on
+  // essentially every render during normal order-punching. That churn is the
+  // likely cause of Shift+C going silent after "a few orders": a keypress
+  // landing in the brief window between remove and re-add sees no listener at
+  // all. Registering the listener exactly once (empty deps) and reading
+  // everything through this ref instead removes that window entirely.
+  const keyHandlersRef = useRef({
+    windowOpen: state.windowOpen, setWindowOpen, pushDraftToBox, enterEditMode,
+    isOwner, userRoles: user.roles, openPartnerAccountsWindow, openLedgerWindow,
+  });
+  useEffect(() => {
+    keyHandlersRef.current = {
+      windowOpen: state.windowOpen, setWindowOpen, pushDraftToBox, enterEditMode,
+      isOwner, userRoles: user.roles, openPartnerAccountsWindow, openLedgerWindow,
+    };
+  });
+
   // ─── Global keyboard handler ─────────────────────────────────────────────
   useEffect(() => {
     const isTypingInInput = (): boolean => {
@@ -395,24 +416,24 @@ export function Pos({
     };
 
     const onKey = (e: KeyboardEvent) => {
+      const h = keyHandlersRef.current;
       // Spacebar → toggle Order Window. Ignore when typing.
       if (e.code === "Space" && !isTypingInInput()) {
         e.preventDefault();
-        setWindowOpen(!state.windowOpen);
+        h.setWindowOpen(!h.windowOpen);
         return;
       }
       // Escape → close window (does not clear draft)
-      if (e.key === "Escape" && state.windowOpen) {
+      if (e.key === "Escape" && h.windowOpen) {
         e.preventDefault();
-        setWindowOpen(false);
+        h.setWindowOpen(false);
         return;
       }
       // F2 → open Product / Code Management (in the Admin app, owner-only).
       // We open it in a new tab so the cashier's POS state isn't disrupted.
       if (e.key === "F2") {
-        const isOwner = user.roles?.some((r) => r.code === "OWNER");
         e.preventDefault();
-        if (!isOwner) {
+        if (!h.isOwner) {
           setError("Product Management is owner-only.");
           setTimeout(() => setError(null), 2000);
           return;
@@ -428,32 +449,32 @@ export function Pos({
       // Disabled while editing an existing order — Save changes is the only exit.
       if (e.ctrlKey && !e.altKey && !e.metaKey && /^[1-7]$/.test(e.key)) {
         e.preventDefault();
-        pushDraftToBox(parseInt(e.key, 10));
+        h.pushDraftToBox(parseInt(e.key, 10));
         return;
       }
       // Ctrl+8 → Partner Accounts window (owner-only, mirrors the header button).
       if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "8") {
         e.preventDefault();
-        if (isOwner) openPartnerAccountsWindow();
+        if (h.isOwner) h.openPartnerAccountsWindow();
         return;
       }
       // Ctrl+9 → Hisaab / Accounts ledger window.
       if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "9") {
         e.preventDefault();
-        openLedgerWindow();
+        h.openLedgerWindow();
         return;
       }
       // Shift+C → edit the selected row's order. Capital C avoids clashing with
       // browser's own Ctrl+C copy. Ignore when typing.
       if ((e.key === "C" || e.key === "c") && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !isTypingInInput()) {
         e.preventDefault();
-        enterEditMode();
+        h.enterEditMode();
         return;
       }
     };
     document.addEventListener("keydown", onKey, { capture: true });
     return () => document.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [state.windowOpen, setWindowOpen, pushDraftToBox, enterEditMode, user.roles, isOwner, openPartnerAccountsWindow, openLedgerWindow]);
+  }, []);
 
   // ─── Box row actions ─────────────────────────────────────────────────────
 
