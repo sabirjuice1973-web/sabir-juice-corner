@@ -45,7 +45,6 @@ function roundUpTo10(n: number): number {
  *                                        the armed state — the second ENTER would
  *                                        re-arm against whatever now matches.
  *   Ctrl+1 … Ctrl+7                    → push draft to corresponding box (1–7)
- *   Click "Box N" button below         → same effect (touchscreen / no-keyboard fallback)
  *   Esc                                → close window without losing draft
  *
  * Closing without committing is intentional: the cashier might pause, walk away,
@@ -58,16 +57,15 @@ type Props = {
   onDraftChange: (d: Draft) => void;
   onClose: () => void;
   onClear: () => void;
-  onPushToBox: (boxNumber: number) => void;
   // When set, the window operates in EDIT mode: header shows the order being
-  // edited and the box buttons say "Move to Box N" instead of "Box N".
+  // edited, and the footer's total reads "Updated Total" instead of "Draft Total".
   editTarget?: { orderNo: string | null; serverId: string } | null;
   // The order number the NEXT order pushed (for the current business date)
   // will receive — shown as a live "Next Order #N" badge. null while loading.
   nextOrderSeq?: number | null;
 };
 
-export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBox, editTarget, nextOrderSeq }: Props) {
+export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget, nextOrderSeq }: Props) {
   const qtyRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const [qtyInput, setQtyInput] = useState("1");
@@ -289,6 +287,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
   }
 
   const total = draftTotal(draft);
+  const totalQty = draft.lines.reduce((s, li) => s + li.qty, 0);
 
   return (
     <div
@@ -297,7 +296,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
     >
       <div
         ref={cardRef}
-        className={`card absolute w-full max-w-3xl flex flex-col max-h-[90vh] ${editTarget ? "border-2 border-accent-500" : ""} ${dragging ? "shadow-2xl" : ""}`}
+        className={`card absolute w-full max-w-3xl flex flex-col max-h-[90vh] shadow-xl ${editTarget ? "border-2 border-accent-500" : ""} ${dragging ? "shadow-2xl" : ""}`}
         style={pos
           ? { left: pos.x, top: pos.y }
           : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }
@@ -313,7 +312,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
             </div>
             <div className="text-xs text-slate-500">
               {editTarget ? (
-                <>Edit items, then click a box below to move the order there with updated items.</>
+                <>Edit items, then press <kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-[10px]">Ctrl+1</kbd>–<kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-[10px]">9</kbd> to move the order to a box.</>
               ) : (
                 <>
                   qty → <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono text-[10px]">ENTER</kbd> →
@@ -463,7 +462,7 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
               {draft.lines.map((li) => {
                 const key = draftLineKey(li);
                 return (
-                  <li key={key} className="py-1.5 flex items-center gap-2 text-sm">
+                  <li key={key} className="py-1.5 px-1.5 -mx-1.5 rounded-lg flex items-center gap-2 text-sm hover:bg-slate-50 transition-colors">
                     {li.isMix
                       ? <span className="text-[10px] font-bold uppercase text-sjc-700 bg-sjc-100 rounded px-1.5 py-0.5 w-12 text-center shrink-0">MIX</span>
                       : <span className="font-mono text-xs text-slate-400 w-12 shrink-0">#{li.itemCode}</span>
@@ -500,49 +499,32 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, onPushToBo
           )}
         </div>
 
-        {/* Footer: always shows 7 box-push buttons. In edit mode the labels read
-            "→ Box N" and a hint explains clicking moves the order. */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="text-xs text-slate-500">{editTarget ? "Updated total" : "Draft total"}</div>
-              <div className="text-2xl font-mono font-bold">PKR {total.toFixed(0)}</div>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              {editTarget ? (
-                <span className="text-amber-700 font-medium">Click a box to move this order there</span>
-              ) : (
-                <>
-                  <span>Press</span>
-                  <kbd className="px-2 py-1 rounded bg-accent-100 text-accent-800 font-mono">Ctrl+1</kbd>
-                  <span>…</span>
-                  <kbd className="px-2 py-1 rounded bg-accent-100 text-accent-800 font-mono">Ctrl+7</kbd>
-                  <span>or click a box below</span>
-                </>
-              )}
-              <button onClick={onClear} disabled={draft.lines.length === 0} className="btn-secondary text-xs ml-3">
-                {editTarget ? "Clear items" : "Clear draft"}
-              </button>
-            </div>
+        {/* Footer: item count + total, both as stat tiles. Pushing to a box is
+            keyboard-only now (Ctrl+1–9, per the header hint) — the touchscreen
+            button row was removed since there's no touchscreen in use. */}
+        <div className="px-5 py-4 border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white">
+          <div className="flex justify-end mb-2.5">
+            <button onClick={onClear} disabled={draft.lines.length === 0} className="btn-secondary text-xs">
+              {editTarget ? "Clear items" : "Clear draft"}
+            </button>
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {Array.from({ length: 7 }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => onPushToBox(n)}
-                disabled={draft.lines.length === 0}
-                title={editTarget ? `Move to Box ${n}` : `Push draft to Box ${n} (Ctrl+${n})`}
-                className={`rounded-lg border-2 transition py-2 text-center disabled:opacity-40 disabled:cursor-not-allowed ${
-                  editTarget
-                    ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-500 hover:text-white hover:border-amber-500 disabled:hover:bg-amber-50 disabled:hover:text-amber-800 disabled:hover:border-amber-400"
-                    : "border-accent-200 bg-white text-accent-700 hover:bg-accent-600 hover:text-white hover:border-accent-600 disabled:hover:bg-white disabled:hover:text-accent-700 disabled:hover:border-accent-200"
-                }`}
-              >
-                <div className="font-bold text-base leading-tight">{editTarget ? `→${n}` : `Box ${n}`}</div>
-                <div className="text-[10px] font-mono opacity-70">Ctrl+{n}</div>
-              </button>
-            ))}
+          <div className="flex items-stretch gap-3">
+            <div className="rounded-xl border-2 border-slate-200 bg-white px-5 py-3 flex flex-col items-center justify-center shadow-sm min-w-[110px]">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Total Items</div>
+              <div className="text-3xl font-mono font-extrabold text-slate-800 mt-0.5 tabular-nums">
+                {Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2).replace(/\.?0+$/, "")}
+              </div>
+            </div>
+            <div className={`flex-1 rounded-xl border-2 px-6 py-3 flex flex-col items-end justify-center shadow-sm ${
+              editTarget ? "border-amber-400 bg-gradient-to-br from-amber-50 to-white" : "border-accent-500 bg-gradient-to-br from-accent-50 to-white"
+            }`}>
+              <div className={`text-[10px] uppercase tracking-wider font-bold ${editTarget ? "text-amber-600" : "text-accent-600"}`}>
+                {editTarget ? "Updated Total" : "Draft Total"}
+              </div>
+              <div className={`text-4xl font-mono font-extrabold mt-0.5 tabular-nums ${editTarget ? "text-amber-700" : "text-accent-700"}`}>
+                PKR {total.toFixed(0)}
+              </div>
+            </div>
           </div>
         </div>
       </div>

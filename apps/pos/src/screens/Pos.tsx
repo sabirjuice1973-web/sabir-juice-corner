@@ -1228,7 +1228,6 @@ export function Pos({
           onDraftChange={setDraft}
           onClose={editTarget ? cancelEdit : () => setWindowOpen(false)}
           onClear={() => setDraft(clearDraft())}
-          onPushToBox={pushDraftToBox}
           editTarget={editTarget ? { orderNo: editTarget.orderNo, serverId: editTarget.serverId } : null}
           nextOrderSeq={nextOrderSeq}
         />

@@ -107,6 +107,8 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
        <td class="num total">${formatMoney(Number(li.lineTotal))}</td>
      </tr>`;
   }).join("");
+  const totalQty = order.lines.reduce((s, li) => s + li.qty, 0);
+  const totalQtyStr = Number.isInteger(totalQty) ? `${totalQty}` : totalQty.toFixed(2).replace(/\.?0+$/, "");
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><title>Receipt ${order.orderNo ?? order.localId}</title>
 <style>
@@ -380,6 +382,10 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     </tbody>
   </table>
   <table class="totals">
+    <tr class="subtotal-row">
+      <td class="label-cell">Total Items</td>
+      <td class="num">${totalQtyStr}</td>
+    </tr>
     ${(Number(order.discountAmount) > 0 || Number(order.deliveryCharge ?? 0) > 0) ? `
     <tr class="subtotal-row">
       <td class="label-cell">Subtotal</td>
