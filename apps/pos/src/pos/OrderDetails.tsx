@@ -36,9 +36,21 @@ type Props = {
   onSaved: () => void;                 // remove from box — parent handles after we apply discount + pay
   onPrintAndSaved: () => void;         // same — parent handles box removal
   onPushedToAccount: () => void;       // remove from box after creditor push
+  // Fired right after discount/delivery-charge is applied server-side (Print
+  // Only doesn't pay, so the row stays in the box) — patches the parent's
+  // local BoxOrder with the fresh totals. Without this, the box row's own
+  // "pay only" tick icon later reads the STALE local total and pays that
+  // amount instead of the true (now higher/lower) server total: harmless for
+  // discount (it only ever reduces total, so cash payment self-caps at what's
+  // actually due), but for delivery charge (which INCREASES total) it means
+  // the order gets underpaid and silently never transitions to PAID — the
+  // row disappears from the box (removed optimistically on any non-error
+  // response) while the order stays OPEN on the server, invisible in Today's
+  // Sales too.
+  onTotalsChanged: (totals: { subtotal: string; discountAmount: string; deliveryCharge: string; total: string }) => void;
 };
 
-export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumber, cashierName, onClose, onPrintOnly, onSaved, onPrintAndSaved, onPushedToAccount }: Props) {
+export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumber, cashierName, onClose, onPrintOnly, onSaved, onPrintAndSaved, onPushedToAccount, onTotalsChanged }: Props) {
   const [amountReceivedStr, setAmountReceivedStr] = useState("");
   const [discountStr, setDiscountStr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,9 +167,10 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
       return false;
     }
     try {
-      await api.applyDiscount(order.serverId, "FLAT", discountInput, `Counter discount`);
+      const { order: updated } = await api.applyDiscount(order.serverId, "FLAT", discountInput, `Counter discount`);
       setAppliedDiscount((d) => d + discountInput);
       setDiscountStr("");
+      onTotalsChanged({ subtotal: updated.subtotal, discountAmount: updated.discountAmount, deliveryCharge: updated.deliveryCharge, total: updated.total });
       return true;
     } catch (e: any) {
       setError(e.body?.error || e.message || "Could not apply discount");
@@ -172,8 +185,9 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
       return false;
     }
     try {
-      await api.setDeliveryCharge(order.serverId, deliveryChargeInput);
+      const { order: updated } = await api.setDeliveryCharge(order.serverId, deliveryChargeInput);
       setAppliedDeliveryCharge(deliveryChargeInput);
+      onTotalsChanged({ subtotal: updated.subtotal, discountAmount: updated.discountAmount, deliveryCharge: updated.deliveryCharge, total: updated.total });
       return true;
     } catch (e: any) {
       setError(e.body?.error || e.message || "Could not set delivery charge");

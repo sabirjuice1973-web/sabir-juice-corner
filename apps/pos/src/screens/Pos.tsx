@@ -624,8 +624,32 @@ export function Pos({
     }
     setBusy(true);
     try {
-      await api.pay(order.serverId, "CASH", Number(order.total));
+      const { order: updated } = await api.pay(order.serverId, "CASH", Number(order.total));
       emitOrdersChanged();
+      if (updated.status !== "PAID") {
+        // The amount we sent didn't cover the server's actual total — most
+        // likely `order.total` here was stale (e.g. a discount/delivery
+        // charge applied elsewhere hadn't synced back to this local row yet).
+        // The payment was still recorded server-side, so DON'T remove the
+        // row — an order that silently vanishes from the box while still
+        // OPEN and short-paid on the server is a real-money problem nobody
+        // would notice until reconciliation. Refresh this row's totals from
+        // the server instead so the shortfall is visible and payable.
+        setState((s) => {
+          const nextBoxes = s.boxes.map((arr, i) =>
+            i === boxIdx
+              ? arr.map((o) => (o.localId === localId
+                  ? { ...o, subtotal: updated.subtotal, discountAmount: updated.discountAmount, deliveryCharge: updated.deliveryCharge, total: updated.total }
+                  : o))
+              : arr,
+          );
+          return { ...s, boxes: nextBoxes };
+        });
+        const due = Number(updated.total) - updated.payments.reduce((s, p) => s + Number(p.amount), 0);
+        setError(`Order still owes PKR ${due.toFixed(0)} — total changed since this row last synced. Try again.`);
+        setTimeout(() => setError(null), 4000);
+        return;
+      }
       setState((s) => {
         const nextBoxes = s.boxes.map((arr, i) => i === boxIdx ? arr.filter((o) => o.localId !== localId) : arr);
         return { ...s, boxes: nextBoxes };
@@ -1141,6 +1165,16 @@ export function Pos({
               return { ...s, boxes: nextBoxes };
             });
             setDetailsTarget(null);
+          }}
+          onTotalsChanged={(totals) => {
+            setState((s) => {
+              const nextBoxes = s.boxes.map((arr, i) =>
+                i === detailsTarget.boxIdx
+                  ? arr.map((o) => (o.localId === detailsTarget.localId ? { ...o, ...totals } : o))
+                  : arr,
+              );
+              return { ...s, boxes: nextBoxes };
+            });
           }}
         />
       )}
