@@ -299,216 +299,242 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
     >
       <div
         ref={cardRef}
-        className={`card absolute w-full max-w-3xl flex flex-col max-h-[90vh] shadow-xl ${editTarget ? "border-2 border-accent-500" : ""} ${dragging ? "shadow-2xl" : ""}`}
+        className={`absolute w-full max-w-3xl flex flex-col max-h-[90vh] rounded-2xl bg-white overflow-hidden ring-1 ring-black/5 shadow-2xl ${editTarget ? "ring-2 ring-accent-400" : ""} ${dragging ? "shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)]" : ""}`}
         style={pos
           ? { left: pos.x, top: pos.y }
           : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }
         }
       >
         <div
-          className={`px-5 py-3 border-b border-slate-200 flex items-center justify-between select-none ${editTarget ? "bg-accent-50" : "bg-gradient-to-r from-sjc-100 to-white"} ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`px-5 py-3.5 flex items-center justify-between select-none ${editTarget ? "bg-gradient-to-r from-accent-600 to-accent-700" : "bg-gradient-to-r from-slate-800 to-slate-900"} ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
           onMouseDown={onHeaderMouseDown}
         >
-          <div>
-            <div className="font-bold text-lg">
-              {editTarget ? (<>Editing order <span className="font-mono text-accent-700">{editTarget.orderNo ?? "(local)"}</span></>) : "Order Window"}
+          <div className="min-w-0">
+            <div className="font-bold text-lg text-white flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${editTarget ? "bg-amber-300" : "bg-emerald-400"}`} />
+              {editTarget ? (<>Editing order <span className="font-mono text-amber-200">{editTarget.orderNo ?? "(local)"}</span></>) : "Order Window"}
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-white/60 mt-1">
               {editTarget ? (
-                <>Edit items, then press <kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-[10px]">Ctrl+1</kbd>–<kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-[10px]">9</kbd> to move the order to a box.</>
+                <>
+                  <span>Edit items, then</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/90 font-mono text-[10px] border border-white/10">Ctrl+1</kbd>
+                  <span className="text-white/30">–</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/90 font-mono text-[10px] border border-white/10">9</kbd>
+                  <span>to move it to a box</span>
+                </>
               ) : (
                 <>
-                  qty → <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono text-[10px]">ENTER</kbd> →
-                  item code → <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono text-[10px]">ENTER</kbd>·<kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono text-[10px]">ENTER</kbd> →
-                  press <kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-[10px]">Ctrl+1</kbd>–<kbd className="px-1.5 py-0.5 rounded bg-accent-100 text-accent-800 font-mono text-[10px]">9</kbd> to push to a box
+                  <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 font-medium">Qty</span>
+                  <span className="text-white/30">→</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/90 font-mono text-[10px] border border-white/10">ENTER</kbd>
+                  <span className="text-white/30">→</span>
+                  <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 font-medium">Item code</span>
+                  <span className="text-white/30">→</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/90 font-mono text-[10px] border border-white/10">ENTER</kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/90 font-mono text-[10px] border border-white/10">ENTER</kbd>
+                  <span className="text-white/30">→</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-accent-500/90 text-white font-mono text-[10px]">Ctrl+1–9</kbd>
+                  <span>push to box</span>
                 </>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             {!editTarget && nextOrderSeq != null && (
-              <div className="text-right leading-tight" title="Order number this business date, for the next order pushed">
-                <div className="text-[9px] uppercase tracking-wide text-slate-400">Next Order</div>
-                <div className="font-mono font-bold text-lg text-accent-700">#{nextOrderSeq}</div>
+              <div className="text-right leading-tight rounded-lg bg-white/10 px-3 py-1.5" title="Order number this business date, for the next order pushed">
+                <div className="text-[9px] uppercase tracking-wide text-white/50 font-semibold">Next Order</div>
+                <div className="font-mono font-bold text-lg text-white">#{nextOrderSeq}</div>
               </div>
             )}
             {editTarget && (
-              <div className="text-right leading-tight" title="Original punch time — set once when the order was first pushed, and stays the same no matter when you edit it">
-                <div className="text-[9px] uppercase tracking-wide text-accent-500">Punched</div>
-                <div className="font-mono font-bold text-sm text-accent-700">
+              <div className="text-right leading-tight rounded-lg bg-white/10 px-3 py-1.5" title="Original punch time — set once when the order was first pushed, and stays the same no matter when you edit it">
+                <div className="text-[9px] uppercase tracking-wide text-white/60 font-semibold">Punched</div>
+                <div className="font-mono font-bold text-sm text-white">
                   {new Date(editTarget.openedAt).toLocaleDateString("en-PK", { day: "2-digit", month: "short" })}
                   {" · "}
                   {new Date(editTarget.openedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true })}
                 </div>
               </div>
             )}
-            <button onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="text-slate-400 hover:text-slate-700 text-xl leading-none cursor-pointer">×</button>
+            <button onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="w-7 h-7 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 text-xl leading-none cursor-pointer transition-colors">×</button>
           </div>
         </div>
 
-        <div className="p-5 grid grid-cols-12 gap-3">
-          <label className="col-span-3">
-            <div className="text-xs mb-1">
-              <span className="text-slate-500">Qty</span>
-              {qtyInput.startsWith("-") && (
-                <span className="ml-2 text-red-600 font-medium">subtract mode</span>
-              )}
-            </div>
-            <input
-              ref={qtyRef}
-              className={`input w-full font-mono text-3xl text-center ${qtyInput.startsWith("-") ? "text-red-600 border-red-300" : ""}`}
-              inputMode="decimal"
-              value={qtyInput}
-              // Allow decimals + optional leading minus for subtract mode
-              onChange={(e) => {
-                const neg = e.target.value.startsWith("-");
-                let v = e.target.value.replace(/[^0-9.]/g, "");
-                const firstDot = v.indexOf(".");
-                if (firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, "");
-                setQtyInput(neg ? "-" + v : v);
-              }}
-              onKeyDown={onQtyKey}
-              onFocus={(e) => e.target.select()}
-            />
-          </label>
-          <label className="col-span-9">
-            <div className="text-xs text-slate-500 mb-1">Item code or name <span className="text-slate-400">— for a custom mix join 2–5 codes with <code className="bg-slate-100 px-1 rounded">+</code> (e.g. <code className="bg-slate-100 px-1 rounded">7+41</code> or <code className="bg-slate-100 px-1 rounded">7+41+5</code>)</span></div>
-            <input
-              ref={codeRef}
-              className="input w-full font-mono text-2xl"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
-              onKeyDown={onCodeKey}
-              placeholder="e.g. 45  ·  Mango  ·  7+41  ·  7+41+5  (up to 5)"
-            />
-          </label>
+        {/* Entry zone — qty + item code, visually grouped as its own panel */}
+        <div className="p-5 bg-slate-50 border-b border-slate-200">
+          <div className="grid grid-cols-12 gap-3">
+            <label className="col-span-3">
+              <div className="text-[10px] uppercase tracking-wider font-bold mb-1.5">
+                <span className="text-slate-400">Qty</span>
+                {qtyInput.startsWith("-") && (
+                  <span className="ml-2 text-red-600">Subtract mode</span>
+                )}
+              </div>
+              <input
+                ref={qtyRef}
+                className={`input w-full font-mono text-3xl text-center bg-white shadow-sm ${qtyInput.startsWith("-") ? "text-red-600 border-red-300" : ""}`}
+                inputMode="decimal"
+                value={qtyInput}
+                // Allow decimals + optional leading minus for subtract mode
+                onChange={(e) => {
+                  const neg = e.target.value.startsWith("-");
+                  let v = e.target.value.replace(/[^0-9.]/g, "");
+                  const firstDot = v.indexOf(".");
+                  if (firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, "");
+                  setQtyInput(neg ? "-" + v : v);
+                }}
+                onKeyDown={onQtyKey}
+                onFocus={(e) => e.target.select()}
+              />
+            </label>
+            <label className="col-span-9">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">
+                Item code or name <span className="normal-case font-normal text-slate-400">— for a custom mix join 2–5 codes with <code className="bg-slate-200 px-1 rounded font-mono">+</code> (e.g. <code className="bg-slate-200 px-1 rounded font-mono">7+41</code> or <code className="bg-slate-200 px-1 rounded font-mono">7+41+5</code>)</span>
+              </div>
+              <input
+                ref={codeRef}
+                className="input w-full font-mono text-2xl bg-white shadow-sm"
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value)}
+                onKeyDown={onCodeKey}
+                placeholder="e.g. 45  ·  Mango  ·  7+41  ·  7+41+5  (up to 5)"
+              />
+            </label>
 
-          {/* Preview area — shows the resolved single item, the mix preview, or an error.
-              When the preview is "armed" (first ENTER pressed), the border thickens and
-              a "press ENTER again to add" hint appears next to the price so it's obvious
-              the second press is what commits. Typing anything resets armed. */}
-          <div className="col-span-12 min-h-[3.5rem]">
-            {mixPreview ? (
-              <div className={`rounded-lg border-2 px-4 py-2 transition-colors ${armed ? "border-accent-600 bg-accent-50 ring-2 ring-accent-300" : "border-sjc-500/40 bg-sjc-50"}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs uppercase tracking-wider text-sjc-700 font-bold">Mix</span>
-                    <span className="ml-3 font-medium text-slate-800">{mixPreview.displayName} {mixPreview.size === "MEDIUM" ? "Medium" : "Jumbo"}</span>
+            {/* Preview area — shows the resolved single item, the mix preview, or an error.
+                When the preview is "armed" (first ENTER pressed), the border thickens and
+                a "press ENTER again to add" hint appears next to the price so it's obvious
+                the second press is what commits. Typing anything resets armed. */}
+            <div className="col-span-12 min-h-[3.5rem]">
+              {mixPreview ? (
+                <div className={`rounded-xl border-2 px-4 py-2.5 transition-colors shadow-sm ${armed ? "border-accent-600 bg-accent-50 ring-2 ring-accent-300" : "border-sjc-500/40 bg-sjc-50"}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs uppercase tracking-wider text-sjc-700 font-bold bg-white/60 px-1.5 py-0.5 rounded">Mix</span>
+                      <span className="ml-3 font-medium text-slate-800">{mixPreview.displayName} {mixPreview.size === "MEDIUM" ? "Medium" : "Jumbo"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {armed && <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-white border border-accent-400 px-2 py-0.5 rounded animate-pulse">Press ENTER again</span>}
+                      <span className="font-mono text-sm text-slate-500">PKR</span>
+                      <input
+                        type="number" min="0" step="any"
+                        value={mixPriceOverride ?? String(mixPreview.averagedPrice)}
+                        onChange={(e) => setMixPriceOverride(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        // Editing the price is itself a deliberate act — commits
+                        // straight away rather than requiring the usual second
+                        // ENTER (that confirmation is for the code field, where a
+                        // mistyped code is the risk this is guarding against).
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitLine(); } }}
+                        title="Override this mix's price — only affects this line"
+                        className={`font-mono text-lg font-bold text-right w-24 rounded px-1.5 py-0.5 border ${
+                          mixPriceOverride !== null ? "border-amber-400 bg-amber-50 text-amber-800" : "border-transparent hover:border-slate-300"
+                        }`}
+                      />
+                      {mixPriceOverride !== null && (
+                        <button type="button" onClick={() => setMixPriceOverride(null)} title="Reset to the computed average" className="text-slate-400 hover:text-slate-700 text-sm leading-none">↺</button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {armed && <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-white border border-accent-400 px-2 py-0.5 rounded animate-pulse">Press ENTER again</span>}
-                    <span className="font-mono text-sm text-slate-500">PKR</span>
-                    <input
-                      type="number" min="0" step="any"
-                      value={mixPriceOverride ?? String(mixPreview.averagedPrice)}
-                      onChange={(e) => setMixPriceOverride(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      // Editing the price is itself a deliberate act — commits
-                      // straight away rather than requiring the usual second
-                      // ENTER (that confirmation is for the code field, where a
-                      // mistyped code is the risk this is guarding against).
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitLine(); } }}
-                      title="Override this mix's price — only affects this line"
-                      className={`font-mono text-lg font-bold text-right w-24 rounded px-1.5 py-0.5 border ${
-                        mixPriceOverride !== null ? "border-amber-400 bg-amber-50 text-amber-800" : "border-transparent hover:border-slate-300"
-                      }`}
-                    />
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    ({mixPreview.components.map((c) => `${c.name} #${c.itemCode} @ ${c.price}`).join("  +  ")})
+                    &nbsp;÷ {mixPreview.components.length} = {mixPreview.rawAverage.toFixed(2)}
+                    {mixPreview.averagedPrice !== mixPreview.rawAverage && (
+                      <span className="ml-1 text-accent-700 font-medium">→ rounded up to {mixPreview.averagedPrice}</span>
+                    )}
                     {mixPriceOverride !== null && (
-                      <button type="button" onClick={() => setMixPriceOverride(null)} title="Reset to the computed average" className="text-slate-400 hover:text-slate-700 text-sm leading-none">↺</button>
+                      <span className="ml-1 text-amber-700 font-medium">→ overridden to {mixPriceOverride || "…"}</span>
                     )}
                   </div>
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
-                  ({mixPreview.components.map((c) => `${c.name} #${c.itemCode} @ ${c.price}`).join("  +  ")})
-                  &nbsp;÷ {mixPreview.components.length} = {mixPreview.rawAverage.toFixed(2)}
-                  {mixPreview.averagedPrice !== mixPreview.rawAverage && (
-                    <span className="ml-1 text-accent-700 font-medium">→ rounded up to {mixPreview.averagedPrice}</span>
-                  )}
-                  {mixPriceOverride !== null && (
-                    <span className="ml-1 text-amber-700 font-medium">→ overridden to {mixPriceOverride || "…"}</span>
-                  )}
+              ) : preview ? (
+                <div className={`flex items-center justify-between rounded-xl border-2 px-4 py-2.5 transition-colors shadow-sm ${armed ? "border-accent-600 bg-accent-50 ring-2 ring-accent-300" : "border-leaf-500/40 bg-leaf-500/5"}`}>
+                  <div>
+                    <span className="font-mono text-xs text-slate-400">#{preview.itemCode}</span>
+                    <span className="ml-3 font-medium text-slate-800">{displayItemName(preview.name, preview.size)}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {armed && <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-white border border-accent-400 px-2 py-0.5 rounded animate-pulse">Press ENTER again</span>}
+                    <span className="font-mono text-lg font-bold">PKR {preview.price}</span>
+                  </div>
                 </div>
+              ) : previewErr ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 text-sm text-red-600 px-4 py-2.5">{previewErr}</div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 text-xs text-slate-400 px-4 py-2.5">Type a code or name. Use <code className="bg-slate-200 px-1 rounded font-mono">A+B</code> through <code className="bg-slate-200 px-1 rounded font-mono">A+B+C+D+E</code> for a 2–5-way mix. Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 font-mono text-[10px]">ENTER</kbd> once to confirm, again to add.</div>
+              )}
+            </div>
+
+            {/* Name-search results (only when name search returns multiple) */}
+            {searchResults.length > 1 && (
+              <div className="col-span-12 max-h-40 overflow-auto border border-slate-200 rounded-xl bg-white shadow-sm divide-y divide-slate-100">
+                {searchResults.map((it) => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => setPreview(it)}
+                    className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-sjc-50 transition-colors ${preview?.id === it.id ? "bg-sjc-100" : ""}`}
+                  >
+                    <span className="font-mono text-xs text-slate-400 mr-2">#{it.itemCode}</span>
+                    {it.name} {it.size !== "NA" && <span className="text-xs text-slate-500">({it.size})</span>}
+                    <span className="float-right font-mono text-slate-700">PKR {it.price}</span>
+                  </button>
+                ))}
               </div>
-            ) : preview ? (
-              <div className={`flex items-center justify-between rounded-lg border-2 px-4 py-2 transition-colors ${armed ? "border-accent-600 bg-accent-50 ring-2 ring-accent-300" : "border-leaf-500/40 bg-leaf-500/5"}`}>
-                <div>
-                  <span className="font-mono text-xs text-slate-400">#{preview.itemCode}</span>
-                  <span className="ml-3 font-medium text-slate-800">{displayItemName(preview.name, preview.size)}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {armed && <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-white border border-accent-400 px-2 py-0.5 rounded animate-pulse">Press ENTER again</span>}
-                  <span className="font-mono text-lg font-bold">PKR {preview.price}</span>
-                </div>
-              </div>
-            ) : previewErr ? (
-              <div className="text-sm text-red-600 px-2 py-2">{previewErr}</div>
-            ) : (
-              <div className="text-xs text-slate-400 px-2 py-2">Type a code or name. Use <code className="bg-slate-100 px-1 rounded">A+B</code> through <code className="bg-slate-100 px-1 rounded">A+B+C+D+E</code> for a 2–5-way mix. Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 font-mono text-[10px]">ENTER</kbd> once to confirm, again to add.</div>
             )}
           </div>
-
-          {/* Name-search results (only when name search returns multiple) */}
-          {searchResults.length > 1 && (
-            <div className="col-span-12 max-h-40 overflow-auto border rounded-lg">
-              {searchResults.map((it, i) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  onClick={() => setPreview(it)}
-                  className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-sjc-50 ${preview?.id === it.id ? "bg-sjc-100" : ""}`}
-                >
-                  <span className="font-mono text-xs text-slate-400 mr-2">#{it.itemCode}</span>
-                  {it.name} {it.size !== "NA" && <span className="text-xs text-slate-500">({it.size})</span>}
-                  <span className="float-right font-mono text-slate-700">PKR {it.price}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Current draft — what will be pushed to the box */}
-        <div className="flex-1 overflow-auto border-t border-slate-200 px-5 py-3 min-h-[120px]">
+        <div className="flex-1 overflow-auto px-5 py-3 min-h-[120px] bg-white">
           {draft.lines.length === 0 ? (
-            <div className="text-center text-slate-400 text-sm py-6">No items yet. Punch a code above.</div>
+            <div className="text-center text-slate-400 text-sm py-8">No items yet. Punch a code above.</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {draft.lines.map((li) => {
-                const key = draftLineKey(li);
-                return (
-                  <li key={key} className="py-1.5 px-1.5 -mx-1.5 rounded-lg flex items-center gap-2 text-sm hover:bg-slate-50 transition-colors">
-                    {li.isMix
-                      ? <span className="text-[10px] font-bold uppercase text-sjc-700 bg-sjc-100 rounded px-1.5 py-0.5 w-12 text-center shrink-0">MIX</span>
-                      : <span className="font-mono text-xs text-slate-400 w-12 shrink-0">#{li.itemCode}</span>
-                    }
-                    <span className="flex-1 font-medium truncate">{displayItemName(li.name, li.size)}</span>
-                    {/* +/− qty controls */}
-                    <div className="flex items-center gap-1 shrink-0">
+            <>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Items in this order</span>
+                <span className="text-[10px] text-slate-400">{draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}</span>
+              </div>
+              <ul className="divide-y divide-slate-100">
+                {draft.lines.map((li) => {
+                  const key = draftLineKey(li);
+                  return (
+                    <li key={key} className="py-2 px-2 -mx-2 rounded-lg flex items-center gap-2 text-sm hover:bg-slate-50 transition-colors">
+                      {li.isMix
+                        ? <span className="text-[10px] font-bold uppercase text-sjc-700 bg-sjc-100 rounded px-1.5 py-0.5 w-12 text-center shrink-0">MIX</span>
+                        : <span className="font-mono text-xs text-slate-400 w-12 shrink-0">#{li.itemCode}</span>
+                      }
+                      <span className="flex-1 font-medium truncate">{displayItemName(li.name, li.size)}</span>
+                      {/* +/− qty controls */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => onDraftChange(adjustDraftLineQty(draft, key, -1))}
+                          className="w-6 h-6 rounded border border-slate-200 text-slate-400 hover:border-red-400 hover:text-red-600 hover:bg-red-50 text-base font-bold leading-none flex items-center justify-center"
+                          title="Decrease qty"
+                        >−</button>
+                        <span className="font-mono text-slate-700 w-8 text-center">{li.qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => onDraftChange(adjustDraftLineQty(draft, key, 1))}
+                          className="w-6 h-6 rounded border border-slate-200 text-slate-400 hover:border-green-500 hover:text-green-700 hover:bg-green-50 text-base font-bold leading-none flex items-center justify-center"
+                          title="Increase qty"
+                        >+</button>
+                      </div>
+                      <span className="font-mono text-slate-400 text-xs shrink-0">× PKR {Number(li.unitPrice).toFixed(2)}</span>
+                      <span className="font-mono font-bold w-20 text-right shrink-0">PKR {(li.qty * Number(li.unitPrice)).toFixed(0)}</span>
                       <button
                         type="button"
-                        onClick={() => onDraftChange(adjustDraftLineQty(draft, key, -1))}
-                        className="w-6 h-6 rounded border border-slate-200 text-slate-400 hover:border-red-400 hover:text-red-600 hover:bg-red-50 text-base font-bold leading-none flex items-center justify-center"
-                        title="Decrease qty"
-                      >−</button>
-                      <span className="font-mono text-slate-700 w-8 text-center">{li.qty}</span>
-                      <button
-                        type="button"
-                        onClick={() => onDraftChange(adjustDraftLineQty(draft, key, 1))}
-                        className="w-6 h-6 rounded border border-slate-200 text-slate-400 hover:border-green-500 hover:text-green-700 hover:bg-green-50 text-base font-bold leading-none flex items-center justify-center"
-                        title="Increase qty"
-                      >+</button>
-                    </div>
-                    <span className="font-mono text-slate-400 text-xs shrink-0">× PKR {Number(li.unitPrice).toFixed(2)}</span>
-                    <span className="font-mono font-bold w-20 text-right shrink-0">PKR {(li.qty * Number(li.unitPrice)).toFixed(0)}</span>
-                    <button
-                      type="button"
-                      onClick={() => onDraftChange(removeDraftLine(draft, key))}
-                      className="text-slate-300 hover:text-red-600 text-lg leading-none w-5 shrink-0"
-                      title="Remove line"
-                    >×</button>
-                  </li>
-                );
-              })}
-            </ul>
+                        onClick={() => onDraftChange(removeDraftLine(draft, key))}
+                        className="text-slate-300 hover:text-red-600 text-lg leading-none w-5 shrink-0"
+                        title="Remove line"
+                      >×</button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
 
@@ -522,13 +548,13 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
             </button>
           </div>
           <div className="flex items-stretch gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 flex flex-col items-center justify-center shadow-sm min-w-[110px]">
+            <div className="rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 flex flex-col items-center justify-center shadow-md min-w-[110px]">
               <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Total Items</div>
               <div className="text-3xl font-mono font-extrabold text-white mt-0.5 tabular-nums">
                 {Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2).replace(/\.?0+$/, "")}
               </div>
             </div>
-            <div className={`flex-1 rounded-xl px-6 py-3 flex flex-col items-end justify-center shadow-sm bg-gradient-to-br ${
+            <div className={`flex-1 rounded-xl px-6 py-3 flex flex-col items-end justify-center shadow-md bg-gradient-to-br ${
               editTarget ? "from-amber-700 to-amber-900" : "from-accent-700 to-accent-900"
             }`}>
               <div className={`text-[10px] uppercase tracking-wider font-bold ${editTarget ? "text-amber-300" : "text-accent-200"}`}>
