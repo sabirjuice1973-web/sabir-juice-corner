@@ -509,19 +509,19 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
             </button>
           </div>
           <div className="flex items-stretch gap-3">
-            <div className="rounded-xl border-2 border-slate-200 bg-white px-5 py-3 flex flex-col items-center justify-center shadow-sm min-w-[110px]">
+            <div className="rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 flex flex-col items-center justify-center shadow-sm min-w-[110px]">
               <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Total Items</div>
-              <div className="text-3xl font-mono font-extrabold text-slate-800 mt-0.5 tabular-nums">
+              <div className="text-3xl font-mono font-extrabold text-white mt-0.5 tabular-nums">
                 {Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2).replace(/\.?0+$/, "")}
               </div>
             </div>
-            <div className={`flex-1 rounded-xl border-2 px-6 py-3 flex flex-col items-end justify-center shadow-sm ${
-              editTarget ? "border-amber-400 bg-gradient-to-br from-amber-50 to-white" : "border-accent-500 bg-gradient-to-br from-accent-50 to-white"
+            <div className={`flex-1 rounded-xl px-6 py-3 flex flex-col items-end justify-center shadow-sm bg-gradient-to-br ${
+              editTarget ? "from-amber-700 to-amber-900" : "from-accent-700 to-accent-900"
             }`}>
-              <div className={`text-[10px] uppercase tracking-wider font-bold ${editTarget ? "text-amber-600" : "text-accent-600"}`}>
+              <div className={`text-[10px] uppercase tracking-wider font-bold ${editTarget ? "text-amber-300" : "text-accent-200"}`}>
                 {editTarget ? "Updated Total" : "Draft Total"}
               </div>
-              <div className={`text-4xl font-mono font-extrabold mt-0.5 tabular-nums ${editTarget ? "text-amber-700" : "text-accent-700"}`}>
+              <div className="text-4xl font-mono font-extrabold mt-0.5 tabular-nums text-white">
                 PKR {total.toFixed(0)}
               </div>
             </div>
