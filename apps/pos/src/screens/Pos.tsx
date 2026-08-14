@@ -88,7 +88,7 @@ export function Pos({
   const [calendarTick, setCalendarTick] = useState(0);
   // Edit-mode state — when set, OrderWindow runs in edit mode; pushing to a box
   // calls replace-items (moves the order) rather than creating a new one.
-  const [editTarget, setEditTarget] = useState<{ boxIdx: number; localId: string; serverId: string; orderNo: string | null; customerName: string | null } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ boxIdx: number; localId: string; serverId: string; orderNo: string | null; customerName: string | null; openedAt: string } | null>(null);
   // Merge-mode state — user selects 2+ order rows, then confirms merge.
 
   const [mergeMode, setMergeMode] = useState(false);
@@ -362,7 +362,7 @@ export function Pos({
       ...(li.mixOf && li.mixOf.length >= 2 ? { isMix: true as const, mixOf: li.mixOf } : {}),
     }));
     setState((s) => ({ ...s, draft: { lines: draftLines }, windowOpen: true }));
-    setEditTarget({ boxIdx: selectedRow.boxIdx, localId: selectedRow.localId, serverId: order.serverId, orderNo: order.orderNo, customerName: order.customerName });
+    setEditTarget({ boxIdx: selectedRow.boxIdx, localId: selectedRow.localId, serverId: order.serverId, orderNo: order.orderNo, customerName: order.customerName, openedAt: order.openedAt });
   }, [selectedRow, state.boxes, state.draft.lines.length]);
 
   const cancelEdit = useCallback(() => {
@@ -1228,7 +1228,7 @@ export function Pos({
           onDraftChange={setDraft}
           onClose={editTarget ? cancelEdit : () => setWindowOpen(false)}
           onClear={() => setDraft(clearDraft())}
-          editTarget={editTarget ? { orderNo: editTarget.orderNo, serverId: editTarget.serverId } : null}
+          editTarget={editTarget ? { orderNo: editTarget.orderNo, serverId: editTarget.serverId, openedAt: editTarget.openedAt } : null}
           nextOrderSeq={nextOrderSeq}
         />
       )}

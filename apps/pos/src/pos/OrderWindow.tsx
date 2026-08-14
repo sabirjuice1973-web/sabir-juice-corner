@@ -59,7 +59,10 @@ type Props = {
   onClear: () => void;
   // When set, the window operates in EDIT mode: header shows the order being
   // edited, and the footer's total reads "Updated Total" instead of "Draft Total".
-  editTarget?: { orderNo: string | null; serverId: string } | null;
+  // openedAt is the order's ORIGINAL punch time — set once at creation (push
+  // time, not whenever this window happens to be opened) and never changes,
+  // so it must be shown as-is even when editing an order from days ago.
+  editTarget?: { orderNo: string | null; serverId: string; openedAt: string } | null;
   // The order number the NEXT order pushed (for the current business date)
   // will receive — shown as a live "Next Order #N" badge. null while loading.
   nextOrderSeq?: number | null;
@@ -327,6 +330,16 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
               <div className="text-right leading-tight" title="Order number this business date, for the next order pushed">
                 <div className="text-[9px] uppercase tracking-wide text-slate-400">Next Order</div>
                 <div className="font-mono font-bold text-lg text-accent-700">#{nextOrderSeq}</div>
+              </div>
+            )}
+            {editTarget && (
+              <div className="text-right leading-tight" title="Original punch time — set once when the order was first pushed, and stays the same no matter when you edit it">
+                <div className="text-[9px] uppercase tracking-wide text-accent-500">Punched</div>
+                <div className="font-mono font-bold text-sm text-accent-700">
+                  {new Date(editTarget.openedAt).toLocaleDateString("en-PK", { day: "2-digit", month: "short" })}
+                  {" · "}
+                  {new Date(editTarget.openedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                </div>
               </div>
             )}
             <button onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="text-slate-400 hover:text-slate-700 text-xl leading-none cursor-pointer">×</button>
