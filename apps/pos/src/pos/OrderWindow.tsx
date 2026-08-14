@@ -487,47 +487,55 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
         </div>
 
         {/* Current draft — what will be pushed to the box */}
-        <div className="flex-1 overflow-auto px-5 py-3 min-h-[120px] bg-white">
+        <div className="flex-1 overflow-auto px-5 py-3 min-h-[120px] bg-slate-50">
           {draft.lines.length === 0 ? (
             <div className="text-center text-slate-400 text-sm py-8">No items yet. Punch a code above.</div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Items in this order</span>
-                <span className="text-[10px] text-slate-400">{draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}</span>
+              <div className="flex items-center justify-between mb-2">
+                <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-slate-500">
+                  <span className="w-1 h-3 rounded-full bg-accent-500" />
+                  Items in this order
+                </span>
+                <span className="text-[10px] font-semibold text-slate-400">{draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}</span>
               </div>
-              <ul className="divide-y divide-slate-100">
+              <ul className="space-y-1.5">
                 {draft.lines.map((li) => {
                   const key = draftLineKey(li);
+                  const lineTotal = li.qty * Number(li.unitPrice);
                   return (
-                    <li key={key} className="py-2 px-2 -mx-2 rounded-lg flex items-center gap-2 text-sm hover:bg-slate-50 transition-colors">
+                    <li key={key} className="group flex items-center gap-3 rounded-xl bg-white border border-slate-200 shadow-sm px-3 py-2 text-sm hover:border-slate-300 hover:shadow transition-all">
                       {li.isMix
-                        ? <span className="text-[10px] font-bold uppercase text-sjc-700 bg-sjc-100 rounded px-1.5 py-0.5 w-12 text-center shrink-0">MIX</span>
-                        : <span className="font-mono text-xs text-slate-400 w-12 shrink-0">#{li.itemCode}</span>
+                        ? <span className="text-[10px] font-bold uppercase text-sjc-700 bg-sjc-100 rounded-lg px-2 py-1.5 w-12 text-center shrink-0">MIX</span>
+                        : <span className="font-mono text-xs font-semibold text-slate-500 bg-slate-100 rounded-lg px-2 py-1.5 w-12 text-center shrink-0">#{li.itemCode}</span>
                       }
-                      <span className="flex-1 font-medium truncate">{displayItemName(li.name, li.size)}</span>
-                      {/* +/− qty controls */}
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-800 truncate">{displayItemName(li.name, li.size)}</div>
+                        <div className="font-mono text-[11px] text-slate-400">PKR {Number(li.unitPrice).toFixed(2)} each</div>
+                      </div>
+                      {/* +/− qty stepper — single pill container */}
+                      <div className="flex items-center rounded-full bg-slate-100 shrink-0">
                         <button
                           type="button"
                           onClick={() => onDraftChange(adjustDraftLineQty(draft, key, -1))}
-                          className="w-6 h-6 rounded border border-slate-200 text-slate-400 hover:border-red-400 hover:text-red-600 hover:bg-red-50 text-base font-bold leading-none flex items-center justify-center"
+                          className="w-7 h-7 rounded-full text-slate-500 hover:bg-red-500 hover:text-white text-base font-bold leading-none flex items-center justify-center transition-colors"
                           title="Decrease qty"
                         >−</button>
-                        <span className="font-mono text-slate-700 w-8 text-center">{li.qty}</span>
+                        <span className="font-mono font-semibold text-slate-700 w-8 text-center tabular-nums">{li.qty}</span>
                         <button
                           type="button"
                           onClick={() => onDraftChange(adjustDraftLineQty(draft, key, 1))}
-                          className="w-6 h-6 rounded border border-slate-200 text-slate-400 hover:border-green-500 hover:text-green-700 hover:bg-green-50 text-base font-bold leading-none flex items-center justify-center"
+                          className="w-7 h-7 rounded-full text-slate-500 hover:bg-emerald-500 hover:text-white text-base font-bold leading-none flex items-center justify-center transition-colors"
                           title="Increase qty"
                         >+</button>
                       </div>
-                      <span className="font-mono text-slate-400 text-xs shrink-0">× PKR {Number(li.unitPrice).toFixed(2)}</span>
-                      <span className="font-mono font-bold w-20 text-right shrink-0">PKR {(li.qty * Number(li.unitPrice)).toFixed(0)}</span>
+                      <div className="font-mono font-bold text-accent-700 bg-accent-50 rounded-lg px-2.5 py-1.5 w-24 text-right shrink-0 tabular-nums">
+                        PKR {lineTotal.toFixed(0)}
+                      </div>
                       <button
                         type="button"
                         onClick={() => onDraftChange(removeDraftLine(draft, key))}
-                        className="text-slate-300 hover:text-red-600 text-lg leading-none w-5 shrink-0"
+                        className="w-6 h-6 rounded-full text-slate-300 hover:text-red-600 hover:bg-red-50 text-lg leading-none shrink-0 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
                         title="Remove line"
                       >×</button>
                     </li>
