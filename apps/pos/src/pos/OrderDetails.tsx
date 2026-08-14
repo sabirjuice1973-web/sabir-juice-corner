@@ -7,14 +7,14 @@ import { printReceipt } from "./receipt";
 /**
  * Order Details modal — opens when the cashier double-clicks an order row.
  *
- * Shows the order's items read-only, and offers two optional cash-handling
- * fields (amount received, then a flat PKR discount below it), the computed
- * sub total, and — once an amount received is entered — the cash return owed
- * to the customer. Neither field is required; both only affect the printed
- * receipt when actually used. Three actions on the bottom row mirror the
- * inline icons in the box row:
+ * Shows the order's items read-only, and offers optional cash-handling fields
+ * (amount received, a flat PKR discount, and a flat PKR delivery charge), the
+ * computed sub total, and — once an amount received is entered — the cash
+ * return owed to the customer. None of the fields are required; all three
+ * only affect the printed receipt when actually used. Three actions on the
+ * bottom row mirror the inline icons in the box row:
  *   • Print only         → reprint the bill, no state change
- *   • Save               → apply discount (if any), mark paid as CASH, remove from box
+ *   • Save               → apply discount/delivery charge (if any), mark paid as CASH, remove from box
  *   • Print + Save       → both
  *
  * The amount-received field is autofocused on open, and Enter there submits
@@ -44,6 +44,16 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appliedDiscount, setAppliedDiscount] = useState(0);
+  // Delivery charge — a flat PKR add-on for delivery orders, varies by drop-off
+  // location. Absolute-set (not additive like discount): the input starts
+  // pre-filled with whatever's already on the order so re-opening this modal
+  // shows the existing value instead of a blank field, and re-typing just
+  // replaces it rather than stacking another charge on top.
+  const [deliveryChargeStr, setDeliveryChargeStr] = useState(() => {
+    const existing = Number(order.deliveryCharge ?? 0);
+    return existing > 0 ? String(existing) : "";
+  });
+  const [appliedDeliveryCharge, setAppliedDeliveryCharge] = useState(() => Number(order.deliveryCharge ?? 0));
 
   // ─── Creditor account push ───────────────────────────────────────────────
   const [showCreditor, setShowCreditor] = useState(false);
@@ -111,21 +121,30 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const subtotal = Number(order.total) + appliedDiscount;        // server total already reflects past discounts
+  // Back out past discount AND past delivery charge to recover the pure item
+  // subtotal — server total already reflects both.
+  const subtotal = Number(order.total) + appliedDiscount - appliedDeliveryCharge;
   const discountInput = Math.max(0, parseFloat(discountStr) || 0);
-  const newTotal = Math.max(0, subtotal - appliedDiscount - discountInput);
+  // Delivery charge is absolute-set, not additive — the input already starts
+  // pre-filled with whatever's on the order, so whatever's in the field right
+  // now (typed or untouched) IS the intended charge.
+  const deliveryChargeInput = Math.max(0, parseFloat(deliveryChargeStr) || 0);
+  const newTotal = Math.max(0, subtotal - appliedDiscount - discountInput) + deliveryChargeInput;
   const amountReceived = Math.max(0, parseFloat(amountReceivedStr) || 0);
   const cashReturn = amountReceived - newTotal;
 
-  // Build the BoxOrder with correct discount values for the receipt. Must be
-  // captured BEFORE async operations clear discountStr / update appliedDiscount.
+  // Build the BoxOrder with correct discount/delivery values for the receipt.
+  // Must be captured BEFORE async operations clear discountStr / update the
+  // applied-* state.
   function effectiveOrderForPrint(): BoxOrder {
     const totalDiscount = Number(order.discountAmount) + discountInput;
+    const total = Math.max(0, Number(order.subtotal) - totalDiscount) + deliveryChargeInput;
     return {
       ...order,
       subtotal: order.subtotal,
       discountAmount: totalDiscount.toFixed(2),
-      total: Math.max(0, Number(order.subtotal) - totalDiscount).toFixed(2),
+      deliveryCharge: deliveryChargeInput.toFixed(2),
+      total: total.toFixed(2),
     };
   }
 
@@ -142,6 +161,22 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
       return true;
     } catch (e: any) {
       setError(e.body?.error || e.message || "Could not apply discount");
+      return false;
+    }
+  }
+
+  async function applyDeliveryChargeIfNeeded(): Promise<boolean> {
+    if (deliveryChargeInput === appliedDeliveryCharge) return true; // unchanged — nothing to send
+    if (!order.serverId) {
+      setError("This order isn't synced yet — wait for the green status pill, then try again.");
+      return false;
+    }
+    try {
+      await api.setDeliveryCharge(order.serverId, deliveryChargeInput);
+      setAppliedDeliveryCharge(deliveryChargeInput);
+      return true;
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not set delivery charge");
       return false;
     }
   }
@@ -170,6 +205,7 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
+      if (!(await applyDeliveryChargeIfNeeded())) return;
       if (!(await payAsCash())) return;
       onSaved();
     } finally { setBusy(false); }
@@ -180,6 +216,7 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
+      if (!(await applyDeliveryChargeIfNeeded())) return;
       if (!(await payAsCash())) return;
       printReceipt(toPrint, { branchName, cashier: cashierName }, payment);
       onPrintAndSaved();
@@ -191,6 +228,7 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
     setBusy(true); setError(null);
     try {
       if (!(await applyDiscountIfNeeded())) return;
+      if (!(await applyDeliveryChargeIfNeeded())) return;
       printReceipt(toPrint, { branchName, cashier: cashierName }, payment);
       onPrintOnly();
       onClose();
@@ -242,6 +280,12 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
               <span className="font-mono">− PKR {appliedDiscount.toFixed(2)}</span>
             </div>
           )}
+          {appliedDeliveryCharge > 0 && (
+            <div className="flex items-center justify-between text-sm text-amber-700">
+              <span>Already set delivery charge</span>
+              <span className="font-mono">+ PKR {appliedDeliveryCharge.toFixed(2)}</span>
+            </div>
+          )}
 
           <label className="block text-sm text-slate-600">
             Amount received (PKR)
@@ -269,6 +313,18 @@ export function OrderDetails({ order, branchId, branchName, boxNumber: _boxNumbe
               placeholder="0"
             />
             <div className="text-[11px] text-slate-400 mt-0.5">Any positive amount. Above 10% of subtotal requires manager permission.</div>
+          </label>
+
+          <label className="block text-sm text-slate-600">
+            Delivery charge (PKR)
+            <input
+              className="input w-full mt-1 font-mono text-lg"
+              inputMode="decimal"
+              value={deliveryChargeStr}
+              onChange={(e) => setDeliveryChargeStr(e.target.value.replace(/[^0-9.]/g, ""))}
+              placeholder="0"
+            />
+            <div className="text-[11px] text-slate-400 mt-0.5">Varies by location — added on top, printed on the bill as its own line.</div>
           </label>
 
           <div className="flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2">

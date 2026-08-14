@@ -784,6 +784,11 @@ model Order {
   subtotal        Decimal  @db.Decimal(12, 2) @default(0)
   discountAmount  Decimal  @db.Decimal(12, 2) @default(0)
   taxAmount       Decimal  @db.Decimal(12, 2) @default(0)
+  // Flat PKR amount for delivery orders — varies by drop-off location, set by
+  // the cashier at payment time (mirrors discountAmount but adds to total
+  // instead of subtracting). Counts as revenue: folded into `total` the same
+  // way item subtotal does, so it flows through Total Sale/Cash automatically.
+  deliveryCharge  Decimal  @db.Decimal(12, 2) @default(0)
   total           Decimal  @db.Decimal(12, 2) @default(0)
   cashierId       BigInt
   // Free-text label captured at push-time. Used by the POS for credit / shopkeeper

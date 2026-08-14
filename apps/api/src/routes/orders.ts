@@ -79,6 +79,12 @@ const ApplyDiscountBody = z.object({
   reason: z.string().max(200).optional(),
 });
 
+const DeliveryChargeBody = z.object({
+  // Absolute set, not additive — "the delivery charge for this order is X",
+  // re-typeable if the cashier gets the location/amount wrong the first time.
+  amount: z.coerce.number().min(0).max(100_000),
+});
+
 const PayBody = z.object({
   method: z.enum(["CASH", "CARD", "WALLET", "CREDIT", "BANK_TRANSFER"]),
   amount: z.coerce.number().positive(),
@@ -106,13 +112,17 @@ function ceilToNext10(d: Prisma.Decimal): Prisma.Decimal {
 }
 
 async function recomputeOrderTotal(tx: Prisma.TransactionClient, orderId: bigint) {
-  const [items, discounts] = await Promise.all([
+  const [items, discounts, order] = await Promise.all([
     tx.orderItem.findMany({ where: { orderId }, select: { lineTotal: true } }),
     tx.discountApplied.findMany({ where: { orderId }, select: { amount: true } }),
+    tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { deliveryCharge: true } }),
   ]);
   const subtotal = items.reduce((s, i) => s.plus(i.lineTotal), decimal(0));
   const discount = discounts.reduce((s, d) => s.plus(d.amount), decimal(0));
-  const total = Prisma.Decimal.max(subtotal.minus(discount), decimal(0));
+  // Delivery charge lives directly on the Order row (not a line item or an
+  // applied-discount row), so it isn't touched by the item/discount wipes
+  // that call this function — just re-added on top after the discount floor.
+  const total = Prisma.Decimal.max(subtotal.minus(discount), decimal(0)).plus(order.deliveryCharge);
   return tx.order.update({
     where: { id: orderId },
     data: { subtotal, discountAmount: discount, total },
@@ -767,6 +777,32 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       action: "order.discount",
       entityType: "Order", entityId: order.id,
       after: { type: parsed.data.discountType, value: parsed.data.value, amount: amount.toString() },
+    });
+    return toJson({ order: updated });
+  });
+
+  /** POST /orders/:id/delivery-charge — set (or replace) the delivery charge
+   *  for this order. Counts as revenue — folded straight into `total`
+   *  alongside items/discount, so it flows through Total Sale/Cash and every
+   *  other report that already reads order.total without further changes. */
+  app.post("/:id/delivery-charge", { preHandler: requirePermission("POS_BILL") }, async (req, reply) => {
+    const id = BigInt((req.params as { id: string }).id);
+    const parsed = DeliveryChargeBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid body", details: parsed.error.flatten() });
+
+    const order = await prisma.order.findUnique({ where: { id } });
+    if (!order) return reply.code(404).send({ error: "Order not found" });
+    if (order.status !== "OPEN") return reply.code(409).send({ error: `Order is ${order.status}` });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id }, data: { deliveryCharge: decimal(parsed.data.amount) } });
+      return recomputeOrderTotal(tx, id);
+    });
+    await writeAudit({
+      req, branchId: order.branchId,
+      action: "order.delivery_charge",
+      entityType: "Order", entityId: order.id,
+      after: { amount: parsed.data.amount, total: updated.total.toString() },
     });
     return toJson({ order: updated });
   });

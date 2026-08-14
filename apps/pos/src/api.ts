@@ -246,6 +246,8 @@ export const api = {
     request<{ order: Order }>("DELETE", `/orders/${orderId}/items/${lineId}`),
   applyDiscount: (orderId: string | number, discountType: "PERCENT" | "FLAT", value: number, reason?: string) =>
     request<{ order: Order }>("POST", `/orders/${orderId}/discount`, { discountType, value, reason }),
+  setDeliveryCharge: (orderId: string | number, amount: number) =>
+    request<{ order: Order }>("POST", `/orders/${orderId}/delivery-charge`, { amount }),
   pay: (orderId: string | number, method: "CASH" | "CARD" | "WALLET" | "CREDIT" | "BANK_TRANSFER", amount: number) =>
     request<{ order: Order; change: string }>("POST", `/orders/${orderId}/pay`, { method, amount }),
   voidOrder: (orderId: string | number, reason: string) =>
@@ -490,6 +492,7 @@ export type Order = {
   status: "OPEN" | "PAID" | "CANCELLED" | "VOIDED";
   subtotal: string;
   discountAmount: string;
+  deliveryCharge: string;
   total: string;
   customerName: string | null;
   items: OrderItem[];

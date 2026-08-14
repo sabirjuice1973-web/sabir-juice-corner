@@ -280,7 +280,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     border-top: 2px solid #000;
     border-bottom: 2px solid #000;
   }
-  .totals tr.discount-row td {
+  .totals tr.discount-row td, .totals tr.delivery-row td {
     font-size: 9.5pt;
     font-weight: 700;
     border: none;
@@ -380,14 +380,20 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     </tbody>
   </table>
   <table class="totals">
-    ${Number(order.discountAmount) > 0 ? `
+    ${(Number(order.discountAmount) > 0 || Number(order.deliveryCharge ?? 0) > 0) ? `
     <tr class="subtotal-row">
       <td class="label-cell">Subtotal</td>
       <td class="num">PKR ${formatMoney(Number(order.subtotal))}</td>
-    </tr>
+    </tr>` : ""}
+    ${Number(order.discountAmount) > 0 ? `
     <tr class="discount-row">
       <td class="label-cell">Discount</td>
       <td class="num">- PKR ${formatMoney(Number(order.discountAmount))}</td>
+    </tr>` : ""}
+    ${Number(order.deliveryCharge ?? 0) > 0 ? `
+    <tr class="delivery-row">
+      <td class="label-cell">Delivery Charge</td>
+      <td class="num">+ PKR ${formatMoney(Number(order.deliveryCharge))}</td>
     </tr>` : ""}
     <tr class="total-row">
       <td class="label-cell">TOTAL</td>

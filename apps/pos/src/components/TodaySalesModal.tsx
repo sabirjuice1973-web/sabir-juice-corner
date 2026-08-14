@@ -201,6 +201,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
         orderNo: o.orderNo,
         subtotal: o.subtotal,
         discountAmount: o.discountAmount,
+        deliveryCharge: o.deliveryCharge,
         total: o.total,
         customerName: o.customerName,
         lines,

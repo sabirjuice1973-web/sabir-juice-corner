@@ -46,7 +46,8 @@ export type BoxOrder = {
   orderNo: string | null;       // assigned by the server on commit
   subtotal: string;             // sum of line totals before discount
   discountAmount: string;       // "0" when no discount applied
-  total: string;                // PKR after discount, string for precision
+  deliveryCharge?: string;      // "0"/undefined when not a delivery order — older synced orders won't have this field at all
+  total: string;                // PKR after discount + delivery charge, string for precision
   // Partner / shopkeeper / credit-customer name. Required for box 7 (Market Orders),
   // optional for box 6 (Food Panda) and boxes 1-5. Shown FIRST in the row.
   customerName: string | null;
