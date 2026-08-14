@@ -145,16 +145,31 @@ const orderInclude = {
   waiter: { select: { id: true, fullName: true } },
 };
 
+// Derived from the MAX existing sequence number for the branch/date, not a
+// bare row COUNT — a COUNT-based scheme silently breaks forever the moment
+// any order for that branch/date is deleted (DELETE /orders/:id): the count
+// drops by one while the higher-numbered orders created after the deleted
+// one stay in place, so COUNT+1 permanently collides with an orderNo that
+// already exists, on every single push, since a failed insert never advances
+// the count. MAX+1 is immune to gaps from deletion — it only ever picks a
+// number strictly greater than anything ever assigned for that branch/date.
+async function nextSeqForDate(branchId: bigint, businessDate: Date): Promise<number> {
+  const last = await prisma.order.findFirst({
+    where: { branchId, businessDate },
+    orderBy: { orderNo: "desc" },
+    select: { orderNo: true },
+  });
+  const lastSeq = last ? parseInt(/-(\d+)$/.exec(last.orderNo)?.[1] ?? "0", 10) : 0;
+  return lastSeq + 1;
+}
+
 async function nextOrderNo(branchId: bigint, businessDate: Date): Promise<string> {
   // Format: B{branchId}-YYYYMMDD-NNNN  (per-businessDate per-branch sequence).
   // We count by businessDate (not by openedAt) so two orders 5 minutes apart
   // never get different YYYYMMDD prefixes because real midnight passed mid-shift,
   // and so backdating the business date restarts the counter for that backdate.
   const datePart = yyyymmdd(businessDate);
-  const taken = await prisma.order.count({
-    where: { branchId, businessDate },
-  });
-  const seq = String(taken + 1).padStart(4, "0");
+  const seq = String(await nextSeqForDate(branchId, businessDate)).padStart(4, "0");
   return `B${branchId}-${datePart}-${seq}`;
 }
 
@@ -194,8 +209,8 @@ export async function registerOrderRoutes(app: FastifyInstance) {
   app.get("/next-number", async (req) => {
     const q = z.object({ branchId: z.coerce.bigint() }).parse(req.query);
     const businessDate = await getBranchBusinessDate(q.branchId);
-    const taken = await prisma.order.count({ where: { branchId: q.branchId, businessDate } });
-    return { businessDate: yyyymmdd(businessDate), nextSeq: taken + 1 };
+    const nextSeq = await nextSeqForDate(q.branchId, businessDate);
+    return { businessDate: yyyymmdd(businessDate), nextSeq };
   });
 
   /** GET /orders/:id */
