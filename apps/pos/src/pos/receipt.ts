@@ -931,12 +931,32 @@ export function printPriceSlips(prices: number[]) {
 }
 
 function priceSlipsHtml(prices: number[]): string {
-  const boxes = prices.map((p) => `<div class="box">${formatMoney(p)}</div>`).join("");
+  // Rows of 4, each row split into two pairs with a dashed cut-line between
+  // them — cut the dashed lines first to split the sheet down to pairs/rows,
+  // then trim each box's own solid border for the final piece. Boxes shrink
+  // by a hair to make room for the dashed gaps (the vsep's fixed width eats
+  // into the flexible box width), which is the point — the dashed line only
+  // means something if there's a sliver of blank paper to cut through.
+  const rows: number[][] = [];
+  for (let i = 0; i < prices.length; i += 4) rows.push(prices.slice(i, i + 4));
+
+  function pairHtml(group: number[]): string {
+    return `<div class="pair">${group.map((p) => `<div class="box">${formatMoney(p)}</div>`).join("")}</div>`;
+  }
+  function rowHtml(row: number[]): string {
+    const first = row.slice(0, 2);
+    const rest = row.slice(2);
+    if (rest.length === 0) return `<div class="row">${pairHtml(first)}</div>`;
+    return `<div class="row">${pairHtml(first)}<div class="vsep"><div class="line"></div></div>${pairHtml(rest)}</div>`;
+  }
+
+  const body = rows.map(rowHtml).join(`<div class="hsep"></div>`);
+
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><title>Price Slips</title>
 <style>
   @page { size: 80mm auto; margin: 4mm; }
-  @media screen { .grid { visibility: hidden; } }
+  @media screen { .sheet { visibility: hidden; } }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
@@ -946,24 +966,46 @@ function priceSlipsHtml(prices: number[]): string {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+  .hsep {
+    border-top: 1pt dashed #000;
+    margin: 1.5mm 0;
+  }
+  .row {
+    display: flex;
+    align-items: stretch;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .pair {
+    display: flex;
+    flex: 1;
     gap: 2mm;
   }
+  .vsep {
+    width: 4mm;
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+  }
+  .vsep .line {
+    width: 0;
+    border-left: 1pt dashed #000;
+  }
   .box {
+    flex: 1;
     height: 8mm;
     border: 1pt solid #000;
     display: flex;
     align-items: center;
     justify-content: center;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
   }
 </style>
 </head><body>
-<div class="grid">
-  ${boxes}
+<div class="sheet">
+  <div class="hsep"></div>
+  ${body}
+  <div class="hsep"></div>
 </div>
 <script>
   window.addEventListener('afterprint', function () {
