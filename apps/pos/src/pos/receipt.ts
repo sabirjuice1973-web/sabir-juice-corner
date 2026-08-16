@@ -967,7 +967,7 @@ function priceSlipsHtml(prices: number[]): string {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    font: 900 15pt/1 "Arial Narrow", Arial, sans-serif;
+    font: 900 11pt/1 "Arial Narrow", Arial, sans-serif;
     color: #000;
     font-variant-numeric: tabular-nums;
     -webkit-print-color-adjust: exact;
@@ -975,7 +975,7 @@ function priceSlipsHtml(prices: number[]): string {
   }
   .hsep {
     border-top: 1pt dashed #000;
-    margin: 2mm 0;
+    margin: 1.5mm 0;
   }
   .row {
     display: flex;
@@ -989,7 +989,7 @@ function priceSlipsHtml(prices: number[]): string {
     gap: 2mm;
   }
   .vsep {
-    width: 4mm;
+    width: 3mm;
     flex-shrink: 0;
     display: flex;
     align-items: stretch;
@@ -1001,7 +1001,7 @@ function priceSlipsHtml(prices: number[]): string {
   }
   .box {
     flex: 1;
-    height: 8mm;
+    height: 7mm;
     border: 1pt solid #000;
     display: flex;
     align-items: center;
