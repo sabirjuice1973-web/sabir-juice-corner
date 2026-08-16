@@ -952,7 +952,7 @@ function priceSlipsHtml(prices: number[]): string {
     gap: 2mm;
   }
   .box {
-    height: 10mm;
+    height: 8mm;
     border: 1pt solid #000;
     display: flex;
     align-items: center;
