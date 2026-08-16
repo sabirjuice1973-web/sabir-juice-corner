@@ -282,6 +282,10 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     border-top: 2px solid #000;
     border-bottom: 2px solid #000;
   }
+  .totals tr.total-row .qty-note {
+    font-size: 8pt;
+    font-weight: 600;
+  }
   .totals tr.discount-row td, .totals tr.delivery-row td {
     font-size: 9.5pt;
     font-weight: 700;
@@ -382,10 +386,6 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     </tbody>
   </table>
   <table class="totals">
-    <tr class="subtotal-row">
-      <td class="label-cell">Total Items</td>
-      <td class="num">${totalQtyStr}</td>
-    </tr>
     ${(Number(order.discountAmount) > 0 || Number(order.deliveryCharge ?? 0) > 0) ? `
     <tr class="subtotal-row">
       <td class="label-cell">Subtotal</td>
@@ -402,7 +402,7 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
       <td class="num">+ PKR ${formatMoney(Number(order.deliveryCharge))}</td>
     </tr>` : ""}
     <tr class="total-row">
-      <td class="label-cell">TOTAL</td>
+      <td class="label-cell">TOTAL <span class="qty-note">(${totalQtyStr} item${totalQty === 1 ? "" : "s"})</span></td>
       <td class="num">PKR ${formatMoney(Number(order.total))}</td>
     </tr>
     ${payment ? `
