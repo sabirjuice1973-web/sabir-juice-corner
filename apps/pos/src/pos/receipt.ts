@@ -940,8 +940,15 @@ function priceSlipsHtml(prices: number[]): string {
   const rows: number[][] = [];
   for (let i = 0; i < prices.length; i += 4) rows.push(prices.slice(i, i + 4));
 
+  // Plain digits, no thousands separator — formatMoney's comma grouping
+  // reads as a typo on a price tag ("1,200" vs the "1200" that was typed).
+  function plainPrice(n: number): string {
+    const rounded = Math.round(n * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+  }
+
   function pairHtml(group: number[]): string {
-    return `<div class="pair">${group.map((p) => `<div class="box">${formatMoney(p)}</div>`).join("")}</div>`;
+    return `<div class="pair">${group.map((p) => `<div class="box">${plainPrice(p)}</div>`).join("")}</div>`;
   }
   function rowHtml(row: number[]): string {
     const first = row.slice(0, 2);
