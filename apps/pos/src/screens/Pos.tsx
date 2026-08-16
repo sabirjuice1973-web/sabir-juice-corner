@@ -4,6 +4,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { SyncStatus } from "../components/SyncStatus";
 import { TodaySalesModal } from "../components/TodaySalesModal";
 import { PettyCashModal } from "../components/PettyCashModal";
+import { PriceSlipModal } from "../components/PriceSlipModal";
 import { BusinessDatePill } from "../components/BusinessDatePill";
 import { OrderWindow } from "../pos/OrderWindow";
 import { OrderDetails } from "../pos/OrderDetails";
@@ -75,6 +76,7 @@ export function Pos({
   const [detailsTarget, setDetailsTarget] = useState<{ boxIdx: number; localId: string } | null>(null);
   const [salesOpen, setSalesOpen] = useState(false);
   const [pettyCashOpen, setPettyCashOpen] = useState(false);
+  const [priceSlipOpen, setPriceSlipOpen] = useState(false);
   const [creditorOpen, setCreditorOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1001,6 +1003,9 @@ export function Pos({
                 <MenuDropItem label="Petty Cash" color="#94a3b8"
                   icon={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></>}
                   onClick={() => { setPettyCashOpen(true); setMenuOpen(false); }} />
+                <MenuDropItem label="Price Slip" color="#94a3b8"
+                  icon={<><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.83Z" /><circle cx="7.5" cy="7.5" r="1.5" /></>}
+                  onClick={() => { setPriceSlipOpen(true); setMenuOpen(false); }} />
                 <div className="pb-1.5">
                   <button
                     onClick={() => { setClosingShift(true); setMenuOpen(false); }}
@@ -1193,6 +1198,7 @@ export function Pos({
       {/* Today's Sales panel */}
       {salesOpen && <TodaySalesModal shiftId={shiftId} branchId={branchId} onClose={() => setSalesOpen(false)} />}
       {pettyCashOpen && <PettyCashModal branchId={branchId} onClose={() => setPettyCashOpen(false)} />}
+      {priceSlipOpen && <PriceSlipModal onClose={() => setPriceSlipOpen(false)} />}
 
       {/* Statistics & Insights and Hisaab Kitaab now open in their own popup
           window (openStatsWindow / openLedgerWindow above) instead of as

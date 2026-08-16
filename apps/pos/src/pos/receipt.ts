@@ -908,6 +908,72 @@ function pettyCashSlipHtml(data: { forDate: string; amount: number }): string {
 </body></html>`;
 }
 
+// ─── Price Slips — bordered cut-out boxes for the menu card ────────────────
+//
+// Replaces the old hand-cut-paper-and-tape method for updating a printed
+// menu card's price fields: type the new rate(s), print, scissor along each
+// box's border, paste over the old price. Nothing on the page except the
+// boxes themselves — no header, no date, no branch name — since the slip's
+// only job is to be cut out. 4 per row because that's what fits across an
+// 80mm thermal roll at roughly the size of a menu card's price field; more
+// than 4 prices just wraps to additional rows.
+
+export function printPriceSlips(prices: number[]) {
+  const html = priceSlipsHtml(prices);
+  const win = getPrintWindow();
+  if (!win) return;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+  lastPrintAt = Date.now();
+}
+
+function priceSlipsHtml(prices: number[]): string {
+  const boxes = prices.map((p) => `<div class="box">${formatMoney(p)}</div>`).join("");
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Price Slips</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  @media screen { .grid { visibility: hidden; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 900 15pt/1 "Arial Narrow", Arial, sans-serif;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2mm;
+  }
+  .box {
+    height: 10mm;
+    border: 1pt solid #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+</style>
+</head><body>
+<div class="grid">
+  ${boxes}
+</div>
+<script>
+  window.addEventListener('afterprint', function () {
+    if (window.opener) { try { window.opener.focus(); } catch (e) {} }
+    window.blur();
+  }, { once: true });
+</script>
+</body></html>`;
+}
+
 // ─── Statistics Summary — thermal (80mm) print ──────────────────────────────
 
 /**
