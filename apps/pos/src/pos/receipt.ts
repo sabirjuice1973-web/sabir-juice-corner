@@ -968,7 +968,7 @@ function priceSlipsHtml(prices: number[]): string {
   }
   .hsep {
     border-top: 1pt dashed #000;
-    margin: 1.5mm 0;
+    margin: 2mm 0;
   }
   .row {
     display: flex;
