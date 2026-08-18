@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { tokenStore } from "../api";
+import { tokenStore, tryRefresh } from "../api";
 
 export function Backup() {
   const [dlBusy, setDlBusy] = useState(false);
@@ -15,10 +15,18 @@ export function Backup() {
     setDlBusy(true);
     setDlError(null);
     try {
-      const token = tokenStore.get();
-      const res = await fetch("/api/v1/backup/export", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const fire = (token: string | null) =>
+        fetch("/api/v1/backup/export", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      let res = await fire(tokenStore.get());
+      // Same silent-refresh-and-retry every other request in this app gets via
+      // api() — this screen uses a raw fetch (for the file blob/download-name
+      // handling below) so it has to do the 401 retry itself, or an access
+      // token that's simply expired (they last ~1hr) surfaces as a dead-end
+      // "Invalid or expired token" instead of quietly refreshing like normal.
+      if (res.status === 401 && tokenStore.getRefresh()) {
+        const fresh = await tryRefresh();
+        if (fresh) res = await fire(fresh);
+      }
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j?.error ?? `HTTP ${res.status}`);
@@ -48,15 +56,21 @@ export function Backup() {
     try {
       const text = await restoreFile.text();
       const json = JSON.parse(text);
-      const token = tokenStore.get();
-      const res = await fetch("/api/v1/backup/restore", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(json),
-      });
+      const fire = (token: string | null) =>
+        fetch("/api/v1/backup/restore", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(json),
+        });
+      let res = await fire(tokenStore.get());
+      // Same silent-refresh-and-retry as downloadBackup() above.
+      if (res.status === 401 && tokenStore.getRefresh()) {
+        const fresh = await tryRefresh();
+        if (fresh) res = await fire(fresh);
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
       setRestoreMsg({ ok: true, text: "Database restored successfully. Please refresh all open tabs." });
