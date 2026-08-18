@@ -170,7 +170,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         for (const r of (t.itemPrices ?? [])) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "ItemPrice"(id,"itemId","branchId",price,"effectiveFrom","effectiveTo","createdAt")
-             VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+             VALUES($1,$2,$3,$4::numeric,$5,$6,$7) ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.itemId), b(r.branchId), r.price,
             dd(r.effectiveFrom), d(r.effectiveTo), dd(r.createdAt)
           );
@@ -216,7 +216,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "Shift"(id,"branchId","openedById","openedAt","businessDate","openingCash",
              "closedById","closedAt","closingCash","expectedCash","varianceCash",status,notes)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::"ShiftStatus",$13)
+             VALUES($1,$2,$3,$4,$5,$6::numeric,$7,$8,$9::numeric,$10::numeric,$11::numeric,$12::"ShiftStatus",$13)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.branchId), bd(r.openedById),
             dd(r.openedAt), dd(r.businessDate), r.openingCash,
@@ -230,16 +230,16 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         for (const r of (t.orders ?? [])) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "Order"(id,"orderNo","branchId","shiftId","waiterBox","waiterId",
-             "orderType",status,subtotal,"discountAmount","taxAmount",total,"cashierId",
+             "orderType",status,subtotal,"discountAmount","taxAmount","deliveryCharge",total,"cashierId",
              "customerName","accountId","openedAt","closedAt","businessDate",
              "cancelReason","cancelledById","cancelledAt","createdAt","updatedAt")
              VALUES($1,$2,$3,$4,$5,$6,$7::"OrderType",$8::"OrderStatus",
-             $9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+             $9::numeric,$10::numeric,$11::numeric,$12::numeric,$13::numeric,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
              ON CONFLICT DO NOTHING`,
             bd(r.id), r.orderNo, bd(r.branchId), bd(r.shiftId),
             r.waiterBox ?? null, b(r.waiterId),
             r.orderType ?? "DINE_IN", r.status ?? "PAID",
-            r.subtotal, r.discountAmount, r.taxAmount, r.total,
+            r.subtotal, r.discountAmount, r.taxAmount, r.deliveryCharge ?? 0, r.total,
             bd(r.cashierId), r.customerName ?? null, b(r.accountId),
             dd(r.openedAt), d(r.closedAt), dd(r.businessDate),
             r.cancelReason ?? null, b(r.cancelledById), d(r.cancelledAt),
@@ -252,7 +252,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "OrderItem"(id,"orderId","itemId",qty,"unitPrice","lineTotal",
              "isCustomMix","customMixComponents",notes,"createdAt")
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
+             VALUES($1,$2,$3,$4::numeric,$5::numeric,$6::numeric,$7,$8::jsonb,$9,$10)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.orderId), bd(r.itemId),
             r.qty, r.unitPrice, r.lineTotal, r.isCustomMix ?? false,
@@ -265,7 +265,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         for (const r of (t.payments ?? [])) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "Payment"(id,"orderId",method,amount,reference,"paidAt")
-             VALUES($1,$2,$3::"PaymentMethod",$4,$5,$6)
+             VALUES($1,$2,$3::"PaymentMethod",$4::numeric,$5,$6)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.orderId), r.method,
             r.amount, r.reference ?? null, dd(r.paidAt)
@@ -276,7 +276,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         for (const r of (t.discountApplied ?? [])) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "DiscountApplied"(id,"orderId","discountType",amount,reason,"approvedById","appliedAt")
-             VALUES($1,$2,$3,$4,$5,$6,$7)
+             VALUES($1,$2,$3,$4::numeric,$5,$6,$7)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.orderId), r.discountType,
             r.amount, r.reason ?? null, b(r.approvedById), dd(r.appliedAt)
@@ -288,7 +288,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "AccountPayment"(id,"accountId",amount,discount,method,reference,
              "paidAt","businessDate",notes,"recordedById","createdAt")
-             VALUES($1,$2,$3,$4,$5::"PaymentMethod",$6,$7,$8,$9,$10,$11)
+             VALUES($1,$2,$3::numeric,$4::numeric,$5::"PaymentMethod",$6,$7,$8,$9,$10,$11)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.accountId), r.amount, r.discount ?? 0, r.method,
             r.reference ?? null, dd(r.paidAt), dd(r.businessDate),
@@ -300,7 +300,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         for (const r of (t.accountPaymentLinks ?? [])) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "AccountPaymentOrderLink"(id,"paymentId","orderId","appliedAmount")
-             VALUES($1,$2,$3,$4)
+             VALUES($1,$2,$3,$4::numeric)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.paymentId), bd(r.orderId), r.appliedAmount
           );
@@ -321,7 +321,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "LedgerEntry"(id,"branchId","ledgerAccountId","entryDate","productName",
              quantity,rate,total,"headName","supplierName","cashPaid",description,"attachmentUrl","createdAt","updatedAt")
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8::numeric,$9,$10,$11::numeric,$12,$13,$14,$15)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.branchId), bd(r.ledgerAccountId),
             dd(r.entryDate), r.productName,
@@ -337,7 +337,7 @@ export async function registerBackupRoutes(app: FastifyInstance) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "Expense"(id,"branchId","categoryId",amount,"paidAt","businessDate",
              "paidById",vendor,notes,"attachmentUrl","productName",quantity,rate,total,"createdAt")
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             VALUES($1,$2,$3,$4::numeric,$5,$6,$7,$8,$9,$10,$11,$12::numeric,$13::numeric,$14::numeric,$15)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.branchId), bd(r.categoryId), r.amount,
             dd(r.paidAt), dd(r.businessDate), b(r.paidById),
