@@ -15,10 +15,11 @@ type DebtGroup = { account: { id: string; position: number; name: string }; tota
 // Glass-equivalent weights: MEDIUM = 1, JUMBO = 1.5
 const GLASS_WT: Record<string, number> = { MEDIUM: 1, JUMBO: 1.5 };
 
-// Full 24-hour day starting at 6am and wrapping past midnight (6,7,…,23,0,…,5)
-// instead of stopping at 11pm — the shop trades until ~3am, so a range that
-// dropped hours 0-5 was silently cutting off real late-night sales data.
-const HOUR_SEQUENCE = Array.from({ length: 24 }, (_, i) => (i + 6) % 24);
+// Trading window only — 11am through 4am, wrapping past midnight
+// (11,12,…,23,0,…,4). The shop is never open 5am-10am, so those hours are
+// always-zero dead space on both charts; trimming the range to the actual
+// hours in use removes that empty margin on both ends.
+const HOUR_SEQUENCE = Array.from({ length: 18 }, (_, i) => (i + 11) % 24);
 
 function pkr(n: number) {
   return `PKR ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
