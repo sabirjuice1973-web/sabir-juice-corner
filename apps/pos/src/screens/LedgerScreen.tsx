@@ -607,7 +607,27 @@ function InlineEntryForm({
       } catch {}
     }, 180);
   }
-  function openSugg(field: SuggField, q: string) { setActiveSugg(field); fetchSugg(field, q); }
+  // Daily Hisaab's Head Account has exactly two valid values — no point
+  // running a backend text search for that. `ignoreQuery` (used on focus) shows
+  // both regardless of the pre-filled text already sitting in the field, so
+  // tabbing/entering into it with "Shop Expense" already filled still offers
+  // "Home Expense" as a one-key (Down, Enter) alternative instead of forcing
+  // it to be typed out; plain typing (onChange, ignoreQuery=false) narrows
+  // the two down as usual.
+  const DAILY_HISAAB_HEADS = ["Shop Expense", "Home Expense"];
+  function openSugg(field: SuggField, q: string, ignoreQuery = false) {
+    setActiveSugg(field);
+    if (field === "headName" && defaultHeadName) {
+      const query = ignoreQuery ? "" : q.trim();
+      const filtered = query
+        ? DAILY_HISAAB_HEADS.filter((o) => o.toLowerCase().includes(query.toLowerCase()))
+        : DAILY_HISAAB_HEADS;
+      setSugg((p) => ({ ...p, headName: filtered.length ? filtered : DAILY_HISAAB_HEADS }));
+      setSuggIdx(-1);
+      return;
+    }
+    fetchSugg(field, q);
+  }
   function pickSugg(field: SuggField, value: string) {
     setForm((p) => ({ ...p, [field]: value }));
     setSugg((p) => ({ ...p, [field]: [] }));
@@ -710,7 +730,7 @@ function InlineEntryForm({
             ref={(el) => { inputRefs.current[field] = el; }}
             type="text" value={form[field]} placeholder={placeholder}
             onChange={(e) => { setForm((p) => ({ ...p, [field]: e.target.value })); openSugg(field, e.target.value); }}
-            onFocus={() => openSugg(field, form[field])}
+            onFocus={() => openSugg(field, form[field], true)}
             onBlur={() => setTimeout(() => { setActiveSugg(null); setSuggIdx(-1); }, 160)}
             onKeyDown={(e) => { handleSuggKeyDown(e, field); if (e.key === "Enter" && suggIdx < 0) onFieldEnter(e, field); }}
             className={iCls + " pl-6"} autoComplete="off"
