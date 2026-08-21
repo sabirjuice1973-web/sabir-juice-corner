@@ -628,8 +628,11 @@ function InlineEntryForm({
       // always freshly formatted here via toFixed(2) ("15000.00"). Those are
       // the same amount but different strings, so a strict string compare
       // treated an untouched Cash Paid as "already overridden" and stopped
-      // mirroring it, even though the cashier never changed it.
-      const cashWasMirror = parseFloat(form.cashPaid) === parseFloat(form.total) || parseFloat(form.cashPaid) === parseFloat(prevTotal.current);
+      // mirroring it, even though the cashier never changed it. "" is its
+      // own case (brand-new entry, nothing typed yet) — parseFloat("") is
+      // NaN, and NaN never equals NaN, so without this the numeric compare
+      // broke the everyday new-entry case instead of just the edit case.
+      const cashWasMirror = form.cashPaid === "" || parseFloat(form.cashPaid) === parseFloat(form.total) || parseFloat(form.cashPaid) === parseFloat(prevTotal.current);
       next.total = computed;
       if (cashWasMirror) next.cashPaid = computed;
     }
@@ -1058,8 +1061,11 @@ function EntryFormModal({
       // always freshly formatted here via toFixed(2) ("15000.00"). Those are
       // the same amount but different strings, so a strict string compare
       // treated an untouched Cash Paid as "already overridden" and stopped
-      // mirroring it, even though the cashier never changed it.
-      const cashWasMirror = parseFloat(form.cashPaid) === parseFloat(form.total) || parseFloat(form.cashPaid) === parseFloat(prevTotal.current);
+      // mirroring it, even though the cashier never changed it. "" is its
+      // own case (brand-new entry, nothing typed yet) — parseFloat("") is
+      // NaN, and NaN never equals NaN, so without this the numeric compare
+      // broke the everyday new-entry case instead of just the edit case.
+      const cashWasMirror = form.cashPaid === "" || parseFloat(form.cashPaid) === parseFloat(form.total) || parseFloat(form.cashPaid) === parseFloat(prevTotal.current);
       next.total = computed;
       if (cashWasMirror) next.cashPaid = computed;
     }
