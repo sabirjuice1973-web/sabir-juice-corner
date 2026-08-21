@@ -389,6 +389,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   defaultDate={viewDate}
                   isOwner={canViewReports}
                   fixedHeadName={fixedHeadName}
+                  defaultHeadName={selectedAccount?.position === 1 ? "Shop Expense" : null}
                   onSave={() => { resetForm(); void loadEntries(selectedId); }}
                   onCancel={resetForm}
                 />
@@ -538,7 +539,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 }
 
 function InlineEntryForm({
-  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner, fixedHeadName,
+  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner, fixedHeadName, defaultHeadName,
 }: {
   branchId: string; ledgerAccountId: string;
   editing: LedgerEntry | null;
@@ -550,10 +551,15 @@ function InlineEntryForm({
    * Shop Expense) instead of the free-text suggestion field — it never varies
    * for this account, so every entry uses exactly this value, no exceptions. */
   fixedHeadName?: string | null;
+  /** When set (Daily Hisaab), pre-fills a NEW entry's Head Account with this
+   * value but leaves the field editable — unlike fixedHeadName, the cashier
+   * can freely overwrite it (e.g. to "Home Expense"). Head Account is still
+   * required either way; see the empty-check in handleSubmit. */
+  defaultHeadName?: string | null;
 }) {
   const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
   const [form, setForm] = useState<EntryFormData>(() => {
-    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate, headName: fixedHeadName ?? "" };
+    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate, headName: fixedHeadName ?? defaultHeadName ?? "" };
     // Total is always Qty × Rate, never a stored value on its own — recompute
     // on load too, so a legacy entry saved before that rule existed (or a
     // cash-only entry with no qty/rate) displays the correct 0 instead of
@@ -643,6 +649,7 @@ function InlineEntryForm({
   async function handleSubmit() {
     setError("");
     if (!form.productName.trim()) { setError("Product name is required"); return; }
+    if (!form.headName.trim()) { setError("Head Account is required"); return; }
     const totalVal = parseFloat(form.total) || 0;
     const cashVal = parseFloat(form.cashPaid) || 0;
     setBusy(true);
@@ -1083,6 +1090,7 @@ function EntryFormModal({
   async function handleSubmit() {
     setError("");
     if (!form.productName.trim()) { setError("Product name is required"); return; }
+    if (!form.headName.trim()) { setError("Head Account is required"); return; }
     const totalVal = parseFloat(form.total) || 0;
     const cashVal = parseFloat(form.cashPaid) || 0;
     setBusy(true);
