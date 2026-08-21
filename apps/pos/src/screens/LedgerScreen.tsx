@@ -623,7 +623,13 @@ function InlineEntryForm({
     const qty = parseFloat(next.quantity), rate = parseFloat(next.rate);
     if (!isNaN(qty) && !isNaN(rate)) {
       const computed = (qty * rate).toFixed(2);
-      const cashWasMirror = form.cashPaid === form.total || form.cashPaid === prevTotal.current;
+      // Numeric comparison, not string — when editing a saved entry,
+      // cashPaid comes straight from the server ("15000") while total is
+      // always freshly formatted here via toFixed(2) ("15000.00"). Those are
+      // the same amount but different strings, so a strict string compare
+      // treated an untouched Cash Paid as "already overridden" and stopped
+      // mirroring it, even though the cashier never changed it.
+      const cashWasMirror = parseFloat(form.cashPaid) === parseFloat(form.total) || parseFloat(form.cashPaid) === parseFloat(prevTotal.current);
       next.total = computed;
       if (cashWasMirror) next.cashPaid = computed;
     }
@@ -810,6 +816,7 @@ function InlineEntryForm({
             <input ref={(el) => { inputRefs.current.cashPaid = el; }} type="number" value={form.cashPaid}
               onChange={(e) => setForm((p) => ({ ...p, cashPaid: e.target.value }))}
               onKeyDown={(e) => onFieldEnter(e, "cashPaid")}
+              onFocus={(e) => e.target.select()}
               placeholder="0" min="0" step="any" className={iCls + " w-24 text-right font-semibold text-red-700"} />
           </div>
           <div className="flex-1 min-w-[80px]">
@@ -1046,7 +1053,13 @@ function EntryFormModal({
     const qty = parseFloat(next.quantity), rate = parseFloat(next.rate);
     if (!isNaN(qty) && !isNaN(rate)) {
       const computed = (qty * rate).toFixed(2);
-      const cashWasMirror = form.cashPaid === form.total || form.cashPaid === prevTotal.current;
+      // Numeric comparison, not string — when editing a saved entry,
+      // cashPaid comes straight from the server ("15000") while total is
+      // always freshly formatted here via toFixed(2) ("15000.00"). Those are
+      // the same amount but different strings, so a strict string compare
+      // treated an untouched Cash Paid as "already overridden" and stopped
+      // mirroring it, even though the cashier never changed it.
+      const cashWasMirror = parseFloat(form.cashPaid) === parseFloat(form.total) || parseFloat(form.cashPaid) === parseFloat(prevTotal.current);
       next.total = computed;
       if (cashWasMirror) next.cashPaid = computed;
     }
