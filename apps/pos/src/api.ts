@@ -406,6 +406,8 @@ export const api = {
     request<{ account: PartnerAccount }>("POST", `/partner-accounts`, { branchId, name }),
   renamePartnerAccount: (id: string | number, name: string) =>
     request<{ account: { id: string; position: number; name: string } }>("PATCH", `/partner-accounts/${id}`, { name }),
+  deletePartnerAccount: (id: string | number) =>
+    request<{ ok: true }>("DELETE", `/partner-accounts/${id}`),
   partnerAccountsSummary: (branchId: string | number, range?: { from: string; to: string }) =>
     request<{
       partners: PartnerAccount[]; totalOwedToPartners: number; totalOwedByPartners: number;

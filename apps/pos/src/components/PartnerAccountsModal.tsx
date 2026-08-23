@@ -133,6 +133,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   const [addingPartner, setAddingPartner] = useState(false);
   const [newPartnerName, setNewPartnerName] = useState("");
   const [addPartnerBusy, setAddPartnerBusy] = useState(false);
+  const [deletePartnerBusy, setDeletePartnerBusy] = useState(false);
 
   const loadAccounts = async () => {
     try {
@@ -330,7 +331,27 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
     }
   }
 
+  async function submitDeletePartner() {
+    if (!selectedAccount) return;
+    if (!window.confirm(`Delete "${selectedAccount.name}"? This removes their whole history.`)) return;
+    setDeletePartnerBusy(true); setError(null);
+    try {
+      await api.deletePartnerAccount(selectedAccount.id);
+      const remaining = (accounts ?? []).filter((a) => a.id !== selectedAccount.id);
+      setAccounts(remaining);
+      setSelectedId(remaining[0]?.id ?? null);
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not delete account");
+    } finally {
+      setDeletePartnerBusy(false);
+    }
+  }
+
   const balance = selectedAccount ? Number(selectedAccount.balance) : 0;
+  // Only accounts added via "+" (position beyond the two default owner
+  // slots) can be deleted, and only once fully settled — same rule the
+  // server enforces, checked here too just to hide the button when it'd 400.
+  const canDeleteSelected = !!selectedAccount && selectedAccount.position > 2 && balance === 0;
 
   return (
     <div className={`fixed inset-0 flex items-center justify-center z-50 ${standalone ? "bg-white p-0" : "bg-black/40 p-4"}`}>
@@ -412,8 +433,20 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                     {balance > 0 ? "Shop owes this partner" : balance < 0 ? "This partner owes the shop" : "Fully settled"}
                   </div>
                 </div>
-                <div className={`text-2xl font-bold font-mono ${balance > 0 ? "text-emerald-700" : balance < 0 ? "text-red-700" : "text-slate-500"}`}>
-                  {pkr(Math.abs(balance))}
+                <div className="flex items-center gap-3">
+                  <div className={`text-2xl font-bold font-mono ${balance > 0 ? "text-emerald-700" : balance < 0 ? "text-red-700" : "text-slate-500"}`}>
+                    {pkr(Math.abs(balance))}
+                  </div>
+                  {canDeleteSelected && (
+                    <button
+                      onClick={() => void submitDeletePartner()}
+                      disabled={deletePartnerBusy}
+                      title="Delete this account"
+                      className="text-xs px-2 py-1 rounded bg-white border border-red-200 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {deletePartnerBusy ? "…" : "Delete"}
+                    </button>
+                  )}
                 </div>
               </div>
 

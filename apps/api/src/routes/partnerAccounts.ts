@@ -121,6 +121,29 @@ export async function registerPartnerAccountRoutes(app: FastifyInstance) {
     return toJson({ account: { ...serializeAccount(created), balance: "0" } });
   });
 
+  /** DELETE /partner-accounts/:id — remove an added-on partner (never the
+   *  two default slots) once fully settled, i.e. balance is exactly 0. */
+  app.delete("/:id", async (req, reply) => {
+    if (ownerOnly(req, reply)) return;
+    const id = BigInt((req.params as { id: string }).id);
+
+    const account = await prisma.partnerAccount.findUnique({ where: { id }, include: { entries: true } });
+    if (!account) return reply.code(404).send({ error: "Partner account not found" });
+    if (account.position <= PARTNER_SLOT_COUNT) {
+      return reply.code(400).send({ error: "Usman and Naveed can't be deleted" });
+    }
+    if (!computeBalance(account.entries).isZero()) {
+      return reply.code(400).send({ error: "Account must be fully settled (balance 0) before it can be deleted" });
+    }
+
+    await prisma.partnerAccount.delete({ where: { id } });
+    await writeAudit({
+      req, branchId: account.branchId, action: "partner_account.delete",
+      entityType: "PartnerAccount", entityId: id, before: { name: account.name },
+    });
+    return toJson({ ok: true });
+  });
+
   /** PATCH /partner-accounts/:id — rename a partner slot */
   app.patch("/:id", async (req, reply) => {
     if (ownerOnly(req, reply)) return;
