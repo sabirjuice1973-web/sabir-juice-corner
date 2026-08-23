@@ -222,6 +222,32 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
 
   const selectedAccount = accounts.find((a) => a.id === selectedId) ?? null;
 
+  // Daily Hisaab's "Quick pick" product-name chips — a handful of names
+  // typed several times a day (e.g. "CASH", recurring bills), one click to
+  // fill Product Name instead of retyping. Kept in this PC's localStorage
+  // only (not synced to other machines/backups), keyed by the Daily Hisaab
+  // account's own id so it's stable regardless of which branch it belongs to.
+  const [quickProducts, setQuickProducts] = useState<string[]>([]);
+  useEffect(() => {
+    if (selectedAccount?.position !== 1 || !selectedId) { setQuickProducts([]); return; }
+    try {
+      const raw = localStorage.getItem(`sjc:quickProducts:${selectedId}`);
+      setQuickProducts(raw ? JSON.parse(raw) : []);
+    } catch { setQuickProducts([]); }
+  }, [selectedId, selectedAccount?.position]);
+  function persistQuickProducts(next: string[]) {
+    setQuickProducts(next);
+    if (selectedId) { try { localStorage.setItem(`sjc:quickProducts:${selectedId}`, JSON.stringify(next)); } catch {} }
+  }
+  function addQuickProduct(raw: string) {
+    const name = raw.trim();
+    if (!name || quickProducts.includes(name)) return;
+    persistQuickProducts([...quickProducts, name]);
+  }
+  function removeQuickProduct(name: string) {
+    persistQuickProducts(quickProducts.filter((p) => p !== name));
+  }
+
   // Head Account is fixed (never freely typed) for these three accounts —
   // Salary is always "Salary"; Ghalla Mandi+Disposable and Sabzi Mandi are
   // always "Shop Expense". Every other account keeps the free-text/suggestion
@@ -391,6 +417,9 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   fixedHeadName={fixedHeadName}
                   defaultHeadName={selectedAccount?.position === 1 ? "Shop Expense" : null}
                   defaultSupplierName={selectedAccount?.position === 1 ? "CASH" : selectedAccount?.position === 2 ? "Dehari" : null}
+                  quickProducts={selectedAccount?.position === 1 ? quickProducts : null}
+                  onAddQuickProduct={addQuickProduct}
+                  onRemoveQuickProduct={removeQuickProduct}
                   onSave={() => { resetForm(); void loadEntries(selectedId); }}
                   onCancel={resetForm}
                 />
@@ -541,6 +570,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 
 function InlineEntryForm({
   branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner, fixedHeadName, defaultHeadName, defaultSupplierName,
+  quickProducts, onAddQuickProduct, onRemoveQuickProduct,
 }: {
   branchId: string; ledgerAccountId: string;
   editing: LedgerEntry | null;
@@ -561,6 +591,11 @@ function InlineEntryForm({
    * entry's Supplier with this value — plain default, freely overwritable,
    * not required. */
   defaultSupplierName?: string | null;
+  /** Daily Hisaab only — the one-click Product Name shortcuts shown below the
+   * Product Name field. Null/undefined hides the whole strip for other accounts. */
+  quickProducts?: string[] | null;
+  onAddQuickProduct?: (name: string) => void;
+  onRemoveQuickProduct?: (name: string) => void;
 }) {
   const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
   const [form, setForm] = useState<EntryFormData>(() => {
@@ -638,6 +673,10 @@ function InlineEntryForm({
     setSugg((p) => ({ ...p, [field]: [] }));
     setActiveSugg(null); setSuggIdx(-1);
     focusNext(field);
+  }
+  function pickQuickProduct(name: string) {
+    setForm((p) => ({ ...p, productName: name }));
+    focusNext("productName");
   }
   function handleSuggKeyDown(e: React.KeyboardEvent, field: SuggField) {
     const list = sugg[field];
@@ -832,6 +871,30 @@ function InlineEntryForm({
             ) : suggBox("headName", "Shop Expense…", "w-full")}
           </div>
         </div>
+        {/* Quick pick — Daily Hisaab only: one click fills Product Name with a
+            name typed several times a day instead of retyping it. */}
+        {quickProducts !== null && quickProducts !== undefined && (
+          <div className="flex items-center flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-100">
+            <span className="text-[10px] font-medium text-slate-400">Quick pick:</span>
+            {quickProducts.map((p) => (
+              <span key={p} className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] overflow-hidden">
+                <button type="button" onClick={() => pickQuickProduct(p)} className="px-2 py-0.5 text-slate-700">
+                  {p}
+                </button>
+                <button type="button" onClick={() => onRemoveQuickProduct?.(p)} title="Remove from quick picks"
+                  className="px-1.5 py-0.5 text-slate-400 hover:text-red-600 hover:bg-red-50 border-l border-slate-200 leading-none">
+                  ×
+                </button>
+              </span>
+            ))}
+            <button type="button" onClick={() => onAddQuickProduct?.(form.productName)}
+              disabled={!form.productName.trim() || quickProducts.includes(form.productName.trim())}
+              title='Add the current Product Name as a quick pick'
+              className="text-[11px] font-medium text-blue-600 hover:text-blue-800 disabled:opacity-40 disabled:cursor-not-allowed">
+              + Add current
+            </button>
+          </div>
+        )}
         {/* Row 2: Supplier · Cash Paid · Description · Attachment · Buttons */}
         <div className="flex gap-2 items-end mt-2 flex-wrap">
           <div className="flex-1 min-w-[110px]">
