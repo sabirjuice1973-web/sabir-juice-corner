@@ -218,54 +218,61 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
     dailyRevMap.set(day, (dailyRevMap.get(day) ?? 0) + Number(o.total));
   }
   const bestDay = [...dailyRevMap.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
-  const isMultiDay = fromDate !== null && fromDate !== (toDate ?? fromDate);
+  // A null toDate means "today" everywhere else in this screen (the date
+  // fetch effects below fall back to `toDate ?? todayStr`) — falling back to
+  // fromDate here instead meant picking a "From" date and leaving "To" alone
+  // (which still visibly shows today's date via its own input fallback) was
+  // silently read as a same-day selection, so a real multi-day range quietly
+  // ran the single-day branch.
+  const isMultiDay = fromDate !== null && fromDate !== (toDate ?? todayStr);
+  const rangeDayCount = isMultiDay
+    ? Math.round((new Date(`${toDate ?? todayStr}T00:00:00Z`).getTime() - new Date(`${fromDate}T00:00:00Z`).getTime()) / 86_400_000) + 1
+    : 1;
   // Order count per hour — feeds the order-count chart below and the "no
   // orders in the last 2 hours" alert further down.
   const hourCnt = new Array(24).fill(0);
   for (const o of paid) hourCnt[new Date(o.openedAt).getHours()]++;
 
+  // Both charts are always hour-of-day buckets (12pm-3am), never calendar
+  // dates — a "which day was busiest" view already exists (Best Day below);
+  // what these answer is "what does a typical hour look like." For a single
+  // day that's just that hour's raw total. For a range, each bar is the
+  // AVERAGE for that hour across every day in the range (sum ÷ day count),
+  // not the sum — a summed total across 23 days at 12pm was never a useful
+  // number, "what do we typically do at 12pm" is.
+  const hourlyRevSum = new Array(24).fill(0);
+  for (const o of paid) hourlyRevSum[new Date(o.openedAt).getHours()] += Number(o.total);
+
   const chartData: { label: string; value: number; tooltipLabel?: string }[] = [];
-  if (isMultiDay) {
-    for (const [day, rev] of [...dailyRevMap.entries()].sort()) {
-      chartData.push({ label: day.slice(5).replace("-", "/"), value: rev });
-    }
-  } else {
-    const hourly = new Array(24).fill(0);
-    for (const o of paid) hourly[new Date(o.openedAt).getHours()] += Number(o.total);
+  for (const h of HOUR_SEQUENCE) {
+    const value = isMultiDay ? hourlyRevSum[h] / rangeDayCount : hourlyRevSum[h];
     // The bucket labeled "10pm" holds sales from 10pm up to (not including)
     // 11pm — spell that out in the tooltip so it isn't read as a single instant.
-    for (const h of HOUR_SEQUENCE) {
-      chartData.push({ label: hLabel(h), value: hourly[h], tooltipLabel: `${hLabel(h)}–${hLabel((h + 1) % 24)}` });
-    }
+    const range = `${hLabel(h)}–${hLabel((h + 1) % 24)}`;
+    chartData.push({
+      label: hLabel(h), value,
+      tooltipLabel: isMultiDay ? `${range} · avg over ${rangeDayCount} days` : range,
+    });
   }
 
-  // Order-count twin of the chart above — same hour/day buckets, same
-  // isMultiDay switch, so the two charts stay column-aligned when shown
+  // Order-count twin of the chart above — same hourly buckets, same
+  // range-averaging, so the two charts stay column-aligned when shown
   // side by side.
-  const dailyCntMap = new Map<string, number>();
-  for (const o of paid) {
-    const day = o.openedAt.slice(0, 10);
-    dailyCntMap.set(day, (dailyCntMap.get(day) ?? 0) + 1);
-  }
   const orderCountChartData: { label: string; value: number; tooltipLabel?: string }[] = [];
-  if (isMultiDay) {
-    for (const [day, cnt] of [...dailyCntMap.entries()].sort()) {
-      orderCountChartData.push({ label: day.slice(5).replace("-", "/"), value: cnt });
-    }
-  } else {
-    for (const h of HOUR_SEQUENCE) {
-      orderCountChartData.push({ label: hLabel(h), value: hourCnt[h], tooltipLabel: `${hLabel(h)}–${hLabel((h + 1) % 24)}` });
-    }
+  for (const h of HOUR_SEQUENCE) {
+    const value = isMultiDay ? hourCnt[h] / rangeDayCount : hourCnt[h];
+    const range = `${hLabel(h)}–${hLabel((h + 1) % 24)}`;
+    orderCountChartData.push({
+      label: hLabel(h), value,
+      tooltipLabel: isMultiDay ? `${range} · avg over ${rangeDayCount} days` : range,
+    });
   }
 
-  // Average per bucket shown on the chart — per hour (12pm-3am window) in
-  // the default view, per day in the multi-day view. Averaged across every
-  // bucket currently on the chart (zero-sale hours included), not just the
-  // ones with activity, since "average hourly sale" means per hour in the
-  // window, not per hour we happened to sell something.
+  // Average per hour across the whole 12pm-3am window shown atop each chart
+  // — zero-sale hours included, since "average hourly sale" means per hour
+  // in the window, not per hour we happened to sell something.
   const avgSalesPerBucket = chartData.length ? chartData.reduce((s, d) => s + d.value, 0) / chartData.length : 0;
   const avgOrdersPerBucket = orderCountChartData.length ? orderCountChartData.reduce((s, d) => s + d.value, 0) / orderCountChartData.length : 0;
-  const bucketUnit = isMultiDay ? "day" : "hr";
 
   // ── Derived: Top 5 Items ────────────────────────────────────────────────────
   const glassMap = new Map<string, { name: string; glasses: number; revenue: number; isMix: boolean }>();
@@ -541,7 +548,12 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                   the axis labels stay legible (a half-width chart squeezed the
                   tick text down to the point of being hard to read) ── */}
               <div>
-                <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"} <Dim>avg {pkr(avgSalesPerBucket)}/{bucketUnit}</Dim></SH>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="inline-block bg-emerald-900 text-white text-xs font-bold uppercase tracking-wider rounded-md px-3 py-1.5">Hourly Sales</h3>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
+                    avg {pkr(avgSalesPerBucket)}/hr{isMultiDay ? ` · over ${rangeDayCount} days` : ""}
+                  </span>
+                </div>
                 <div className="card p-4">
                   {chartData.every((d) => d.value === 0)
                     ? <div className="text-slate-400 text-sm text-center py-8">No sales data for this period</div>
@@ -550,11 +562,16 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 </div>
               </div>
               <div>
-                <SH>{isMultiDay ? "Daily Orders" : "Busiest Hours"} <Dim>order count · avg {avgOrdersPerBucket.toFixed(1)}/{bucketUnit}</Dim></SH>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="inline-block bg-emerald-900 text-white text-xs font-bold uppercase tracking-wider rounded-md px-3 py-1.5">Busiest Hours <span className="normal-case font-normal text-emerald-300/80">order count</span></h3>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-violet-50 text-violet-800 border border-violet-300">
+                    avg {avgOrdersPerBucket.toFixed(1)}/hr{isMultiDay ? ` · over ${rangeDayCount} days` : ""}
+                  </span>
+                </div>
                 <div className="card p-4">
                   {orderCountChartData.every((d) => d.value === 0)
                     ? <Empty>No orders yet</Empty>
-                    : <BarChart data={orderCountChartData} color="#7c3aed" formatValue={(n) => `${n} order${n === 1 ? "" : "s"}`} />
+                    : <BarChart data={orderCountChartData} color="#7c3aed" formatValue={(n) => `${n.toFixed(n % 1 === 0 ? 0 : 1)} order${n === 1 ? "" : "s"}`} />
                   }
                 </div>
               </div>
