@@ -15,11 +15,11 @@ type DebtGroup = { account: { id: string; position: number; name: string }; tota
 // Glass-equivalent weights: MEDIUM = 1, JUMBO = 1.5
 const GLASS_WT: Record<string, number> = { MEDIUM: 1, JUMBO: 1.5 };
 
-// Trading window only — 11am through 4am, wrapping past midnight
-// (11,12,…,23,0,…,4). The shop is never open 5am-10am, so those hours are
-// always-zero dead space on both charts; trimming the range to the actual
-// hours in use removes that empty margin on both ends.
-const HOUR_SEQUENCE = Array.from({ length: 18 }, (_, i) => (i + 11) % 24);
+// Trading window only — 12pm through 3am, wrapping past midnight
+// (12,13,…,23,0,…,3). The shop is never open outside ~11am-4am to begin
+// with, and even those two edge hours are thin enough to just be dead
+// space on the chart, so the window is trimmed one more hour on each end.
+const HOUR_SEQUENCE = Array.from({ length: 16 }, (_, i) => (i + 12) % 24);
 
 function pkr(n: number) {
   return `PKR ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
@@ -257,6 +257,15 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
       orderCountChartData.push({ label: hLabel(h), value: hourCnt[h], tooltipLabel: `${hLabel(h)}–${hLabel((h + 1) % 24)}` });
     }
   }
+
+  // Average per bucket shown on the chart — per hour (12pm-3am window) in
+  // the default view, per day in the multi-day view. Averaged across every
+  // bucket currently on the chart (zero-sale hours included), not just the
+  // ones with activity, since "average hourly sale" means per hour in the
+  // window, not per hour we happened to sell something.
+  const avgSalesPerBucket = chartData.length ? chartData.reduce((s, d) => s + d.value, 0) / chartData.length : 0;
+  const avgOrdersPerBucket = orderCountChartData.length ? orderCountChartData.reduce((s, d) => s + d.value, 0) / orderCountChartData.length : 0;
+  const bucketUnit = isMultiDay ? "day" : "hr";
 
   // ── Derived: Top 5 Items ────────────────────────────────────────────────────
   const glassMap = new Map<string, { name: string; glasses: number; revenue: number; isMix: boolean }>();
@@ -532,7 +541,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                   the axis labels stay legible (a half-width chart squeezed the
                   tick text down to the point of being hard to read) ── */}
               <div>
-                <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"}</SH>
+                <SH>{isMultiDay ? "Daily Sales" : "Hourly Sales"} <Dim>avg {pkr(avgSalesPerBucket)}/{bucketUnit}</Dim></SH>
                 <div className="card p-4">
                   {chartData.every((d) => d.value === 0)
                     ? <div className="text-slate-400 text-sm text-center py-8">No sales data for this period</div>
@@ -541,7 +550,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 </div>
               </div>
               <div>
-                <SH>{isMultiDay ? "Daily Orders" : "Busiest Hours"} <Dim>order count</Dim></SH>
+                <SH>{isMultiDay ? "Daily Orders" : "Busiest Hours"} <Dim>order count · avg {avgOrdersPerBucket.toFixed(1)}/{bucketUnit}</Dim></SH>
                 <div className="card p-4">
                   {orderCountChartData.every((d) => d.value === 0)
                     ? <Empty>No orders yet</Empty>
