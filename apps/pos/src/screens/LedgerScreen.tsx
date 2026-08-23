@@ -390,6 +390,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                   isOwner={canViewReports}
                   fixedHeadName={fixedHeadName}
                   defaultHeadName={selectedAccount?.position === 1 ? "Shop Expense" : null}
+                  defaultSupplierName={selectedAccount?.position === 1 ? "CASH" : selectedAccount?.position === 2 ? "Dehari" : null}
                   onSave={() => { resetForm(); void loadEntries(selectedId); }}
                   onCancel={resetForm}
                 />
@@ -539,7 +540,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 }
 
 function InlineEntryForm({
-  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner, fixedHeadName, defaultHeadName,
+  branchId, ledgerAccountId, editing, onSave, onCancel, defaultDate, isOwner, fixedHeadName, defaultHeadName, defaultSupplierName,
 }: {
   branchId: string; ledgerAccountId: string;
   editing: LedgerEntry | null;
@@ -556,10 +557,14 @@ function InlineEntryForm({
    * can freely overwrite it (e.g. to "Home Expense"). Head Account is still
    * required either way; see the empty-check in handleSubmit. */
   defaultHeadName?: string | null;
+  /** When set (Daily Hisaab: "CASH", Salary: "Dehari"), pre-fills a NEW
+   * entry's Supplier with this value — plain default, freely overwritable,
+   * not required. */
+  defaultSupplierName?: string | null;
 }) {
   const [bulkField, setBulkField] = useState<"productName" | "supplierName" | null>(null);
   const [form, setForm] = useState<EntryFormData>(() => {
-    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate, headName: fixedHeadName ?? defaultHeadName ?? "" };
+    if (!editing) return { ...EMPTY_FORM(), entryDate: defaultDate, headName: fixedHeadName ?? defaultHeadName ?? "", supplierName: defaultSupplierName ?? "" };
     // Total is always Qty × Rate, never a stored value on its own — recompute
     // on load too, so a legacy entry saved before that rule existed (or a
     // cash-only entry with no qty/rate) displays the correct 0 instead of
