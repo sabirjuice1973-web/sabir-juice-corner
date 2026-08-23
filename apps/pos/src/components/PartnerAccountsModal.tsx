@@ -128,6 +128,11 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   const [dayNotes, setDayNotes] = useState<Record<string, string>>({});
   const noteSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const amountRef = useRef<HTMLInputElement>(null);
+  // "+" next to the tabs — for anyone beyond the two default owner slots
+  // (a friend who's lent the shop cash, or been lent some).
+  const [addingPartner, setAddingPartner] = useState(false);
+  const [newPartnerName, setNewPartnerName] = useState("");
+  const [addPartnerBusy, setAddPartnerBusy] = useState(false);
 
   const loadAccounts = async () => {
     try {
@@ -308,6 +313,23 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
     }
   }
 
+  async function submitAddPartner() {
+    const name = newPartnerName.trim();
+    if (!name) return;
+    setAddPartnerBusy(true); setError(null);
+    try {
+      const { account } = await api.createPartnerAccount(branchId, name);
+      setAccounts((prev) => [...(prev ?? []), account]);
+      setSelectedId(account.id);
+      setAddingPartner(false);
+      setNewPartnerName("");
+    } catch (e: any) {
+      setError(e.body?.error || e.message || "Could not add partner");
+    } finally {
+      setAddPartnerBusy(false);
+    }
+  }
+
   const balance = selectedAccount ? Number(selectedAccount.balance) : 0;
 
   return (
@@ -322,9 +344,9 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none flex-shrink-0">×</button>
         </div>
 
-        {/* Tabs — one per partner */}
+        {/* Tabs — one per partner, plus "+" for anyone beyond the default two */}
         {accounts && (
-          <div className="px-5 pt-3 border-b flex items-center gap-1">
+          <div className="px-5 pt-3 border-b flex items-center gap-1 flex-wrap">
             {accounts.map((a) => (
               <button
                 key={a.id}
@@ -337,6 +359,31 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                 </span>
               </button>
             ))}
+
+            {addingPartner ? (
+              <div className="flex items-center gap-1.5 pb-2">
+                <input
+                  autoFocus type="text" placeholder="Name"
+                  value={newPartnerName}
+                  onChange={(e) => setNewPartnerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitAddPartner();
+                    if (e.key === "Escape") { setAddingPartner(false); setNewPartnerName(""); }
+                  }}
+                  className="input text-sm py-1 px-2 w-32"
+                />
+                <button onClick={() => void submitAddPartner()} disabled={addPartnerBusy || !newPartnerName.trim()} className="btn-primary text-xs px-2.5 py-1 disabled:opacity-50">
+                  {addPartnerBusy ? "…" : "Add"}
+                </button>
+                <button onClick={() => { setAddingPartner(false); setNewPartnerName(""); }} className="btn-secondary text-xs px-2.5 py-1">Cancel</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingPartner(true)}
+                title="Add someone else — a friend you've lent shop cash to, or borrowed from"
+                className="px-3 py-2 mb-1 text-sm font-bold text-slate-400 hover:text-accent-600 hover:bg-slate-50 rounded-lg leading-none"
+              >+</button>
+            )}
           </div>
         )}
 
@@ -381,10 +428,10 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                   <div className="shrink-0">
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Type</label>
                     <div className="flex rounded-lg overflow-hidden border border-slate-300">
-                      {(Object.keys(TYPE_META) as PartnerAccountEntry["type"][]).map((t) => (
+                      {(["GAVE_TO_SHOP", "TOOK_FROM_SHOP"] as PartnerAccountEntry["type"][]).map((t) => (
                         <button key={t} type="button" onClick={() => selectType(t)}
                           className={`px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap ${form.type === t
-                            ? t === "GAVE_TO_SHOP" ? "bg-emerald-600 text-white" : t === "TOOK_FROM_SHOP" ? "bg-rose-600 text-white" : "bg-cyan-600 text-white"
+                            ? t === "GAVE_TO_SHOP" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
                             : "bg-white text-slate-600 hover:bg-slate-50"}`}
                         >{TYPE_META[t].short}</button>
                       ))}

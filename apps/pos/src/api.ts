@@ -402,6 +402,8 @@ export const api = {
   // ─── Partner Accounts — owners' personal cash-in/cash-out ledger (OWNER-only) ──
   partnerAccounts: (branchId: string | number) =>
     request<{ accounts: PartnerAccount[] }>("GET", `/partner-accounts?branchId=${branchId}`),
+  createPartnerAccount: (branchId: string | number, name: string) =>
+    request<{ account: PartnerAccount }>("POST", `/partner-accounts`, { branchId, name }),
   renamePartnerAccount: (id: string | number, name: string) =>
     request<{ account: { id: string; position: number; name: string } }>("PATCH", `/partner-accounts/${id}`, { name }),
   partnerAccountsSummary: (branchId: string | number, range?: { from: string; to: string }) =>

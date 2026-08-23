@@ -97,6 +97,30 @@ export async function registerPartnerAccountRoutes(app: FastifyInstance) {
     });
   });
 
+  /** POST /partner-accounts — add a new partner beyond the default two
+   *  (e.g. a friend you've lent shop cash to, or borrowed from). Slotted in
+   *  at the next free position for the branch — same lazy-slot model as the
+   *  two defaults, just not capped at PARTNER_SLOT_COUNT. */
+  app.post("/", async (req, reply) => {
+    if (ownerOnly(req, reply)) return;
+    const body = z.object({ branchId: z.coerce.bigint(), name: z.string().trim().min(1).max(100) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "branchId and name required" });
+
+    const last = await prisma.partnerAccount.findFirst({
+      where: { branchId: body.data.branchId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+    const created = await prisma.partnerAccount.create({
+      data: { branchId: body.data.branchId, position: (last?.position ?? 0) + 1, name: body.data.name },
+    });
+    await writeAudit({
+      req, branchId: body.data.branchId, action: "partner_account.create",
+      entityType: "PartnerAccount", entityId: created.id, after: { name: body.data.name },
+    });
+    return toJson({ account: { ...serializeAccount(created), balance: "0" } });
+  });
+
   /** PATCH /partner-accounts/:id — rename a partner slot */
   app.patch("/:id", async (req, reply) => {
     if (ownerOnly(req, reply)) return;
