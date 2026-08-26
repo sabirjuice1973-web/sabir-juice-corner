@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Item } from "../api";
-import { type Draft, type DraftLine, addDraftLine, adjustDraftLineQty, displayItemName, draftLineKey, draftTotal, removeDraftLine } from "./posState";
+import { ADD_ON_ITEM_CODE, type Draft, type DraftLine, addDraftLine, adjustDraftLineQty, displayItemName, draftLineKey, draftTotal, removeDraftLine } from "./posState";
 
 /**
  * Mix preview — built when the cashier types "A+B" in the code field.
@@ -84,6 +84,13 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
   const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<Item[]>([]);
   const [armed, setArmed] = useState(false);
+
+  // Add-on — a cashier-typed extra (label + price) that isn't a real menu
+  // item, e.g. "Extra Pista" for PKR 50 tucked into a mango shake.
+  const [addOnOpen, setAddOnOpen] = useState(false);
+  const [addOnLabel, setAddOnLabel] = useState("");
+  const [addOnPrice, setAddOnPrice] = useState("");
+  const addOnLabelRef = useRef<HTMLInputElement>(null);
 
   // Drag state: null = default centered position; {x,y} = dragged to coords
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -264,6 +271,27 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
     }, 0);
   }, [preview, mixPreview, mixPriceOverride, qtyInput, draft, onDraftChange]);
 
+  const commitAddOn = useCallback(() => {
+    const label = addOnLabel.trim();
+    const price = parseFloat(addOnPrice);
+    if (!label || !Number.isFinite(price) || price <= 0) return;
+    const line: DraftLine = {
+      itemId: "",
+      itemCode: ADD_ON_ITEM_CODE,
+      name: label,
+      size: "NA",
+      qty: 1,
+      unitPrice: price.toFixed(2),
+      isAddOn: true,
+    };
+    onDraftChange(addDraftLine(draft, line));
+    // Clear and keep the panel open, focused back on Label — add-ons often
+    // come in twos or threes for the same order (dates AND almonds AND pista).
+    setAddOnLabel("");
+    setAddOnPrice("");
+    setTimeout(() => addOnLabelRef.current?.focus(), 0);
+  }, [addOnLabel, addOnPrice, draft, onDraftChange]);
+
   // Per-input ENTER handlers
   function onQtyKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
@@ -389,8 +417,21 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
               />
             </label>
             <label className="col-span-9">
-              <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">
-                Item code or name <span className="normal-case font-normal text-slate-400">— for a custom mix join 2–5 codes with <code className="bg-slate-200 px-1 rounded font-mono">+</code> (e.g. <code className="bg-slate-200 px-1 rounded font-mono">7+41</code> or <code className="bg-slate-200 px-1 rounded font-mono">7+41+5</code>)</span>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                  Item code or name <span className="normal-case font-normal text-slate-400">— for a custom mix join 2–5 codes with <code className="bg-slate-200 px-1 rounded font-mono">+</code> (e.g. <code className="bg-slate-200 px-1 rounded font-mono">7+41</code> or <code className="bg-slate-200 px-1 rounded font-mono">7+41+5</code>)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddOnOpen((v) => !v);
+                    setTimeout(() => addOnLabelRef.current?.focus(), 0);
+                  }}
+                  title="Charge for an extra that isn't on the menu — e.g. a spoon of pista tucked into a shake"
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${addOnOpen ? "bg-accent-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+                >
+                  + Add-on
+                </button>
               </div>
               <input
                 ref={codeRef}
@@ -401,6 +442,52 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
                 placeholder="e.g. 45  ·  Mango  ·  7+41  ·  7+41+5  (up to 5)"
               />
             </label>
+
+            {/* Add-on panel — free-text label + typed price, no catalog lookup.
+                Toggled by the "+ Add-on" button above; stays open across
+                multiple adds so a few extras can be punched in quick succession. */}
+            {addOnOpen && (
+              <div className="col-span-12 rounded-xl border-2 border-accent-300 bg-accent-50/60 px-4 py-2.5 shadow-sm flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Add-on label</label>
+                  <input
+                    ref={addOnLabelRef}
+                    type="text"
+                    value={addOnLabel}
+                    onChange={(e) => setAddOnLabel(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); document.getElementById("addon-price-input")?.focus(); } }}
+                    placeholder="e.g. Extra Pista, Dates, Almonds"
+                    className="input w-full bg-white"
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Price</label>
+                  <input
+                    id="addon-price-input"
+                    type="number" min="0" step="any" inputMode="decimal"
+                    value={addOnPrice}
+                    onChange={(e) => setAddOnPrice(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitAddOn(); } }}
+                    placeholder="0"
+                    className="input w-full text-right font-mono bg-white"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={commitAddOn}
+                  disabled={!addOnLabel.trim() || !addOnPrice}
+                  className="btn-primary px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAddOnOpen(false); setAddOnLabel(""); setAddOnPrice(""); }}
+                  className="text-slate-400 hover:text-slate-700 text-xl leading-none px-1"
+                  title="Close"
+                >×</button>
+              </div>
+            )}
 
             {/* Preview area — shows the resolved single item, the mix preview, or an error.
                 When the preview is "armed" (first ENTER pressed), the border thickens and
@@ -507,6 +594,8 @@ export function OrderWindow({ draft, onDraftChange, onClose, onClear, editTarget
                     <li key={key} className="group flex items-center gap-3 rounded-xl bg-white border border-slate-300 shadow-sm px-3 py-1 text-sm hover:bg-gradient-to-r hover:from-accent-800 hover:to-accent-900 hover:border-accent-900 hover:shadow-md transition-colors">
                       {li.isMix
                         ? <span className="text-[10px] font-bold uppercase text-sjc-700 bg-sjc-100 group-hover:bg-white/15 group-hover:text-white rounded-lg px-2 py-1.5 w-12 text-center shrink-0 transition-colors">MIX</span>
+                        : li.isAddOn
+                        ? <span className="text-[10px] font-bold uppercase text-accent-700 bg-accent-100 group-hover:bg-white/15 group-hover:text-white rounded-lg px-2 py-1.5 w-12 text-center shrink-0 transition-colors">ADD</span>
                         : <span className="font-mono text-xs font-semibold text-slate-500 bg-slate-100 group-hover:bg-white/15 group-hover:text-white rounded-lg px-2 py-1.5 w-12 text-center shrink-0 transition-colors">#{li.itemCode}</span>
                       }
                       <div className="flex-1 min-w-0">

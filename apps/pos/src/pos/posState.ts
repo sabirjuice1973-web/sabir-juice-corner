@@ -15,6 +15,13 @@
 
 const STORAGE_KEY = "sjc.pos.v2";
 
+// Reserved item code for the "Add-on" anchor row on the server (see
+// ADD_ON_ITEM_CODE in apps/api/src/routes/orders.ts — must match). Add-on
+// lines are cashier-typed extras (e.g. "extra pista in the mango shake")
+// with their own label + price, not a real catalog item; this code is only
+// ever used as a local placeholder, never looked up against the menu.
+export const ADD_ON_ITEM_CODE = 9999;
+
 export type DraftLine = {
   // Regular line (single item from the menu):
   //   isMix=false, itemCode set
@@ -31,6 +38,10 @@ export type DraftLine = {
   unitPrice: string;            // store as string to avoid float math
   isMix?: boolean;
   mixOf?: number[];             // 2-5 item codes
+  // Add-on line (cashier typed a label + price, e.g. "Extra Pista" / 50):
+  //   isAddOn=true, itemCode=ADD_ON_ITEM_CODE (placeholder, never looked up),
+  //   name=the typed label, unitPrice=the typed price, size="NA".
+  isAddOn?: boolean;
 };
 
 export type Draft = {
@@ -58,6 +69,7 @@ export type BoxOrder = {
     qty: number;
     lineTotal: string;
     mixOf?: number[];   // component item codes for mix lines — needed to re-edit
+    isAddOn?: boolean;  // add-on line — needed to re-edit (name IS the label)
   }[];
   openedAt: string;             // ISO timestamp captured when committed to box
   deliveredAt: string | null;   // single-click toggles this — UI-only
@@ -156,7 +168,13 @@ export const draftTotal = (d: Draft): number =>
 function draftLineKey(l: DraftLine): string {
   // Mix key is a stable join of the sorted component codes — so the same mix
   // typed in any order (7+41 vs 41+7) collapses into one draft line.
-  return l.isMix && l.mixOf ? `mix:${[...l.mixOf].sort((a, b) => a - b).join("+")}` : `code:${l.itemCode}`;
+  if (l.isMix && l.mixOf) return `mix:${[...l.mixOf].sort((a, b) => a - b).join("+")}`;
+  // Add-on key includes both label AND price — two add-ons with the same
+  // label stack qty only if priced the same; a different price for the
+  // "same" label (rare, but possible mid-order) stays a separate line
+  // instead of silently overwriting the first one's price.
+  if (l.isAddOn) return `addon:${l.name.trim().toLowerCase()}:${l.unitPrice}`;
+  return `code:${l.itemCode}`;
 }
 
 export function addDraftLine(d: Draft, line: DraftLine): Draft {

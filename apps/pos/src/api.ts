@@ -158,7 +158,7 @@ export const api = {
     request<{ order: Order }>("GET", `/orders/${orderId}`),
   nextOrderNumber: (branchId: string | number) =>
     request<{ businessDate: string; nextSeq: number }>("GET", `/orders/next-number?branchId=${branchId}`),
-  replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[], toBox?: number, customerName?: string) =>
+  replaceOrderItems: (orderId: string | number, items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number } | { isAddOn: true; addOnLabel: string; addOnPrice: number; qty: number })[], toBox?: number, customerName?: string) =>
     request<{ order: Order }>("PUT", `/orders/${orderId}/replace-items`, { items, ...(toBox !== undefined ? { toBox } : {}), ...(customerName !== undefined ? { customerName } : {}) }),
   mergeOrders: (orderIds: (string | number)[]) =>
     request<{ order: Order }>("POST", "/orders/merge", { orderIds: orderIds.map(Number) }),
@@ -186,7 +186,7 @@ export const api = {
     shiftId: string | number;
     waiterBox: number;
     customerName?: string;
-    items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number })[];
+    items: ({ itemCode: number; qty: number } | { mixOf: number[]; qty: number; unitPriceOverride?: number } | { isAddOn: true; addOnLabel: string; addOnPrice: number; qty: number })[];
   }) =>
     request<{ order: Order }>("POST", "/orders/with-items", {
       branchId: Number(args.branchId),
@@ -484,6 +484,12 @@ export type OrderItem = {
   unitPrice: string;
   lineTotal: string;
   item: { itemCode: number; name: string; size: string };
+  isCustomMix?: boolean;
+  customMixComponents?: { itemCode: number; name: string; size: string; price: string }[] | null;
+  // Cashier-typed extra (e.g. "Extra Pista") — item points to the reserved
+  // "Add-on" anchor row, addOnLabel carries the real display name.
+  isAddOn?: boolean;
+  addOnLabel?: string | null;
 };
 
 export type Order = {

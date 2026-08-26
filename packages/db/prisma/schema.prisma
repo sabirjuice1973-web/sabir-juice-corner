@@ -852,6 +852,15 @@ model OrderItem {
   lineTotal            Decimal  @db.Decimal(12, 2)
   isCustomMix          Boolean  @default(false)
   customMixComponents  Json?                       // [{ itemId|processedProductId, ratio }]
+  // A cashier-typed extra — "small amount of pista in the mango shake",
+  // dates/almonds/cashews to eat, etc. Not a real menu item: itemId anchors
+  // to one reserved, inactive, unpriced catalog row (Item.itemCode 9999,
+  // "Add-on" — see ADD_ON_ITEM_CODE in orders.ts) purely to satisfy the FK;
+  // the actual label and unitPrice are typed by the cashier at punch time.
+  // No recipe on the anchor item means it's automatically skipped by
+  // salesDeduction (nothing's pulled from inventory for a spoon of pista).
+  isAddOn              Boolean  @default(false)
+  addOnLabel           String?
   notes                String?
   createdAt            DateTime @default(now())
 

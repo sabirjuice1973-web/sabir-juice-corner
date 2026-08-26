@@ -55,9 +55,14 @@ const CreateOrderWithItemsBody = z.object({
   customerName: z.string().trim().min(1).max(120).optional(),
   items: z.array(z.object({
     // Either itemCode (regular menu item) OR mixOf (custom-mix of 2-5 codes,
-    // e.g. "Peach+Banana Medium" or "Peach+Banana+Mango Medium")
+    // e.g. "Peach+Banana Medium" or "Peach+Banana+Mango Medium") OR isAddOn
+    // (cashier-typed extra — "extra pista in the mango shake" — with its own
+    // free-text label and manually typed price, no catalog item involved).
     itemCode: z.number().int().positive().optional(),
     mixOf: z.array(z.number().int().positive()).min(2).max(5).optional(),
+    isAddOn: z.boolean().optional(),
+    addOnLabel: z.string().trim().min(1).max(80).optional(),
+    addOnPrice: z.coerce.number().positive().max(50_000).optional(),
     // Decimal qty allowed (0.25, 0.5, 1.75, etc.) — common for splits and halves
     qty: z.coerce.number().positive().max(99),
     notes: z.string().max(200).optional(),
@@ -68,8 +73,9 @@ const CreateOrderWithItemsBody = z.object({
     // catalog, never overridable.
     unitPriceOverride: z.coerce.number().positive().max(100_000).optional(),
   })
-    .refine((d) => !!d.itemCode || !!d.mixOf, "Each item needs either itemCode or mixOf")
-    .refine((d) => !d.unitPriceOverride || !!d.mixOf, "unitPriceOverride is only allowed for a mix (mixOf)"))
+    .refine((d) => !!d.itemCode || !!d.mixOf || !!d.isAddOn, "Each item needs itemCode, mixOf, or isAddOn")
+    .refine((d) => !d.unitPriceOverride || !!d.mixOf, "unitPriceOverride is only allowed for a mix (mixOf)")
+    .refine((d) => !d.isAddOn || (!!d.addOnLabel && d.addOnPrice !== undefined), "Add-on needs addOnLabel and addOnPrice"))
     .min(1),
 });
 
@@ -109,6 +115,24 @@ function decimal(n: number | string | Prisma.Decimal) {
  */
 function ceilToNext10(d: Prisma.Decimal): Prisma.Decimal {
   return d.dividedBy(10).ceil().times(10);
+}
+
+// Reserved item code for the "Add-on" anchor row — well clear of any real
+// menu item (max in-use code is ~1122 as of this writing). isActive:false
+// keeps it out of GET /items (POS menu/search) and out of admin's Products
+// screen by default; it exists purely to satisfy OrderItem.itemId's FK for
+// add-on lines, which carry their own typed label + price instead of a
+// catalog name/price. Lazily created on first use, same pattern as the
+// Ledger/Partner account lazy-init slots elsewhere in this codebase.
+const ADD_ON_ITEM_CODE = 9999;
+async function getOrCreateAddOnItem(): Promise<bigint> {
+  const existing = await prisma.item.findUnique({ where: { itemCode: ADD_ON_ITEM_CODE }, select: { id: true } });
+  if (existing) return existing.id;
+  const created = await prisma.item.create({
+    data: { itemCode: ADD_ON_ITEM_CODE, name: "Add-on", size: "NA", isActive: false },
+    select: { id: true },
+  });
+  return created.id;
 }
 
 async function recomputeOrderTotal(tx: Prisma.TransactionClient, orderId: bigint) {
@@ -321,6 +345,8 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       }
     }
 
+    const addOnItemId = parsed.data.items.some((li) => li.isAddOn) ? await getOrCreateAddOnItem() : null;
+
     const businessDate = await getBranchBusinessDate(parsed.data.branchId);
     const orderNo = await nextOrderNo(parsed.data.branchId, businessDate);
     const created = await prisma.$transaction(async (tx) => {
@@ -341,7 +367,24 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       let subtotal = decimal(0);
       for (const li of parsed.data.items) {
         const qty = decimal(li.qty);
-        if (li.mixOf) {
+        if (li.isAddOn) {
+          // Cashier-typed extra — no catalog lookup at all, just the typed
+          // label + price. itemId anchors to the reserved "Add-on" row purely
+          // for the FK; the real name lives in addOnLabel.
+          const unitPrice = decimal(li.addOnPrice!);
+          const lineTotal = unitPrice.times(qty);
+          subtotal = subtotal.plus(lineTotal);
+          await tx.orderItem.create({
+            data: {
+              orderId: order.id,
+              itemId: addOnItemId!,
+              qty, unitPrice, lineTotal,
+              isAddOn: true,
+              addOnLabel: li.addOnLabel,
+              notes: li.notes,
+            },
+          });
+        } else if (li.mixOf) {
           // Custom mix (2-5 components): sort components by alphabetical name so display
           // and storage are deterministic. unitPrice = average of the N component prices.
           // itemId points to the alphabetically-first component for FK integrity; the line is
@@ -591,6 +634,8 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       }
     }
 
+    const addOnItemId = parsed.data.items.some((li) => li.isAddOn) ? await getOrCreateAddOnItem() : null;
+
     const updated = await prisma.$transaction(async (tx) => {
       // Wipe existing lines (and their modifiers via cascade)
       await tx.orderItem.deleteMany({ where: { orderId: id } });
@@ -598,7 +643,21 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       let subtotal = decimal(0);
       for (const li of parsed.data.items) {
         const qty = decimal(li.qty);
-        if (li.mixOf) {
+        if (li.isAddOn) {
+          const unitPrice = decimal(li.addOnPrice!);
+          const lineTotal = unitPrice.times(qty);
+          subtotal = subtotal.plus(lineTotal);
+          await tx.orderItem.create({
+            data: {
+              orderId: id,
+              itemId: addOnItemId!,
+              qty, unitPrice, lineTotal,
+              isAddOn: true,
+              addOnLabel: li.addOnLabel,
+              notes: li.notes,
+            },
+          });
+        } else if (li.mixOf) {
           // Same N-way mix logic as POST /with-items — sort by name, average across N, store all.
           const sorted = li.mixOf
             .map((c) => itemByCode.get(c)!)

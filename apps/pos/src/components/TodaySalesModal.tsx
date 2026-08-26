@@ -154,7 +154,8 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
       const data = await api.getOrder(orderId);
       const lines: OrderLine[] = (data.order?.items ?? []).map((it: any) => {
         const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents : null;
-        const displayName = mix && mix.length >= 2
+        const displayName = it.isAddOn ? it.addOnLabel
+          : mix && mix.length >= 2
           ? `${mix.map((m: any) => m.name).join("+")} ${mix[0].size === "MEDIUM" ? "Medium" : "Jumbo"}`
           : it.item.name;
         return {
@@ -183,7 +184,8 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
       if (!o) return;
       const lines: BoxOrder["lines"] = (o.items ?? []).map((it: any) => {
         const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents : null;
-        const displayName = mix && mix.length >= 2
+        const displayName = it.isAddOn ? it.addOnLabel
+          : mix && mix.length >= 2
           ? `${mix.map((m: any) => m.name).join("+")} ${mix[0].size === "MEDIUM" ? "Medium" : "Jumbo"}`
           : it.item.name;
         return {
@@ -193,6 +195,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
           qty: Number(it.qty),
           lineTotal: it.lineTotal,
           mixOf: mix ? mix.map((m: any) => m.itemCode) : undefined,
+          ...(it.isAddOn ? { isAddOn: true as const } : {}),
         };
       });
       const boxOrder: BoxOrder = {

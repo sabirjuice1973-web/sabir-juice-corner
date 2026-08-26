@@ -251,12 +251,13 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         for (const r of (t.orderItems ?? [])) {
           await tx.$executeRawUnsafe(
             `INSERT INTO "OrderItem"(id,"orderId","itemId",qty,"unitPrice","lineTotal",
-             "isCustomMix","customMixComponents",notes,"createdAt")
-             VALUES($1,$2,$3,$4::numeric,$5::numeric,$6::numeric,$7,$8::jsonb,$9,$10)
+             "isCustomMix","customMixComponents","isAddOn","addOnLabel",notes,"createdAt")
+             VALUES($1,$2,$3,$4::numeric,$5::numeric,$6::numeric,$7,$8::jsonb,$9,$10,$11,$12)
              ON CONFLICT DO NOTHING`,
             bd(r.id), bd(r.orderId), bd(r.itemId),
             r.qty, r.unitPrice, r.lineTotal, r.isCustomMix ?? false,
             r.customMixComponents != null ? JSON.stringify(r.customMixComponents) : null,
+            r.isAddOn ?? false, r.addOnLabel ?? null,
             r.notes ?? null, dd(r.createdAt)
           );
         }

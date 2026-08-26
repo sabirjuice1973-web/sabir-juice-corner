@@ -40,7 +40,8 @@ import { emitOrdersChanged } from "../lib/events";
 function buildBoxOrderLines(items: any[]): BoxOrder["lines"] {
   return items.map((it: any) => {
     const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents : null;
-    const displayName = mix && mix.length >= 2
+    const displayName = it.isAddOn ? it.addOnLabel
+      : mix && mix.length >= 2
       ? `${mix.map((m: any) => m.name).join("+")} ${mix[0].size === "MEDIUM" ? "Medium" : "Jumbo"}`
       : it.item.name;
     return {
@@ -50,6 +51,7 @@ function buildBoxOrderLines(items: any[]): BoxOrder["lines"] {
       qty: Number(it.qty),
       lineTotal: it.lineTotal,
       ...(mix && mix.length >= 2 ? { mixOf: mix.map((m: any) => m.itemCode) } : {}),
+      ...(it.isAddOn ? { isAddOn: true as const } : {}),
     };
   });
 }
@@ -213,7 +215,9 @@ export function Pos({
         const result = await api.replaceOrderItems(
           editTarget.serverId,
           draft.lines.map((li) =>
-            li.isMix && li.mixOf
+            li.isAddOn
+              ? { isAddOn: true, addOnLabel: li.name, addOnPrice: Number(li.unitPrice), qty: li.qty }
+              : li.isMix && li.mixOf
               ? { mixOf: li.mixOf, qty: li.qty, unitPriceOverride: Number(li.unitPrice) }
               : { itemCode: li.itemCode, qty: li.qty },
           ),
@@ -256,7 +260,9 @@ export function Pos({
         waiterBox: boxNumber,
         customerName: customerName ?? undefined,
         items: draft.lines.map((li) =>
-          li.isMix && li.mixOf
+          li.isAddOn
+            ? { isAddOn: true, addOnLabel: li.name, addOnPrice: Number(li.unitPrice), qty: li.qty }
+            : li.isMix && li.mixOf
             ? { mixOf: li.mixOf, qty: li.qty, unitPriceOverride: Number(li.unitPrice) }
             : { itemCode: li.itemCode, qty: li.qty },
         ),
@@ -362,6 +368,7 @@ export function Pos({
       qty: li.qty,
       unitPrice: (Number(li.lineTotal) / li.qty).toFixed(2),
       ...(li.mixOf && li.mixOf.length >= 2 ? { isMix: true as const, mixOf: li.mixOf } : {}),
+      ...(li.isAddOn ? { isAddOn: true as const } : {}),
     }));
     setState((s) => ({ ...s, draft: { lines: draftLines }, windowOpen: true }));
     setEditTarget({ boxIdx: selectedRow.boxIdx, localId: selectedRow.localId, serverId: order.serverId, orderNo: order.orderNo, customerName: order.customerName, openedAt: order.openedAt });

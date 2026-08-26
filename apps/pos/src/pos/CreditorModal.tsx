@@ -336,7 +336,8 @@ ${printScript}
             const { order } = await api.getOrder(o.id);
             const fullItems: FullItem[] = (order.items as any[]).map((it) => {
               const mix = it.isCustomMix && Array.isArray(it.customMixComponents) ? it.customMixComponents as any[] : null;
-              const name = mix && mix.length >= 2
+              const name = it.isAddOn ? (it.addOnLabel ?? "")
+                : mix && mix.length >= 2
                 ? mix.map((m: any) => m.name).join("+")
                 : (it.item?.name ?? "");
               const size = mix ? (mix[0]?.size ?? "NA") : (it.item?.size ?? "NA");
