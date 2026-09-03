@@ -332,18 +332,22 @@ export function Pos({
     }
   }, [branchId, shiftId, editTarget, refreshNextOrderSeq]);
 
-  // ─── Edit-order flow (click row → Shift+C) ──────────────────────────────
+  // ─── Edit-order flow — two entry points, one shared core ────────────────
   //
-  // The cashier clicks a row (it's selected with a blue ring) then presses
-  // Shift+C. We dump the order's items into the draft, open the Order Window in
-  // edit mode, and clicking any box button calls replace-items + moves the order.
-  const enterEditMode = useCallback(() => {
-    if (!selectedRow) {
-      setError("Click a row to select it, then press Shift+C to edit.");
-      setTimeout(() => setError(null), 2500);
-      return;
-    }
-    const order = state.boxes[selectedRow.boxIdx]?.find((o) => o.localId === selectedRow.localId);
+  // 1. Click a row (blue ring) then press Shift+C — a global keyboard listener,
+  //    which depends on the keydown event actually reaching it. That's fragile
+  //    in ways that have bitten us twice before (stale-closure re-registration,
+  //    a stray focused input silently swallowing the key) — and per the owner,
+  //    it still intermittently does nothing with zero error, even with both of
+  //    those fixes in place. Rather than keep chasing a third invisible cause,
+  //    each row also gets a direct Edit button (below) that calls straight into
+  //    beginEdit with explicit args — no keyboard event, no listener, no global
+  //    selection state to go stale. Shift+C stays for whoever's used to it.
+  //
+  // We dump the order's items into the draft, open the Order Window in edit
+  // mode, and clicking any box button calls replace-items + moves the order.
+  const beginEdit = useCallback((boxIdx: number, localId: string) => {
+    const order = state.boxes[boxIdx]?.find((o) => o.localId === localId);
     if (!order) { setSelectedRow(null); return; }
     if (!order.serverId) {
       setError("This row hasn't synced yet — wait for the green Online pill, then try again.");
@@ -371,8 +375,18 @@ export function Pos({
       ...(li.isAddOn ? { isAddOn: true as const } : {}),
     }));
     setState((s) => ({ ...s, draft: { lines: draftLines }, windowOpen: true }));
-    setEditTarget({ boxIdx: selectedRow.boxIdx, localId: selectedRow.localId, serverId: order.serverId, orderNo: order.orderNo, customerName: order.customerName, openedAt: order.openedAt });
-  }, [selectedRow, state.boxes, state.draft.lines.length]);
+    setEditTarget({ boxIdx, localId, serverId: order.serverId, orderNo: order.orderNo, customerName: order.customerName, openedAt: order.openedAt });
+  }, [state.boxes, state.draft.lines.length]);
+
+  // Shift+C path — reads the click-selected row, same as before.
+  const enterEditMode = useCallback(() => {
+    if (!selectedRow) {
+      setError("Click a row to select it, then press Shift+C to edit.");
+      setTimeout(() => setError(null), 2500);
+      return;
+    }
+    beginEdit(selectedRow.boxIdx, selectedRow.localId);
+  }, [selectedRow, beginEdit]);
 
   const cancelEdit = useCallback(() => {
     setState((s) => ({ ...s, draft: clearDraft(), windowOpen: false }));
@@ -1116,6 +1130,7 @@ export function Pos({
           onSave={saveOnly}
           onPrintAndSave={printAndSave}
           onOpenDetails={openDetails}
+          onEdit={(boxIdx, localId) => beginEdit(boxIdx, localId)}
           onSelect={(boxIdx, localId) => {
             // Selecting a row is a clear signal the cashier wants keyboard
             // shortcuts (Shift+C) active, not text entry — but if some input

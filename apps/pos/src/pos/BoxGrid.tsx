@@ -22,6 +22,8 @@ type Props = {
   onPrintAndSave: (boxIdx: number, localId: string) => void;
   onOpenDetails: (boxIdx: number, localId: string) => void;
   onSelect: (boxIdx: number, localId: string) => void;
+  /** Direct edit — bypasses click-to-select + Shift+C entirely (see RowIcons). */
+  onEdit: (boxIdx: number, localId: string) => void;
   onTogglePrepaid?: (boxIdx: number, localId: string) => void;
   onPushAllFoodPanda?: () => void;
   selectedKey: { boxIdx: number; localId: string } | null;
@@ -38,7 +40,7 @@ type Props = {
 };
 
 export function BoxGrid({
-  boxes, onToggleDelivered, onPrint, onSave, onPrintAndSave, onOpenDetails, onSelect,
+  boxes, onToggleDelivered, onPrint, onSave, onPrintAndSave, onOpenDetails, onSelect, onEdit,
   onTogglePrepaid, onPushAllFoodPanda, selectedKey, mergeMode, mergeSelectedIds, onMergeToggle,
   kitchen = false, layout, onLayoutChange, boxSales, boxDoneCounts,
 }: Props) {
@@ -111,6 +113,7 @@ export function BoxGrid({
             onPrintAndSave={(localId) => onPrintAndSave(i, localId)}
             onOpenDetails={(localId) => onOpenDetails(i, localId)}
             onSelect={(localId) => onSelect(i, localId)}
+            onEdit={(localId) => onEdit(i, localId)}
             onTogglePrepaid={onTogglePrepaid ? (localId) => onTogglePrepaid(i, localId) : undefined}
             onPushAllFoodPanda={i === 5 ? onPushAllFoodPanda : undefined}
             selectedLocalId={selectedKey?.boxIdx === i ? selectedKey.localId : null}
@@ -271,6 +274,7 @@ type BoxProps = {
   onPrintAndSave: (localId: string) => void;
   onOpenDetails: (localId: string) => void;
   onSelect: (localId: string) => void;
+  onEdit: (localId: string) => void;
   onTogglePrepaid?: (localId: string) => void;
   onPushAllFoodPanda?: () => void;
   selectedLocalId: string | null;
@@ -285,7 +289,7 @@ type BoxProps = {
 
 function BoxPanel({
   boxNumber, orders, kitchen, onToggleDelivered, onPrint, onSave, onPrintAndSave,
-  onOpenDetails, onSelect, onTogglePrepaid, onPushAllFoodPanda, selectedLocalId, mergeMode,
+  onOpenDetails, onSelect, onEdit, onTogglePrepaid, onPushAllFoodPanda, selectedLocalId, mergeMode,
   mergeSelectedIds, onMergeToggle, dayCount, boxLabel, onRename, isBestSales,
 }: BoxProps) {
   const shortcut = `Ctrl+${boxNumber}`;
@@ -389,6 +393,7 @@ function BoxPanel({
                 onPrintAndSave={() => onPrintAndSave(o.localId)}
                 onOpenDetails={() => onOpenDetails(o.localId)}
                 onSelect={() => onSelect(o.localId)}
+                onEdit={() => onEdit(o.localId)}
                 onTogglePrepaid={onTogglePrepaid ? () => onTogglePrepaid(o.localId) : undefined}
                 mergeMode={mergeMode}
                 onMergeToggle={onMergeToggle ? () => onMergeToggle(o.localId) : undefined}
@@ -415,6 +420,7 @@ type RowProps = {
   onPrintAndSave: () => void;
   onOpenDetails: () => void;
   onSelect: () => void;
+  onEdit: () => void;
   onTogglePrepaid?: () => void;
   mergeMode?: boolean;
   onMergeToggle?: () => void;
@@ -422,7 +428,7 @@ type RowProps = {
 
 function OrderRow({
   order, kitchen, first, selected, selectedForMerge, onToggleDelivered, onPrint,
-  onSave, onPrintAndSave, onOpenDetails, onSelect, onTogglePrepaid, mergeMode, onMergeToggle,
+  onSave, onPrintAndSave, onOpenDetails, onSelect, onEdit, onTogglePrepaid, mergeMode, onMergeToggle,
 }: RowProps) {
   // Build JSX for the items summary so (M) and (J) can be bold
   const itemsJsx = order.lines.map((li, i) => {
@@ -566,15 +572,25 @@ function OrderRow({
         onPrint={onPrint}
         onSave={onSave}
         onPrintAndSave={onPrintAndSave}
+        onEdit={onEdit}
       />
     </li>
   );
 }
 
-function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave }: { elapsedMin: number; onPrint: () => void; onSave: () => void; onPrintAndSave: () => void }) {
+function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave, onEdit }: { elapsedMin: number; onPrint: () => void; onSave: () => void; onPrintAndSave: () => void; onEdit: () => void }) {
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(); };
   return (
     <div className="flex items-center gap-0.5 text-slate-500">
+      <button
+        type="button"
+        title="Edit this order (same as Shift+C) — always works, doesn't depend on the keyboard shortcut"
+        onClick={stop(onEdit)}
+        className="p-1 rounded hover:bg-amber-100 hover:text-amber-700 cursor-pointer"
+        aria-label="Edit"
+      >
+        <EditIcon />
+      </button>
       <button
         type="button"
         title="Print bill (reprint, does not save)"
@@ -614,6 +630,14 @@ function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave }: { elapsedMin:
 
 // ─── Inline SVG icons ────────────────────────────────────────────────────────
 
+function EditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+    </svg>
+  );
+}
 function PrinterIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -124,6 +124,7 @@ export function Kitchen() {
           onPrintAndSave={noopXY}
           onOpenDetails={noopXY}
           onSelect={noopXY}
+          onEdit={noopXY}
           selectedKey={null}
           layout={layout}
           onLayoutChange={setLayout}
