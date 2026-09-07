@@ -11,6 +11,12 @@ export function Backup() {
   const [confirmed, setConfirmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const WIPE_PHRASE = "WIPE ALL DATA";
+  const [wipeDownloaded, setWipeDownloaded] = useState(false);
+  const [wipePhrase, setWipePhrase] = useState("");
+  const [wipeBusy, setWipeBusy] = useState(false);
+  const [wipeMsg, setWipeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   async function downloadBackup() {
     setDlBusy(true);
     setDlError(null);
@@ -84,6 +90,38 @@ export function Backup() {
     }
   }
 
+  async function doWipe() {
+    if (!wipeDownloaded || wipePhrase !== WIPE_PHRASE) return;
+    setWipeBusy(true);
+    setWipeMsg(null);
+    try {
+      const fire = (token: string | null) =>
+        fetch("/api/v1/backup/wipe", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ confirm: wipePhrase }),
+        });
+      let res = await fire(tokenStore.get());
+      // Same silent-refresh-and-retry as downloadBackup()/doRestore() above.
+      if (res.status === 401 && tokenStore.getRefresh()) {
+        const fresh = await tryRefresh();
+        if (fresh) res = await fire(fresh);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      setWipeMsg({ ok: true, text: data.message ?? "All transactional data wiped." });
+      setWipePhrase("");
+      setWipeDownloaded(false);
+    } catch (e: any) {
+      setWipeMsg({ ok: false, text: e.message ?? "Wipe failed" });
+    } finally {
+      setWipeBusy(false);
+    }
+  }
+
   return (
     <div className="p-6 max-w-2xl space-y-8">
       <div>
@@ -128,7 +166,7 @@ export function Backup() {
           )}
         </button>
         <div className="text-xs text-slate-400 border-t pt-3 space-y-1">
-          <div><strong>What is backed up:</strong> Orders · Credit accounts &amp; payments · Ledger (Hisaab Kitaab) · Expenses · Menu prices · User accounts</div>
+          <div><strong>What is backed up:</strong> Orders · Credit accounts &amp; payments · Ledger (Hisaab Kitaab) · Expenses · Self Loan (Partner Accounts) · Payment Schedule · Menu prices · User accounts</div>
           <div><strong>What is NOT backed up:</strong> Inventory stock levels · Production batches · Raw material recipes (these can be re-entered if needed)</div>
         </div>
       </section>
@@ -219,6 +257,76 @@ export function Backup() {
               Restoring… (may take a minute)
             </>
           ) : "Restore Database"}
+        </button>
+      </section>
+
+      {/* ── Wipe ─────────────────────────────────────────────────────── */}
+      <section className="card p-6 space-y-4 border-red-300 bg-red-50">
+        <h2 className="font-semibold text-red-800 flex items-center gap-2">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+          </svg>
+          Erase All Data From This PC
+        </h2>
+        <p className="text-sm text-red-800">
+          For moving this shop's data off this machine periodically (download a backup, wipe this
+          PC, keep the file elsewhere — restore it here or on another PC later whenever needed).
+        </p>
+        <div className="text-sm text-red-700 bg-white/60 rounded px-3 py-2 space-y-1">
+          <div><strong>Wiped:</strong> Orders, payments, shifts, Daily Hisaab / Ledger entries, expenses, Self Loan entries, Payment Schedule</div>
+          <div><strong>Kept — this PC stays fully usable right after:</strong> Logins, branches, the menu &amp; prices, credit-account names, Self Loan partner names, Ledger account names</div>
+        </div>
+        <p className="text-sm text-red-800 font-semibold">
+          This cannot be undone. Make sure you've downloaded a backup first — if this machine is
+          lost or damaged before you restore that file somewhere, this data is gone for good.
+        </p>
+
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={wipeDownloaded}
+            onChange={(e) => { setWipeDownloaded(e.target.checked); setWipeMsg(null); }}
+          />
+          <span className="text-sm text-red-800">
+            I have already downloaded a backup file and saved it somewhere safe.
+          </span>
+        </label>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Type <code className="bg-white px-1.5 py-0.5 rounded border border-red-200 font-mono">{WIPE_PHRASE}</code> to confirm
+          </label>
+          <input
+            type="text"
+            value={wipePhrase}
+            onChange={(e) => { setWipePhrase(e.target.value); setWipeMsg(null); }}
+            placeholder={WIPE_PHRASE}
+            className="input w-full max-w-xs font-mono"
+            disabled={!wipeDownloaded}
+          />
+        </div>
+
+        {wipeMsg && (
+          <div className={`text-sm rounded px-3 py-2 ${wipeMsg.ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+            {wipeMsg.text}
+          </div>
+        )}
+
+        <button
+          className="px-5 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-white font-semibold text-sm disabled:opacity-40 flex items-center gap-2"
+          disabled={!wipeDownloaded || wipePhrase !== WIPE_PHRASE || wipeBusy}
+          onClick={doWipe}
+        >
+          {wipeBusy ? (
+            <>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              Erasing…
+            </>
+          ) : "Erase All Data"}
         </button>
       </section>
     </div>

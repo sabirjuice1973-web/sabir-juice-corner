@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "@sjc/db";
 import { requireAuth } from "../lib/guards.js";
 import { toJson } from "../lib/serialize.js";
+import { writeAudit } from "../lib/audit.js";
 
 const BACKUP_VERSION = "2";
 
@@ -32,6 +33,8 @@ export async function registerBackupRoutes(app: FastifyInstance) {
       accounts, accountPayments, accountPaymentLinks,
       shifts, orders, orderItems, payments, discountApplied,
       ledgerAccounts, ledgerEntries, expenses,
+      partnerAccounts, partnerAccountEntries, partnerAccountDayNotes,
+      paymentScheduleEntries, paymentScheduleInstallments,
     ] = await Promise.all([
       prisma.branch.findMany({ orderBy: { id: "asc" } }),
       prisma.category.findMany({ orderBy: { id: "asc" } }),
@@ -58,6 +61,14 @@ export async function registerBackupRoutes(app: FastifyInstance) {
       prisma.ledgerAccount.findMany({ orderBy: { id: "asc" } }),
       prisma.ledgerEntry.findMany({ orderBy: { id: "asc" } }),
       prisma.expense.findMany({ orderBy: { id: "asc" } }),
+      // Added later than the rest — Self Loan (Partner Accounts) and Payment
+      // Schedule didn't exist yet when backup/export was first built, so they
+      // were silently missing from every export until now.
+      prisma.partnerAccount.findMany({ orderBy: { id: "asc" } }),
+      prisma.partnerAccountEntry.findMany({ orderBy: { id: "asc" } }),
+      prisma.partnerAccountDayNote.findMany({ orderBy: { id: "asc" } }),
+      prisma.paymentScheduleEntry.findMany({ orderBy: { id: "asc" } }),
+      prisma.paymentScheduleInstallment.findMany({ orderBy: { id: "asc" } }),
     ]);
 
     const exportedAt = new Date().toISOString();
@@ -72,6 +83,8 @@ export async function registerBackupRoutes(app: FastifyInstance) {
         accounts, accountPayments, accountPaymentLinks,
         shifts, orders, orderItems, payments, discountApplied,
         ledgerAccounts, ledgerEntries, expenses,
+        partnerAccounts, partnerAccountEntries, partnerAccountDayNotes,
+        paymentScheduleEntries, paymentScheduleInstallments,
       },
     });
 
@@ -348,12 +361,68 @@ export async function registerBackupRoutes(app: FastifyInstance) {
           );
         }
 
+        // ── 19. PartnerAccounts (Self Loan slots) ────────────────────────
+        for (const r of (t.partnerAccounts ?? [])) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "PartnerAccount"(id,"branchId",position,name,"createdAt","updatedAt")
+             VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+            bd(r.id), bd(r.branchId), r.position, r.name,
+            dd(r.createdAt), dd(r.updatedAt)
+          );
+        }
+
+        // ── 20. PartnerAccountEntries ─────────────────────────────────────
+        for (const r of (t.partnerAccountEntries ?? [])) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "PartnerAccountEntry"(id,"branchId","partnerAccountId","entryDate",type,
+             amount,note,"createdById","createdAt")
+             VALUES($1,$2,$3,$4,$5::"PartnerEntryType",$6::numeric,$7,$8,$9)
+             ON CONFLICT DO NOTHING`,
+            bd(r.id), bd(r.branchId), bd(r.partnerAccountId), dd(r.entryDate),
+            r.type, r.amount, r.note ?? null, bd(r.createdById), dd(r.createdAt)
+          );
+        }
+
+        // ── 21. PartnerAccountDayNotes ────────────────────────────────────
+        for (const r of (t.partnerAccountDayNotes ?? [])) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "PartnerAccountDayNote"(id,"partnerAccountId","noteDate",note,"updatedAt")
+             VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+            bd(r.id), bd(r.partnerAccountId), dd(r.noteDate), r.note, dd(r.updatedAt)
+          );
+        }
+
+        // ── 22. PaymentScheduleEntries ─────────────────────────────────────
+        for (const r of (t.paymentScheduleEntries ?? [])) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "PaymentScheduleEntry"(id,"branchId","entryDate",details,amount,description,
+             "isPaid",recurrence,"createdById","createdAt","updatedAt")
+             VALUES($1,$2,$3,$4,$5::numeric,$6,$7,$8,$9,$10,$11)
+             ON CONFLICT DO NOTHING`,
+            bd(r.id), bd(r.branchId), dd(r.entryDate), r.details, r.amount,
+            r.description ?? null, r.isPaid ?? false, r.recurrence ?? null,
+            bd(r.createdById), dd(r.createdAt), dd(r.updatedAt)
+          );
+        }
+
+        // ── 23. PaymentScheduleInstallments ────────────────────────────────
+        for (const r of (t.paymentScheduleInstallments ?? [])) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "PaymentScheduleInstallment"(id,"scheduleEntryId",amount,"paidDate",note,"createdAt")
+             VALUES($1,$2,$3::numeric,$4,$5,$6) ON CONFLICT DO NOTHING`,
+            bd(r.id), bd(r.scheduleEntryId), r.amount, dd(r.paidDate),
+            r.note ?? null, dd(r.createdAt)
+          );
+        }
+
         // ── Reset all sequences so new inserts get IDs above the restored max ─
         const sequenceTables = [
           "Branch", "Category", "ExpenseCategory", "Item", "ItemPrice",
           "User", "UserRole", "Account", "Shift", "Order", "OrderItem",
           "Payment", "DiscountApplied", "AccountPayment", "AccountPaymentOrderLink",
           "LedgerAccount", "LedgerEntry", "Expense",
+          "PartnerAccount", "PartnerAccountEntry", "PartnerAccountDayNote",
+          "PaymentScheduleEntry", "PaymentScheduleInstallment",
         ];
         for (const tbl of sequenceTables) {
           await tx.$executeRawUnsafe(
@@ -367,6 +436,57 @@ export async function registerBackupRoutes(app: FastifyInstance) {
     } catch (err: any) {
       app.log.error({ err }, "Backup restore failed");
       return reply.code(500).send({ error: `Restore failed: ${err.message}` });
+    }
+  });
+
+  // ── Wipe ─────────────────────────────────────────────────────────────────
+  // Clears every transactional/financial record — orders, payments, Daily
+  // Hisaab entries, expenses, Self Loan entries, Payment Schedule, shifts —
+  // but deliberately LEAVES intact everything needed to keep using this PC
+  // right afterward: logins (User/UserRole), Branch, the menu (Category/
+  // Item/ItemPrice), the creditor account list (Account), the Self Loan
+  // partner names (PartnerAccount), and the Ledger account slot names
+  // (LedgerAccount) — only their entries/history are cleared, not the slots
+  // themselves. Wiping logins too would lock everyone out of ever restoring
+  // a backup onto this machine again, defeating the point.
+  //
+  // Meant for "download a backup, then wipe this machine clean" — moving
+  // the data off the shop PC periodically rather than letting it pile up
+  // here, per the owner's own request. Irreversible — no undo, no soft
+  // delete — so it requires the literal confirmation phrase below rather
+  // than just the OWNER check every other backup route relies on.
+  app.post("/wipe", async (req, reply) => {
+    if (!req.auth?.roles.some((r: any) => r.code === "OWNER")) {
+      return reply.code(403).send({ error: "Owner only" });
+    }
+    const body = req.body as any;
+    if (body?.confirm !== "WIPE ALL DATA") {
+      return reply.code(400).send({ error: 'Confirmation phrase required: "WIPE ALL DATA"' });
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // CASCADE handles the rest: OrderItem/Payment/DiscountApplied cascade
+        // from Order; AccountPaymentOrderLink cascades from both Order and
+        // AccountPayment; PaymentScheduleInstallment cascades from
+        // PaymentScheduleEntry. Everything here is listed explicitly anyway
+        // so the scope is obvious at a glance, not just implied by cascade.
+        await tx.$executeRawUnsafe(
+          `TRUNCATE TABLE "Shift","Order","AccountPayment","LedgerEntry","Expense",
+           "PartnerAccountEntry","PartnerAccountDayNote","PaymentScheduleEntry"
+           RESTART IDENTITY CASCADE`
+        );
+      }, { timeout: 120_000 });
+
+      await writeAudit({
+        req, action: "backup.wipe", entityType: "Database",
+        after: { wipedAt: new Date().toISOString() },
+      });
+
+      return { ok: true, message: "All transactional data wiped. Logins, branches, menu, and account names are untouched." };
+    } catch (err: any) {
+      app.log.error({ err }, "Backup wipe failed");
+      return reply.code(500).send({ error: `Wipe failed: ${err.message}` });
     }
   });
 }
