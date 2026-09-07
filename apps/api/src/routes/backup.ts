@@ -19,11 +19,21 @@ function d(v: any): Date | null {
 function dd(v: any): Date { return new Date(v); }
 
 /**
- * Insert every table from a backup's `tables` object, in FK-safe order, each
- * row `ON CONFLICT DO NOTHING` — so this is safe to call both as the second
- * half of a full Restore (destination already truncated first) AND on its
- * own as a Merge (destination NOT truncated — only genuinely new rows, by
- * id, get added; anything already present is left untouched).
+ * Insert every table from a backup's `tables` object, in FK-safe order —
+ * each row `ON CONFLICT (id) DO UPDATE`, so a row whose id already exists
+ * gets its fields refreshed to match the backup rather than silently kept
+ * as-is. Safe to call both as the second half of a full Restore (destination
+ * already truncated first, so nothing to conflict with) AND on its own as a
+ * Merge (destination NOT truncated — new rows get added, existing rows get
+ * updated to match the source file, nothing is ever removed).
+ *
+ * The DO UPDATE (not DO NOTHING) matters for Merge specifically: if a row
+ * was edited on the source machine AFTER an earlier export already carried
+ * an older version of it onto the destination, the destination needs to see
+ * that edit on the next merge, not keep the stale copy forever. Source
+ * always wins for whatever fields a row has — this is a one-way mirror, not
+ * a two-way sync (a destination-only edit would just get overwritten on the
+ * next merge from the real source).
  *
  * Ends by bumping every table's sequence up to MAX(id)+1, so whichever
  * machine this ran on can safely create new rows afterward without ever
@@ -36,7 +46,11 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "Branch"(id,"organizationId",code,name,address,city,phone,
        "isCentralKitchen",status,"openedAt","currentBusinessDate","createdAt","updatedAt","deletedAt")
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::"BranchStatus",$10,$11,$12,$13,$14)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "organizationId"=EXCLUDED."organizationId",
+       code=EXCLUDED.code, name=EXCLUDED.name, address=EXCLUDED.address, city=EXCLUDED.city,
+       phone=EXCLUDED.phone, "isCentralKitchen"=EXCLUDED."isCentralKitchen", status=EXCLUDED.status,
+       "openedAt"=EXCLUDED."openedAt", "currentBusinessDate"=EXCLUDED."currentBusinessDate",
+       "createdAt"=EXCLUDED."createdAt", "updatedAt"=EXCLUDED."updatedAt", "deletedAt"=EXCLUDED."deletedAt"`,
       bd(r.id), bd(r.organizationId), r.code, r.name,
       r.address ?? null, r.city ?? null, r.phone ?? null,
       r.isCentralKitchen ?? false, r.status ?? "ACTIVE",
@@ -48,7 +62,8 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   // ── 2. ExpenseCategory ───────────────────────────────────────────
   for (const r of (t.expenseCategories ?? [])) {
     await tx.$executeRawUnsafe(
-      `INSERT INTO "ExpenseCategory"(id,name,"isActive") VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,
+      `INSERT INTO "ExpenseCategory"(id,name,"isActive") VALUES($1,$2,$3)
+       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, "isActive"=EXCLUDED."isActive"`,
       bd(r.id), r.name, r.isActive ?? true
     );
   }
@@ -57,7 +72,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.categories ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "Category"(id,name,"parentId","sortOrder","isActive","createdAt","updatedAt")
-       VALUES($1,$2,NULL,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,NULL,$3,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, "sortOrder"=EXCLUDED."sortOrder",
+       "isActive"=EXCLUDED."isActive", "createdAt"=EXCLUDED."createdAt", "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), r.name, r.sortOrder ?? 0, r.isActive ?? true,
       dd(r.createdAt), dd(r.updatedAt)
     );
@@ -77,7 +94,12 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "Item"(id,"itemCode",name,"categoryId",size,"pairId","isActive","isSeasonal",
        "excludeFromAutoReconciliation","sortOrder","imageUrl","createdAt","updatedAt","deletedAt")
        VALUES($1,$2,$3,$4,$5::"ItemSize",NULL,$6,$7,$8,$9,$10,$11,$12,$13)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "itemCode"=EXCLUDED."itemCode", name=EXCLUDED.name,
+       "categoryId"=EXCLUDED."categoryId", size=EXCLUDED.size, "isActive"=EXCLUDED."isActive",
+       "isSeasonal"=EXCLUDED."isSeasonal",
+       "excludeFromAutoReconciliation"=EXCLUDED."excludeFromAutoReconciliation",
+       "sortOrder"=EXCLUDED."sortOrder", "imageUrl"=EXCLUDED."imageUrl",
+       "createdAt"=EXCLUDED."createdAt", "updatedAt"=EXCLUDED."updatedAt", "deletedAt"=EXCLUDED."deletedAt"`,
       bd(r.id), r.itemCode, r.name, b(r.categoryId), r.size ?? "NA",
       r.isActive ?? true, r.isSeasonal ?? false,
       r.excludeFromAutoReconciliation ?? false, r.sortOrder ?? 0,
@@ -97,7 +119,10 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.itemPrices ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "ItemPrice"(id,"itemId","branchId",price,"effectiveFrom","effectiveTo","createdAt")
-       VALUES($1,$2,$3,$4::numeric,$5,$6,$7) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,$3,$4::numeric,$5,$6,$7)
+       ON CONFLICT (id) DO UPDATE SET "itemId"=EXCLUDED."itemId", "branchId"=EXCLUDED."branchId",
+       price=EXCLUDED.price, "effectiveFrom"=EXCLUDED."effectiveFrom",
+       "effectiveTo"=EXCLUDED."effectiveTo", "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.itemId), b(r.branchId), r.price,
       dd(r.effectiveFrom), d(r.effectiveTo), dd(r.createdAt)
     );
@@ -109,7 +134,11 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "User"(id,"organizationId","fullName",username,email,phone,"passwordHash",
        status,"lastLoginAt","createdAt","updatedAt","deletedAt")
        VALUES($1,$2,$3,$4,$5,$6,$7,$8::"UserStatus",$9,$10,$11,$12)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "organizationId"=EXCLUDED."organizationId",
+       "fullName"=EXCLUDED."fullName", username=EXCLUDED.username, email=EXCLUDED.email,
+       phone=EXCLUDED.phone, "passwordHash"=EXCLUDED."passwordHash", status=EXCLUDED.status,
+       "lastLoginAt"=EXCLUDED."lastLoginAt", "createdAt"=EXCLUDED."createdAt",
+       "updatedAt"=EXCLUDED."updatedAt", "deletedAt"=EXCLUDED."deletedAt"`,
       bd(r.id), bd(r.organizationId), r.fullName, r.username,
       r.email ?? null, r.phone ?? null, r.passwordHash,
       r.status ?? "ACTIVE", d(r.lastLoginAt),
@@ -121,7 +150,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.userRoles ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "UserRole"(id,"userId","roleId","branchId","createdAt")
-       VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,$3,$4,$5)
+       ON CONFLICT (id) DO UPDATE SET "userId"=EXCLUDED."userId", "roleId"=EXCLUDED."roleId",
+       "branchId"=EXCLUDED."branchId", "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.userId), bd(r.roleId), b(r.branchId), dd(r.createdAt)
     );
   }
@@ -131,7 +162,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "Account"(id,"branchId",name,type,"isActive",phone,notes,"createdAt","updatedAt","deletedAt")
        VALUES($1,$2,$3,$4::"AccountType",$5,$6,$7,$8,$9,$10)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId", name=EXCLUDED.name,
+       type=EXCLUDED.type, "isActive"=EXCLUDED."isActive", phone=EXCLUDED.phone, notes=EXCLUDED.notes,
+       "createdAt"=EXCLUDED."createdAt", "updatedAt"=EXCLUDED."updatedAt", "deletedAt"=EXCLUDED."deletedAt"`,
       bd(r.id), bd(r.branchId), r.name, r.type, r.isActive ?? true,
       r.phone ?? null, r.notes ?? null,
       dd(r.createdAt), dd(r.updatedAt), d(r.deletedAt)
@@ -144,7 +177,12 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "Shift"(id,"branchId","openedById","openedAt","businessDate","openingCash",
        "closedById","closedAt","closingCash","expectedCash","varianceCash",status,notes)
        VALUES($1,$2,$3,$4,$5,$6::numeric,$7,$8,$9::numeric,$10::numeric,$11::numeric,$12::"ShiftStatus",$13)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId", "openedById"=EXCLUDED."openedById",
+       "openedAt"=EXCLUDED."openedAt", "businessDate"=EXCLUDED."businessDate",
+       "openingCash"=EXCLUDED."openingCash", "closedById"=EXCLUDED."closedById",
+       "closedAt"=EXCLUDED."closedAt", "closingCash"=EXCLUDED."closingCash",
+       "expectedCash"=EXCLUDED."expectedCash", "varianceCash"=EXCLUDED."varianceCash",
+       status=EXCLUDED.status, notes=EXCLUDED.notes`,
       bd(r.id), bd(r.branchId), bd(r.openedById),
       dd(r.openedAt), dd(r.businessDate), r.openingCash,
       b(r.closedById), d(r.closedAt),
@@ -162,7 +200,16 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
        "cancelReason","cancelledById","cancelledAt","createdAt","updatedAt")
        VALUES($1,$2,$3,$4,$5,$6,$7::"OrderType",$8::"OrderStatus",
        $9::numeric,$10::numeric,$11::numeric,$12::numeric,$13::numeric,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "orderNo"=EXCLUDED."orderNo", "branchId"=EXCLUDED."branchId",
+       "shiftId"=EXCLUDED."shiftId", "waiterBox"=EXCLUDED."waiterBox", "waiterId"=EXCLUDED."waiterId",
+       "orderType"=EXCLUDED."orderType", status=EXCLUDED.status, subtotal=EXCLUDED.subtotal,
+       "discountAmount"=EXCLUDED."discountAmount", "taxAmount"=EXCLUDED."taxAmount",
+       "deliveryCharge"=EXCLUDED."deliveryCharge", total=EXCLUDED.total, "cashierId"=EXCLUDED."cashierId",
+       "customerName"=EXCLUDED."customerName", "accountId"=EXCLUDED."accountId",
+       "openedAt"=EXCLUDED."openedAt", "closedAt"=EXCLUDED."closedAt", "businessDate"=EXCLUDED."businessDate",
+       "cancelReason"=EXCLUDED."cancelReason", "cancelledById"=EXCLUDED."cancelledById",
+       "cancelledAt"=EXCLUDED."cancelledAt", "createdAt"=EXCLUDED."createdAt",
+       "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), r.orderNo, bd(r.branchId), bd(r.shiftId),
       r.waiterBox ?? null, b(r.waiterId),
       r.orderType ?? "DINE_IN", r.status ?? "PAID",
@@ -180,7 +227,11 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "OrderItem"(id,"orderId","itemId",qty,"unitPrice","lineTotal",
        "isCustomMix","customMixComponents","isAddOn","addOnLabel",notes,"createdAt")
        VALUES($1,$2,$3,$4::numeric,$5::numeric,$6::numeric,$7,$8::jsonb,$9,$10,$11,$12)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "orderId"=EXCLUDED."orderId", "itemId"=EXCLUDED."itemId",
+       qty=EXCLUDED.qty, "unitPrice"=EXCLUDED."unitPrice", "lineTotal"=EXCLUDED."lineTotal",
+       "isCustomMix"=EXCLUDED."isCustomMix", "customMixComponents"=EXCLUDED."customMixComponents",
+       "isAddOn"=EXCLUDED."isAddOn", "addOnLabel"=EXCLUDED."addOnLabel", notes=EXCLUDED.notes,
+       "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.orderId), bd(r.itemId),
       r.qty, r.unitPrice, r.lineTotal, r.isCustomMix ?? false,
       r.customMixComponents != null ? JSON.stringify(r.customMixComponents) : null,
@@ -194,7 +245,8 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "Payment"(id,"orderId",method,amount,reference,"paidAt")
        VALUES($1,$2,$3::"PaymentMethod",$4::numeric,$5,$6)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "orderId"=EXCLUDED."orderId", method=EXCLUDED.method,
+       amount=EXCLUDED.amount, reference=EXCLUDED.reference, "paidAt"=EXCLUDED."paidAt"`,
       bd(r.id), bd(r.orderId), r.method,
       r.amount, r.reference ?? null, dd(r.paidAt)
     );
@@ -205,7 +257,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "DiscountApplied"(id,"orderId","discountType",amount,reason,"approvedById","appliedAt")
        VALUES($1,$2,$3,$4::numeric,$5,$6,$7)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "orderId"=EXCLUDED."orderId", "discountType"=EXCLUDED."discountType",
+       amount=EXCLUDED.amount, reason=EXCLUDED.reason, "approvedById"=EXCLUDED."approvedById",
+       "appliedAt"=EXCLUDED."appliedAt"`,
       bd(r.id), bd(r.orderId), r.discountType,
       r.amount, r.reason ?? null, b(r.approvedById), dd(r.appliedAt)
     );
@@ -217,7 +271,10 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "AccountPayment"(id,"accountId",amount,discount,method,reference,
        "paidAt","businessDate",notes,"recordedById","createdAt")
        VALUES($1,$2,$3::numeric,$4::numeric,$5::"PaymentMethod",$6,$7,$8,$9,$10,$11)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "accountId"=EXCLUDED."accountId", amount=EXCLUDED.amount,
+       discount=EXCLUDED.discount, method=EXCLUDED.method, reference=EXCLUDED.reference,
+       "paidAt"=EXCLUDED."paidAt", "businessDate"=EXCLUDED."businessDate", notes=EXCLUDED.notes,
+       "recordedById"=EXCLUDED."recordedById", "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.accountId), r.amount, r.discount ?? 0, r.method,
       r.reference ?? null, dd(r.paidAt), dd(r.businessDate),
       r.notes ?? null, b(r.recordedById), dd(r.createdAt)
@@ -229,7 +286,8 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "AccountPaymentOrderLink"(id,"paymentId","orderId","appliedAmount")
        VALUES($1,$2,$3,$4::numeric)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "paymentId"=EXCLUDED."paymentId", "orderId"=EXCLUDED."orderId",
+       "appliedAmount"=EXCLUDED."appliedAmount"`,
       bd(r.id), bd(r.paymentId), bd(r.orderId), r.appliedAmount
     );
   }
@@ -238,7 +296,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.ledgerAccounts ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "LedgerAccount"(id,"branchId",position,name,"createdAt","updatedAt")
-       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId", position=EXCLUDED.position,
+       name=EXCLUDED.name, "createdAt"=EXCLUDED."createdAt", "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), bd(r.branchId), r.position, r.name,
       dd(r.createdAt), dd(r.updatedAt)
     );
@@ -250,7 +310,13 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "LedgerEntry"(id,"branchId","ledgerAccountId","entryDate","productName",
        quantity,rate,total,"headName","supplierName","cashPaid",description,"attachmentUrl","createdAt","updatedAt")
        VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8::numeric,$9,$10,$11::numeric,$12,$13,$14,$15)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId",
+       "ledgerAccountId"=EXCLUDED."ledgerAccountId", "entryDate"=EXCLUDED."entryDate",
+       "productName"=EXCLUDED."productName", quantity=EXCLUDED.quantity, rate=EXCLUDED.rate,
+       total=EXCLUDED.total, "headName"=EXCLUDED."headName", "supplierName"=EXCLUDED."supplierName",
+       "cashPaid"=EXCLUDED."cashPaid", description=EXCLUDED.description,
+       "attachmentUrl"=EXCLUDED."attachmentUrl", "createdAt"=EXCLUDED."createdAt",
+       "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), bd(r.branchId), bd(r.ledgerAccountId),
       dd(r.entryDate), r.productName,
       r.quantity ?? null, r.rate ?? null, r.total,
@@ -266,7 +332,12 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "Expense"(id,"branchId","categoryId",amount,"paidAt","businessDate",
        "paidById",vendor,notes,"attachmentUrl","productName",quantity,rate,total,"createdAt")
        VALUES($1,$2,$3,$4::numeric,$5,$6,$7,$8,$9,$10,$11,$12::numeric,$13::numeric,$14::numeric,$15)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId", "categoryId"=EXCLUDED."categoryId",
+       amount=EXCLUDED.amount, "paidAt"=EXCLUDED."paidAt", "businessDate"=EXCLUDED."businessDate",
+       "paidById"=EXCLUDED."paidById", vendor=EXCLUDED.vendor, notes=EXCLUDED.notes,
+       "attachmentUrl"=EXCLUDED."attachmentUrl", "productName"=EXCLUDED."productName",
+       quantity=EXCLUDED.quantity, rate=EXCLUDED.rate, total=EXCLUDED.total,
+       "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.branchId), bd(r.categoryId), r.amount,
       dd(r.paidAt), dd(r.businessDate), b(r.paidById),
       r.vendor ?? null, r.notes ?? null, r.attachmentUrl ?? null,
@@ -279,7 +350,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.partnerAccounts ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "PartnerAccount"(id,"branchId",position,name,"createdAt","updatedAt")
-       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId", position=EXCLUDED.position,
+       name=EXCLUDED.name, "createdAt"=EXCLUDED."createdAt", "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), bd(r.branchId), r.position, r.name,
       dd(r.createdAt), dd(r.updatedAt)
     );
@@ -291,7 +364,10 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "PartnerAccountEntry"(id,"branchId","partnerAccountId","entryDate",type,
        amount,note,"createdById","createdAt")
        VALUES($1,$2,$3,$4,$5::"PartnerEntryType",$6::numeric,$7,$8,$9)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId",
+       "partnerAccountId"=EXCLUDED."partnerAccountId", "entryDate"=EXCLUDED."entryDate",
+       type=EXCLUDED.type, amount=EXCLUDED.amount, note=EXCLUDED.note,
+       "createdById"=EXCLUDED."createdById", "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.branchId), bd(r.partnerAccountId), dd(r.entryDate),
       r.type, r.amount, r.note ?? null, bd(r.createdById), dd(r.createdAt)
     );
@@ -301,7 +377,9 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.partnerAccountDayNotes ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "PartnerAccountDayNote"(id,"partnerAccountId","noteDate",note,"updatedAt")
-       VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,$3,$4,$5)
+       ON CONFLICT (id) DO UPDATE SET "partnerAccountId"=EXCLUDED."partnerAccountId",
+       "noteDate"=EXCLUDED."noteDate", note=EXCLUDED.note, "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), bd(r.partnerAccountId), dd(r.noteDate), r.note, dd(r.updatedAt)
     );
   }
@@ -312,7 +390,11 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
       `INSERT INTO "PaymentScheduleEntry"(id,"branchId","entryDate",details,amount,description,
        "isPaid",recurrence,"createdById","createdAt","updatedAt")
        VALUES($1,$2,$3,$4,$5::numeric,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET "branchId"=EXCLUDED."branchId", "entryDate"=EXCLUDED."entryDate",
+       details=EXCLUDED.details, amount=EXCLUDED.amount, description=EXCLUDED.description,
+       "isPaid"=EXCLUDED."isPaid", recurrence=EXCLUDED.recurrence,
+       "createdById"=EXCLUDED."createdById", "createdAt"=EXCLUDED."createdAt",
+       "updatedAt"=EXCLUDED."updatedAt"`,
       bd(r.id), bd(r.branchId), dd(r.entryDate), r.details, r.amount,
       r.description ?? null, r.isPaid ?? false, r.recurrence ?? null,
       bd(r.createdById), dd(r.createdAt), dd(r.updatedAt)
@@ -323,7 +405,10 @@ async function insertAllTables(tx: Prisma.TransactionClient, t: any) {
   for (const r of (t.paymentScheduleInstallments ?? [])) {
     await tx.$executeRawUnsafe(
       `INSERT INTO "PaymentScheduleInstallment"(id,"scheduleEntryId",amount,"paidDate",note,"createdAt")
-       VALUES($1,$2,$3::numeric,$4,$5,$6) ON CONFLICT DO NOTHING`,
+       VALUES($1,$2,$3::numeric,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET "scheduleEntryId"=EXCLUDED."scheduleEntryId",
+       amount=EXCLUDED.amount, "paidDate"=EXCLUDED."paidDate", note=EXCLUDED.note,
+       "createdAt"=EXCLUDED."createdAt"`,
       bd(r.id), bd(r.scheduleEntryId), r.amount, dd(r.paidDate),
       r.note ?? null, dd(r.createdAt)
     );
