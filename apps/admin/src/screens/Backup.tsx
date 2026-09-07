@@ -11,6 +11,11 @@ export function Backup() {
   const [confirmed, setConfirmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [mergeFile, setMergeFile] = useState<File | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeMsg, setMergeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const mergeFileInputRef = useRef<HTMLInputElement>(null);
+
   const WIPE_PHRASE = "WIPE ALL DATA";
   const [wipeDownloaded, setWipeDownloaded] = useState(false);
   const [wipePhrase, setWipePhrase] = useState("");
@@ -90,6 +95,40 @@ export function Backup() {
     }
   }
 
+  async function doMerge() {
+    if (!mergeFile) return;
+    setMergeBusy(true);
+    setMergeMsg(null);
+    try {
+      const text = await mergeFile.text();
+      const json = JSON.parse(text);
+      const fire = (token: string | null) =>
+        fetch("/api/v1/backup/merge", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(json),
+        });
+      let res = await fire(tokenStore.get());
+      // Same silent-refresh-and-retry as the others above.
+      if (res.status === 401 && tokenStore.getRefresh()) {
+        const fresh = await tryRefresh();
+        if (fresh) res = await fire(fresh);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      setMergeMsg({ ok: true, text: data.message ?? "Backup merged — new records added, existing data untouched. Please refresh all open tabs." });
+      setMergeFile(null);
+      if (mergeFileInputRef.current) mergeFileInputRef.current.value = "";
+    } catch (e: any) {
+      setMergeMsg({ ok: false, text: e.message ?? "Merge failed" });
+    } finally {
+      setMergeBusy(false);
+    }
+  }
+
   async function doWipe() {
     if (!wipeDownloaded || wipePhrase !== WIPE_PHRASE) return;
     setWipeBusy(true);
@@ -112,7 +151,7 @@ export function Backup() {
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
-      setWipeMsg({ ok: true, text: data.message ?? "All transactional data wiped." });
+      setWipeMsg({ ok: true, text: data.message ?? "Sale data wiped." });
       setWipePhrase("");
       setWipeDownloaded(false);
     } catch (e: any) {
@@ -128,7 +167,9 @@ export function Backup() {
         <h1 className="text-xl font-bold text-slate-800">Backup &amp; Restore</h1>
         <p className="text-sm text-slate-500 mt-1">
           Download a full JSON backup of all sales, accounts, ledger, and user data.
-          Store it on a USB drive or cloud folder. Restore from any backup to recover after a system failure.
+          Store it on a USB drive or cloud folder. Use <strong>Restore</strong> to set up a fresh machine or fully
+          recover after data loss, or <strong>Merge</strong> to keep adding new exports onto a machine (like your
+          laptop) that's meant to hold everything permanently.
         </p>
       </div>
 
@@ -173,7 +214,7 @@ export function Backup() {
 
       {/* ── How to restore ───────────────────────────────────────────── */}
       <section className="card p-6 space-y-3 bg-slate-50">
-        <h2 className="font-semibold text-slate-700">How to Use Your Backup</h2>
+        <h2 className="font-semibold text-slate-700">Setting Up a Fresh Machine (Restore)</h2>
         <ol className="text-sm text-slate-600 space-y-2 list-decimal list-inside">
           <li>Install the software on the new PC and make sure it is running.</li>
           <li>Log in to the Admin panel with your owner password.</li>
@@ -184,8 +225,10 @@ export function Backup() {
           <li>Close and reopen all browser tabs for the POS and Admin panel.</li>
         </ol>
         <p className="text-xs text-slate-400">
-          The restore replaces <em>all</em> current data with the backup. Only do this on a fresh installation
-          or when recovering from data loss.
+          Restore replaces <em>all</em> current data with the backup. Only do this on a fresh installation
+          or when recovering from data loss. For a machine you keep re-uploading newer exports onto over
+          time (like a laptop meant to hold everything) — use <strong>Merge</strong> below instead, the
+          first time and every time after; Restore would erase what a previous Merge already added.
         </p>
       </section>
 
@@ -260,25 +303,88 @@ export function Backup() {
         </button>
       </section>
 
+      {/* ── Merge ────────────────────────────────────────────────────── */}
+      <section className="card p-6 space-y-4 border-blue-200 bg-blue-50">
+        <h2 className="font-semibold text-blue-800 flex items-center gap-2">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/>
+          </svg>
+          Merge Backup Into This PC
+        </h2>
+        <p className="text-sm text-blue-800">
+          Adds a backup's records onto what's already here — nothing existing is deleted or
+          replaced, only genuinely new records get added. This is the one to use for a machine
+          (like your laptop) that's meant to accumulate <strong>everything</strong> over time: run
+          this every time you bring in a fresh export from the shop PC, even after the shop PC has
+          been erased (via "Erase Sale Data" below) one or more times in between.
+        </p>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Select backup file (.json)
+          </label>
+          <input
+            ref={mergeFileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="block text-sm text-slate-700 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-slate-300 file:text-sm file:bg-white hover:file:bg-slate-50"
+            onChange={(e) => {
+              setMergeFile(e.target.files?.[0] ?? null);
+              setMergeMsg(null);
+            }}
+          />
+          {mergeFile && (
+            <p className="text-xs text-slate-500 mt-1">
+              Selected: <strong>{mergeFile.name}</strong> ({(mergeFile.size / 1024).toFixed(0)} KB)
+            </p>
+          )}
+        </div>
+
+        {mergeMsg && (
+          <div className={`text-sm rounded px-3 py-2 ${mergeMsg.ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+            {mergeMsg.text}
+          </div>
+        )}
+
+        <button
+          className="btn-primary px-5 py-2 text-sm disabled:opacity-40 flex items-center gap-2"
+          disabled={!mergeFile || mergeBusy}
+          onClick={doMerge}
+        >
+          {mergeBusy ? (
+            <>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              Merging… (may take a minute)
+            </>
+          ) : "Merge Backup"}
+        </button>
+      </section>
+
       {/* ── Wipe ─────────────────────────────────────────────────────── */}
       <section className="card p-6 space-y-4 border-red-300 bg-red-50">
         <h2 className="font-semibold text-red-800 flex items-center gap-2">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
           </svg>
-          Erase All Data From This PC
+          Erase Sale Data From This PC
         </h2>
         <p className="text-sm text-red-800">
-          For moving this shop's data off this machine periodically (download a backup, wipe this
-          PC, keep the file elsewhere — restore it here or on another PC later whenever needed).
+          For moving this shop's sales off this machine periodically (download a backup, erase
+          sales here, keep the file on a machine — like your laptop — that you Merge every export
+          onto). Only sale-related records are touched; every other kind of "accounts" data stays
+          right here too.
         </p>
         <div className="text-sm text-red-700 bg-white/60 rounded px-3 py-2 space-y-1">
-          <div><strong>Wiped:</strong> Orders, payments, shifts, Daily Hisaab / Ledger entries, expenses, Self Loan entries, Payment Schedule</div>
-          <div><strong>Kept — this PC stays fully usable right after:</strong> Logins, branches, the menu &amp; prices, credit-account names, Self Loan partner names, Ledger account names</div>
+          <div><strong>Erased:</strong> Orders, order items, payments on those orders, discounts, shifts</div>
+          <div><strong>Kept — everything else stays, this PC remains fully usable right after:</strong> Logins, branches, the menu &amp; prices, Daily Hisaab / Ledger entries, Expenses, Self Loan entries, Payment Schedule, credit-account names and their payments, Self Loan partner names, Ledger account names</div>
         </div>
         <p className="text-sm text-red-800 font-semibold">
           This cannot be undone. Make sure you've downloaded a backup first — if this machine is
-          lost or damaged before you restore that file somewhere, this data is gone for good.
+          lost or damaged before that file is safely Merged somewhere else, this sales data is gone
+          for good.
         </p>
 
         <label className="flex items-start gap-2 cursor-pointer">
@@ -326,7 +432,7 @@ export function Backup() {
               </svg>
               Erasing…
             </>
-          ) : "Erase All Data"}
+          ) : "Erase Sale Data"}
         </button>
       </section>
     </div>
