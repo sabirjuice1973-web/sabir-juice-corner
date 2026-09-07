@@ -112,10 +112,14 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><title>Receipt ${order.orderNo ?? order.localId}</title>
 <style>
-  /* Reverted to the original @page margin (4mm) and zero body padding — the
-     combo of margin:0 + body padding was making Chrome generate a 2nd blank
-     "page" for tall receipts, which the printer then cut as an empty strip. */
-  @page { size: 80mm auto; margin: 4mm; }
+  /* Top/bottom trimmed to 2mm (was 4mm all round) per owner feedback on the
+     Bixolon temp printer leaving too much blank paper above/below the slip.
+     Left/right stay at 4mm — untouched, since that matches the printer
+     driver's own horizontal alignment (fixed separately, see paper-size/
+     "2inch mode" troubleshooting). Kept non-zero, NOT 0 — margin:0 + body
+     padding previously made Chrome spawn a blank 2nd page that the printer
+     cut as an empty strip; a small non-zero margin avoids that failure mode. */
+  @page { size: 80mm auto; margin: 2mm 4mm; }
   /* The popup window paints once before the print dialog takes over (the
      window/renderer needs a moment to spin up) — without this the cashier
      briefly sees the fully rendered receipt sitting there before the dialog
