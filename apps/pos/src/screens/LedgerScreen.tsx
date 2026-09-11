@@ -1477,10 +1477,21 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
   // pick "Save as PDF". Rendering to canvas and writing our own PDF sidesteps
   // print() entirely, so it always ends up as a real, savable/shareable file.
   async function handleDownloadPdf() {
-    if (!printAreaRef.current) return;
+    const el = printAreaRef.current;
+    if (!el) return;
     setDownloadingPdf(true);
     try {
-      const canvas = await html2canvas(printAreaRef.current, { scale: 2, backgroundColor: "#ffffff" });
+      // printAreaRef is a scrollable div (overflow-y-auto, height constrained
+      // by the modal's flex layout) — html2canvas defaults to capturing only
+      // what's currently visible within that scroll area (clientHeight), not
+      // the full report (scrollHeight). A long report (many entries) was
+      // silently getting cut off after whatever fit on screen at the moment
+      // Download was clicked. `height`/`windowHeight: el.scrollHeight` tells
+      // html2canvas to render as if the whole thing were visible at once.
+      const canvas = await html2canvas(el, {
+        scale: 2, backgroundColor: "#ffffff",
+        height: el.scrollHeight, windowHeight: el.scrollHeight,
+      });
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageWidthMm = pdf.internal.pageSize.getWidth();
       const pageHeightMm = pdf.internal.pageSize.getHeight();
