@@ -1480,18 +1480,20 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
     const el = printAreaRef.current;
     if (!el) return;
     setDownloadingPdf(true);
+    // printAreaRef is a scrollable div (overflow-y-auto, height constrained by
+    // the modal's flex layout). html2canvas's height/windowHeight options only
+    // reliably expand PAGE/BODY-level scrolling — they don't stop a nested
+    // element's own overflow:auto from clipping what actually gets painted, so
+    // a long report was still only capturing whatever fit in the box at that
+    // moment. Forcing the element to lay out at its real, full content height
+    // right before the capture (then restoring it after) makes the browser
+    // actually paint everything, which is what html2canvas needs to see.
+    const prevHeight = el.style.height, prevMaxHeight = el.style.maxHeight, prevOverflow = el.style.overflow;
+    el.style.height = "auto";
+    el.style.maxHeight = "none";
+    el.style.overflow = "visible";
     try {
-      // printAreaRef is a scrollable div (overflow-y-auto, height constrained
-      // by the modal's flex layout) — html2canvas defaults to capturing only
-      // what's currently visible within that scroll area (clientHeight), not
-      // the full report (scrollHeight). A long report (many entries) was
-      // silently getting cut off after whatever fit on screen at the moment
-      // Download was clicked. `height`/`windowHeight: el.scrollHeight` tells
-      // html2canvas to render as if the whole thing were visible at once.
-      const canvas = await html2canvas(el, {
-        scale: 2, backgroundColor: "#ffffff",
-        height: el.scrollHeight, windowHeight: el.scrollHeight,
-      });
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageWidthMm = pdf.internal.pageSize.getWidth();
       const pageHeightMm = pdf.internal.pageSize.getHeight();
@@ -1518,6 +1520,9 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
     } catch (e) {
       console.error("PDF generation failed", e);
     } finally {
+      el.style.height = prevHeight;
+      el.style.maxHeight = prevMaxHeight;
+      el.style.overflow = prevOverflow;
       setDownloadingPdf(false);
     }
   }
