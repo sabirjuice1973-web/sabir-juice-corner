@@ -53,6 +53,34 @@ function getPrintWindow(): Window | null {
   return sharedPrintWindow;
 }
 
+// Waits for every <img> in the print window to finish decoding before
+// calling print(). A data URI still has to be decoded off the main thread —
+// it skips the network round-trip, not the decode — and win.print() used to
+// fire the instant document.write() returned, with no guarantee any image
+// had actually finished. That was invisible with just the small shop logo,
+// but the payment QR (denser, heavier bitmap) can still be mid-decode at
+// that instant, printing a blank box where it should be. img.decode() on an
+// already-finished image resolves immediately, so this costs nothing once
+// warmed up; the 300ms cap keeps a stuck decode from ever blocking the
+// actual print.
+function printWhenImagesReady(win: Window, onDone?: () => void) {
+  const imgs = Array.from(win.document.images);
+  const ready = Promise.all(imgs.map((img) => (img.decode ? img.decode().catch(() => {}) : Promise.resolve())));
+  const timeout = new Promise<void>((resolve) => win.setTimeout(resolve, 300));
+  Promise.race([ready, timeout]).then(() => {
+    // Trigger print from the PARENT window — this is still within the user-gesture
+    // activation from the button click, so Edge/Chrome allow it. Calling
+    // window.print() from inside the popup's own <script> has no user gesture and
+    // can be silently blocked on Windows Edge.
+    win.focus();
+    win.print();
+    lastPrintAt = Date.now();
+    if (onDone) {
+      win.addEventListener("afterprint", () => onDone(), { once: true });
+    }
+  });
+}
+
 export function printReceipt(
   order: BoxOrder,
   header: { branchName: string; cashier: string },
@@ -68,16 +96,7 @@ export function printReceipt(
   win.document.open();
   win.document.write(html);
   win.document.close();
-  // Trigger print from the PARENT window — this is still within the user-gesture
-  // activation from the button click, so Edge/Chrome allow it. Calling
-  // window.print() from inside the popup's own <script> has no user gesture and
-  // can be silently blocked on Windows Edge.
-  win.focus();
-  win.print();
-  lastPrintAt = Date.now();
-  if (onDone) {
-    win.addEventListener("afterprint", () => onDone(), { once: true });
-  }
+  printWhenImagesReady(win, onDone);
 }
 
 function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: string }, payment?: { amountReceived: number; cashReturn: number }): string {
