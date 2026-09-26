@@ -1480,28 +1480,63 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
     const el = printAreaRef.current;
     if (!el) return;
     setDownloadingPdf(true);
-    // printAreaRef is a scrollable div (overflow-y-auto, height constrained by
-    // the modal's flex layout). html2canvas's height/windowHeight options only
-    // reliably expand PAGE/BODY-level scrolling — they don't stop a nested
-    // element's own overflow:auto from clipping what actually gets painted, so
-    // a long report was still only capturing whatever fit in the box at that
-    // moment. Forcing the element to lay out at its real, full content height
-    // right before the capture (then restoring it after) makes the browser
-    // actually paint everything, which is what html2canvas needs to see.
-    const prevHeight = el.style.height, prevMaxHeight = el.style.maxHeight, prevOverflow = el.style.overflow;
-    el.style.height = "auto";
-    el.style.maxHeight = "none";
-    el.style.overflow = "visible";
+
+    // The live report sits inside a max-h modal with overflow-y-auto. Tweaking
+    // that node's own height/overflow is not enough — html2canvas still clips
+    // to ancestor overflow (the flex max-h-[92vh] shell), so long reports only
+    // captured ~one viewport. Clone the content into an unconstrained off-screen
+    // host and capture that instead; then slice the tall canvas into A4 pages.
+    const host = document.createElement("div");
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = [
+      "position:fixed",
+      "left:-10000px",
+      "top:0",
+      "width:210mm",
+      "max-width:210mm",
+      "background:#ffffff",
+      "z-index:-1",
+      "pointer-events:none",
+      "overflow:visible",
+    ].join(";");
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.height = "auto";
+    clone.style.maxHeight = "none";
+    clone.style.overflow = "visible";
+    clone.style.width = "100%";
+    clone.classList.remove("flex-1", "min-h-0", "overflow-y-auto");
+    for (const node of clone.querySelectorAll<HTMLElement>("[class*='overflow']")) {
+      node.style.overflow = "visible";
+    }
+    host.appendChild(clone);
+    document.body.appendChild(host);
+
     try {
-      const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+      const fullHeight = Math.max(clone.scrollHeight, clone.offsetHeight);
+      const fullWidth = Math.max(clone.scrollWidth, clone.offsetWidth);
+      // Browsers cap canvas dimensions (~16k px). Long account reports at
+      // scale 2 can hit that and silently truncate — drop scale just enough.
+      const maxCanvasPx = 16384;
+      const scale = fullHeight * 2 > maxCanvasPx
+        ? Math.max(1, maxCanvasPx / fullHeight)
+        : 2;
+      const canvas = await html2canvas(clone, {
+        scale,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: fullWidth,
+        height: fullHeight,
+        windowWidth: fullWidth,
+        windowHeight: fullHeight,
+        scrollX: 0,
+        scrollY: 0,
+      });
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageWidthMm = pdf.internal.pageSize.getWidth();
       const pageHeightMm = pdf.internal.pageSize.getHeight();
       const pxPerMm = canvas.width / pageWidthMm;
       const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
 
-      // Slice the (potentially very tall) full-page canvas into page-height
-      // chunks, one per PDF page, instead of squeezing everything onto one.
       let renderedPx = 0;
       let firstPage = true;
       while (renderedPx < canvas.height) {
@@ -1520,9 +1555,7 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
     } catch (e) {
       console.error("PDF generation failed", e);
     } finally {
-      el.style.height = prevHeight;
-      el.style.maxHeight = prevMaxHeight;
-      el.style.overflow = prevOverflow;
+      host.remove();
       setDownloadingPdf(false);
     }
   }

@@ -1,5 +1,6 @@
 import { displayItemName, type BoxOrder } from "./posState";
 import { LOGO_MONO_DATA_URI } from "./logoMonoDataUri";
+import { PAYMENT_QR_DATA_URI } from "./paymentQrDataUri";
 
 /**
  * Render a receipt for a BoxOrder and open the browser's print dialog.
@@ -344,6 +345,13 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
     margin-top: 1mm;
     font-weight: 700;
   }
+  /* Kept small — a bonus payment option on the slip, not a new section — but
+     not smaller than 20mm: at 203dpi thermal resolution, this QR's module
+     count gets unreliable to scan much below that, and a QR that fails to
+     scan half the time is worse than one that costs a few extra mm. */
+  .qr-box { text-align: center; margin-top: 2.5mm; }
+  .qr-box img { width: 20mm; height: 20mm; display: block; margin: 0 auto; }
+  .qr-box .qr-label { font-size: 7pt; font-weight: 700; color: #000; margin-top: 0.8mm; }
 </style>
 </head><body>
 <div class="receipt">
@@ -418,6 +426,10 @@ function receiptHtml(order: BoxOrder, header: { branchName: string; cashier: str
   <div class="footer">
     Thank you!
     <span class="small">Serving fresh Juices since 1973</span>
+  </div>
+  <div class="qr-box">
+    <img src="${PAYMENT_QR_DATA_URI}" alt="Scan to pay" />
+    <div class="qr-label">Scan to Pay — Bank Alfalah</div>
   </div>
 </div>
   <script>
