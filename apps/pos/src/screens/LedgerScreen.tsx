@@ -342,7 +342,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                 a left accent bar (same pattern used for order rows) instead of a flat fill. */}
             <aside className="w-48 shrink-0 bg-[#171532] text-white flex flex-col overflow-y-auto">
               {loadingAcc ? (
-                <LoadingRing size={44} dark label="Loading…" />
+                <div className="text-xs text-slate-400 p-3">Loading…</div>
               ) : accError ? (
                 <div className="p-3 space-y-2">
                   <div className="text-[10px] text-red-400 leading-snug">{accError}</div>
@@ -438,7 +438,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
               {/* Entry table — pr-3 keeps Edit/Del buttons clear of the right-edge resize handle */}
               <div className="flex-1 min-h-0 overflow-y-auto pr-3">
                 {loadingEntries ? (
-                  <LoadingRing size={72} label="Loading entries…" />
+                  <div className="p-6 text-slate-400 text-sm text-center">Loading…</div>
                 ) : displayEntries.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                     <div className="text-3xl mb-1">📒</div>

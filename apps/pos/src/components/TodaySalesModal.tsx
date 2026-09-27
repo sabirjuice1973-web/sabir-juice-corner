@@ -745,7 +745,7 @@ function OrderRow({ order, expanded, items, onToggle, onPrint, printing }: {
       {expanded && (
         <tr>
           <td colSpan={10} className="bg-slate-50 px-4 py-2">
-            {!items && <div className="flex items-center gap-2 text-xs text-slate-400 py-2"><LoadingRing size={14} showPercent={false} /> Loading items…</div>}
+            {!items && <div className="text-xs text-slate-400 py-2">Loading items…</div>}
             {items && items.length === 0 && <div className="text-xs text-slate-400 py-2">No items.</div>}
             {items && items.length > 0 && (
               <table className="w-full text-xs">
