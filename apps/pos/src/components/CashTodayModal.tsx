@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { getPettyCash, getReserveCash } from "../lib/pettyCash";
+import { LoadingRing } from "./LoadingRing";
 
 const todayIso = () => {
   const d = new Date();
@@ -101,7 +102,7 @@ export function CashTodayModal({ branchId, shiftId, businessDate, onClose }: { b
         </div>
         <div className="p-5 space-y-4">
           {loading ? (
-            <div className="text-slate-400 text-sm text-center py-4">Loading…</div>
+            <LoadingRing size={64} label="Loading…" />
           ) : <>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Opening Cash (Rs)</label>

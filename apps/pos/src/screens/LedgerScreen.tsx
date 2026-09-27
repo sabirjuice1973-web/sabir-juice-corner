@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LedgerAccount, type LedgerEntry } from "../api";
 import { printLedgerEntry, printAccountReportThermal } from "../pos/receipt";
 import { PrinterIcon } from "../components/PrinterIcon";
+import { LoadingRing } from "../components/LoadingRing";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -341,7 +342,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                 a left accent bar (same pattern used for order rows) instead of a flat fill. */}
             <aside className="w-48 shrink-0 bg-[#171532] text-white flex flex-col overflow-y-auto">
               {loadingAcc ? (
-                <div className="text-xs text-slate-400 p-3">Loading…</div>
+                <LoadingRing size={44} dark label="Loading…" />
               ) : accError ? (
                 <div className="p-3 space-y-2">
                   <div className="text-[10px] text-red-400 leading-snug">{accError}</div>
@@ -437,7 +438,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
               {/* Entry table — pr-3 keeps Edit/Del buttons clear of the right-edge resize handle */}
               <div className="flex-1 min-h-0 overflow-y-auto pr-3">
                 {loadingEntries ? (
-                  <div className="p-6 text-slate-400 text-sm text-center">Loading…</div>
+                  <LoadingRing size={72} label="Loading entries…" />
                 ) : displayEntries.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                     <div className="text-3xl mb-1">📒</div>
@@ -1679,9 +1680,13 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
         {/* Report content — captured by html2canvas for the PDF download */}
         <div ref={printAreaRef} className="flex-1 min-h-0 overflow-y-auto bg-white">
           {!data ? (
-            <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
-              Set filters and click "Run Report"
-            </div>
+            loading ? (
+              <LoadingRing size={80} label="Generating report…" />
+            ) : (
+              <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
+                Set filters and click "Run Report"
+              </div>
+            )
           ) : (
             <div className="p-6 space-y-6">
 

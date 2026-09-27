@@ -9,6 +9,7 @@ import { StatsWindow } from "./screens/StatsWindow";
 import { PaymentScheduleWindow } from "./screens/PaymentScheduleWindow";
 import { PartnerAccountsWindow } from "./screens/PartnerAccountsWindow";
 import { wireAutoDrain } from "./offline/syncDrain";
+import { LoadingRing } from "./components/LoadingRing";
 
 /**
  * Detect ?kitchen=1 — the kitchen display window. Bypasses login + shift gate
@@ -136,7 +137,7 @@ function PosApp() {
   }
 
   if (stage.kind === "loading") {
-    return <div className="flex h-full items-center justify-center text-slate-500">Loading…</div>;
+    return <div className="flex h-full items-center justify-center"><LoadingRing size={96} label="Loading…" /></div>;
   }
   if (stage.kind === "login") {
     return <Login onSuccess={onLoggedIn} />;

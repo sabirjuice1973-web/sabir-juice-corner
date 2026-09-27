@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { displayItemName } from "./posState";
+import { LoadingRing } from "../components/LoadingRing";
 
 type AccountSummary = {
   id: string;
@@ -586,7 +587,7 @@ ${printScript}
               {/* Orders table */}
               <div className="flex-1 overflow-auto">
                 {loadingOrders ? (
-                  <div className="text-center text-slate-400 text-sm py-10">Loading…</div>
+                  <LoadingRing size={72} label="Loading orders…" />
                 ) : (
                   <table className="w-full text-sm border-collapse">
                     <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">

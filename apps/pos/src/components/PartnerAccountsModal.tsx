@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type PartnerAccount, type PartnerAccountEntry } from "../api";
+import { LoadingRing } from "./LoadingRing";
 
 /**
  * Partner Accounts — owners' personal cash-in/cash-out ledger (replaces the
@@ -520,7 +521,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                 </div>
               </div>
 
-              {loading && <div className="text-slate-400 text-sm text-center py-8">Loading…</div>}
+              {loading && <LoadingRing size={72} label="Loading…" />}
 
               {!loading && !showAllDates && todaysRows.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">

@@ -511,7 +511,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                 </div>
               </div>
 
-              {loading && !orders && <LoadingRing size={40} label="Loading orders…" />}
+              {loading && !orders && <LoadingRing size={80} label="Loading orders…" />}
               {orders && visibleOrders.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
                   {isToday
@@ -573,7 +573,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
 
             return (
               <div>
-                {loading && !orders && <LoadingRing size={40} label="Loading…" />}
+                {loading && !orders && <LoadingRing size={80} label="Loading…" />}
                 {orders && activeBoxes.length === 0 && (
                   <div className="text-slate-400 text-sm text-center py-12">No paid orders yet.</div>
                 )}
@@ -623,7 +623,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                   Showing {orderTypeFilter === "CASH" ? "cash" : "credit"} orders only
                 </div>
               )}
-              {loading && !items && <LoadingRing size={40} label="Loading items…" />}
+              {loading && !items && <LoadingRing size={80} label="Loading items…" />}
               {items && items.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
                   {isToday

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { api, type PaymentScheduleEntry, type PaymentScheduleInstallment } from "../api";
 import { type SavedSchedule, loadSavedSchedules, writeSavedSchedules } from "../lib/paymentSchedules";
+import { LoadingRing } from "./LoadingRing";
 
 /**
  * Payment Schedule — owner's cash-flow planner (replaces a manual Excel
@@ -488,7 +489,7 @@ export function PaymentScheduleModal({ branchId, onClose, standalone = false }: 
             </div>
           </div>
 
-          {loading && <div className="text-slate-400 text-sm text-center py-8">Loading…</div>}
+          {loading && <LoadingRing size={72} label="Loading…" />}
 
           {!loading && rows.length === 0 && (
             <div className="text-slate-400 text-sm text-center py-12">No scheduled entries in this range yet.</div>

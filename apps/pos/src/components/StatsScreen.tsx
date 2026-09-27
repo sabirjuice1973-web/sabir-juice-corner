@@ -4,6 +4,7 @@ import type { TodayOrder, PartnerAccount, LedgerEntry } from "../api";
 import { BOX_LABELS } from "../pos/posState";
 import { printDebtSummary, printStatsSummary } from "../pos/receipt";
 import { PrinterIcon } from "./PrinterIcon";
+import { LoadingRing } from "./LoadingRing";
 
 type ItemRow = {
   itemId: string; itemCode: number | null; name: string; size: string;
@@ -497,7 +498,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
         <div className="p-5 bg-slate-50 rounded-b-2xl space-y-5">
 
           {loading && (
-            <div className="text-center text-slate-400 py-16 text-sm">Loading statistics…</div>
+            <LoadingRing size={96} label="Loading statistics…" />
           )}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
@@ -820,7 +821,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 <SH>Credit Exposure <Dim>customers owe us — always live</Dim></SH>
                 <div className="card p-4">
                   {accounts === null
-                    ? <div className="text-slate-400 text-sm">Loading…</div>
+                    ? <LoadingRing size={56} label="Loading…" />
                     : (
                         <div className="space-y-3">
                           <div className="text-center py-2">
@@ -853,7 +854,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 <SH>Home / Shop Expense &amp; Salaries <Dim>Daily Hisaab + Salary accounts · % of Total Cash this period</Dim></SH>
                 <div className="card p-4">
                   {dailyHisaabEntries === null || salaryAccountEntries === null ? (
-                    <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
+                    <LoadingRing size={56} label="Loading…" />
                   ) : homeExpenseTotal === 0 && shopExpenseTotal === 0 && salariesTotal === 0 ? (
                     <Empty>No entries for this period</Empty>
                   ) : (
@@ -882,7 +883,7 @@ export function StatsScreen({ shiftId, branchId, businessDate, onClose, standalo
                 <SH>Expense by Account <Dim>cash paid per account · selected period</Dim></SH>
                 <div className="card p-4">
                   {periodExpGroups === null ? (
-                    <div className="text-slate-400 text-sm text-center py-6">Loading…</div>
+                    <LoadingRing size={56} label="Loading…" />
                   ) : expenseByAccount.length === 0 ? (
                     <Empty>No expense entries for this period</Empty>
                   ) : (
@@ -1176,7 +1177,7 @@ function FruitPurchasesModal({ branchId, from, to, totalCashCollected, onClose }
 
         <div className="overflow-y-auto flex-1 min-h-0 px-6 py-4">
           {loading ? (
-            <div className="text-slate-400 text-base text-center py-10">Loading…</div>
+            <LoadingRing size={72} label="Loading…" />
           ) : error ? (
             <div className="text-red-600 text-base text-center py-10">{error}</div>
           ) : ranked.length === 0 ? (
