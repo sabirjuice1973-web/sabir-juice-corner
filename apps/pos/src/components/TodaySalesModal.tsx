@@ -269,26 +269,35 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="card w-full max-w-5xl max-h-[90vh] p-0 flex flex-col">
-        {/* Header */}
-        <div className="px-5 py-3 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold">
-              {isToday
-                ? "Today's Sales"
-                : fromDate === toDate || !toDate
-                ? `Sales — ${fromDate}`
-                : `Sales — ${fromDate} to ${toDate}`}
-            </h2>
-            <div className="text-xs text-slate-500 mt-0.5">Shift #{shiftId}</div>
+        {/* Header — bold brand-red gradient (this is the shop's headline revenue
+            window, so it gets the brand's own "straw" red rather than a borrowed hue). */}
+        <div className="px-5 py-3.5 flex items-center justify-between gap-4 flex-wrap text-white"
+          style={{ background: "linear-gradient(135deg, #7f1d1d 0%, #b91c1c 55%, #dc2626 100%)" }}>
+          <div className="min-w-0 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 3v18h18" /><path d="M18 17V9M13 17V5M8 17v-4" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-wide">
+                {isToday
+                  ? "Today's Sales"
+                  : fromDate === toDate || !toDate
+                  ? `Sales — ${fromDate}`
+                  : `Sales — ${fromDate} to ${toDate}`}
+              </h2>
+              <div className="text-xs text-red-100 mt-0.5">Shift #{shiftId}</div>
+            </div>
           </div>
           {/* Date range navigator */}
           <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
             <button
               onClick={() => { setFromDate(null); setToDate(null); setOrders(null); setItems(null); setOrderItemsCache({}); }}
-              className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${isToday ? "bg-accent-600 text-white border-accent-600" : "bg-white text-slate-600 border-slate-300 hover:border-accent-400"}`}
+              className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${isToday ? "bg-white text-red-700 border-white" : "bg-white/10 text-white border-white/30 hover:bg-white/20"}`}
             >Today</button>
             <div className="flex items-center gap-1">
-              <label className="text-xs text-slate-500">From</label>
+              <label className="text-xs text-red-100">From</label>
               <input
                 type="date" max={todayStr}
                 value={fromDate ?? todayStr}
@@ -302,7 +311,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
               />
             </div>
             <div className="flex items-center gap-1">
-              <label className="text-xs text-slate-500">To</label>
+              <label className="text-xs text-red-100">To</label>
               <input
                 type="date" max={todayStr}
                 value={toDate ?? todayStr}
@@ -316,25 +325,25 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
               />
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none flex-shrink-0">×</button>
+          <button onClick={onClose} className="text-red-100 hover:text-white hover:bg-white/10 rounded-lg w-8 h-8 flex items-center justify-center text-2xl leading-none flex-shrink-0">×</button>
         </div>
 
         {/* Tab bar */}
         <div className="px-5 pt-3 border-b flex items-center gap-1">
           <button
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "orders" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === "orders" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
             onClick={() => setTab("orders")}
           >
             Orders {orders ? <span className="ml-1 text-xs text-slate-400">({visibleOrders.length})</span> : null}
           </button>
           <button
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "items" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === "items" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
             onClick={() => setTab("items")}
           >
             Items sold {items ? <span className="ml-1 text-xs text-slate-400">({items.length})</span> : null}
           </button>
           <button
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "boxes" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === "boxes" ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
             onClick={() => setTab("boxes")}
           >
             Boxes
