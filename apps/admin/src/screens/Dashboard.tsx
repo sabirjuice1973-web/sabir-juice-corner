@@ -16,9 +16,12 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Screen) => void }) {
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       <div className="grid grid-cols-3 gap-4">
-        <Stat label="Branches" value={counts?.branches} />
-        <Stat label="Menu items" value={counts?.items} />
-        <Stat label="Organizations" value={counts?.organizations} />
+        <Stat label="Branches" value={counts?.branches} color="blue"
+          icon={<><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 9h1M9 13h1M14 9h1M14 13h1" /></>} />
+        <Stat label="Menu items" value={counts?.items} color="amber"
+          icon={<><path d="M3 3h18v4H3z" /><path d="M5 7v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7" /><line x1="10" y1="12" x2="14" y2="12" /></>} />
+        <Stat label="Organizations" value={counts?.organizations} color="emerald"
+          icon={<><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>} />
       </div>
 
       {alertSummary && (alertSummary.CRITICAL + alertSummary.HIGH + alertSummary.MEDIUM + alertSummary.LOW) > 0 && (
@@ -62,11 +65,23 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | undefined }) {
+const STAT_COLORS = {
+  blue:    { bg: "bg-blue-50", text: "text-blue-600" },
+  amber:   { bg: "bg-amber-50", text: "text-amber-600" },
+  emerald: { bg: "bg-emerald-50", text: "text-emerald-600" },
+};
+
+function Stat({ label, value, icon, color }: { label: string; value: number | undefined; icon: React.ReactNode; color: keyof typeof STAT_COLORS }) {
+  const c = STAT_COLORS[color];
   return (
-    <div className="card p-4">
-      <div className="text-xs text-slate-500 uppercase tracking-wide">{label}</div>
-      <div className="text-3xl font-bold mt-1">{value ?? "—"}</div>
+    <div className="card p-4 flex items-center gap-3.5">
+      <div className={`w-11 h-11 rounded-xl ${c.bg} ${c.text} flex items-center justify-center shrink-0`}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">{label}</div>
+        <div className="text-2xl font-bold mt-0.5 text-slate-900">{value ?? "—"}</div>
+      </div>
     </div>
   );
 }
@@ -74,11 +89,16 @@ function Stat({ label, value }: { label: string; value: number | undefined }) {
 function Card({ title, actions, onNavigate }: { title: string; actions: { label: string; to: Screen }[]; onNavigate: (s: Screen) => void }) {
   return (
     <div className="card p-4">
-      <div className="font-medium mb-3">{title}</div>
-      <div className="space-y-1">
+      <div className="font-semibold mb-3 text-slate-800">{title}</div>
+      <div className="space-y-0.5">
         {actions.map((a) => (
-          <button key={a.to} onClick={() => onNavigate(a.to)} className="block w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 text-sm">
-            → {a.label}
+          <button key={a.to} onClick={() => onNavigate(a.to)}
+            className="group flex items-center justify-between w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-sm text-slate-700 transition-colors">
+            {a.label}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className="text-slate-300 group-hover:text-accent-600 group-hover:translate-x-0.5 transition-all shrink-0">
+              <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+            </svg>
           </button>
         ))}
       </div>

@@ -69,12 +69,12 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
   const qtyText = (n: number) => Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/\.?0+$/, "");
   const fontSize = largeFont ? "text-base" : "text-sm";
   const badgeClass = largeFont
-    ? "inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold leading-none px-1 text-[15px] h-6 min-w-[24px]"
-    : "inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold leading-none px-1 text-[14px] h-[22px] min-w-[22px]";
+    ? "inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold leading-none px-1 text-[15px] h-6 min-w-[24px] shadow-sm shadow-red-900/30"
+    : "inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold leading-none px-1 text-[14px] h-[22px] min-w-[22px] shadow-sm shadow-red-900/30";
 
   return (
-    <aside className={`flex flex-col bg-white border-r-2 border-slate-300 ${className}`}>
-      <div className="px-3 py-1.5" style={{ background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)", borderBottom: "2px solid #26d0ce" }}>
+    <aside className={`flex flex-col bg-white ${className}`}>
+      <div className="px-3 py-2" style={{ background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)", borderBottom: "2px solid #26d0ce" }}>
         <div className="font-bold tracking-wide" style={{ color: "#ffffff" }}>All Orders</div>
         <div className="text-[10px] uppercase tracking-wider" style={{ color: "#a5f3fc" }}>Undelivered totals</div>
       </div>
@@ -85,7 +85,7 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
         ) : rows.map((r) => (
           <li
             key={r.displayName}
-            className={`px-3 py-1.5 flex items-center gap-2 ${fontSize}`}
+            className={`px-3 py-1.5 flex items-center gap-2 ${fontSize} hover:bg-slate-50 transition-colors`}
             title={`${qtyText(r.qty)} × ${r.displayName}`}
           >
             <span className={badgeClass}>{qtyText(r.qty)}</span>
@@ -94,13 +94,13 @@ export function AllOrdersPanel({ boxes, className = "", largeFont = false }: Pro
         ))}
       </ul>
 
-      <div className="border-t-2 border-slate-300 bg-slate-50 px-3 py-2 text-xs space-y-1">
+      <div className="border-t border-slate-200 bg-slate-50 px-3 py-2.5 text-xs space-y-1">
         <div className="flex justify-between">
-          <span className="text-slate-600">Glasses to make</span>
+          <span className="text-slate-500">Glasses to make</span>
           <span className="font-mono font-bold text-slate-900">{qtyText(totalGlasses)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-600">Pending orders</span>
+          <span className="text-slate-500">Pending orders</span>
           <span className="font-mono font-bold text-slate-900">{totalOrders}</span>
         </div>
       </div>

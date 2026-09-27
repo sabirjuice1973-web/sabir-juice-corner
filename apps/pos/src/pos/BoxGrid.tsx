@@ -83,7 +83,7 @@ export function BoxGrid({
   })();
 
   return (
-    <div ref={workspaceRef} className="absolute inset-0 bg-slate-300 overflow-hidden select-none">
+    <div ref={workspaceRef} className="absolute inset-0 bg-slate-200 overflow-hidden select-none">
       {/* AllOrders panel (window index 0) */}
       <FloatingPanel
         win={layout.windows[0]}
@@ -243,10 +243,21 @@ function FloatingPanel({
         height: `${win.h * 100}%`,
         zIndex: win.z,
       }}
-      className="flex flex-col overflow-hidden rounded-lg shadow-lg shadow-black/25"
+      className="flex flex-col"
       onPointerDown={handlePanelPointerDown}
     >
-      {children}
+      {/* Inset padding here (not on this outer div) is deliberate: this outer
+          box's exact position/size IS the stored, draggable/resizable slot —
+          shrinking it would silently shift everyone's saved custom layouts.
+          The padding just pulls the VISIBLE card inward a few px, so adjacent
+          boxes read as separate cards with a real gap instead of touching
+          edge-to-edge, while the drag/resize hit-targets below stay pinned to
+          the slot's true edges, unmoved. */}
+      <div className="flex-1 min-h-0 p-1">
+        <div className="h-full flex flex-col overflow-hidden rounded-lg shadow-lg shadow-black/25">
+          {children}
+        </div>
+      </div>
 
       {/* Edge resize handles (4px wide/tall) */}
       {resizeHandle("n",  "inset-x-3 top-0 h-1",    "n-resize")}
@@ -438,7 +449,7 @@ function OrderRow({
     return (
       <span key={i}>
         {i > 0 && " "}
-        <span className="inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold text-[13px] leading-none min-w-[16px] h-4 px-1 mr-0.5">{qty}</span>{bare}{suffix && <b>{suffix}</b>}
+        <span className="inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold text-[13px] leading-none min-w-[16px] h-4 px-1 mr-0.5 shadow-sm shadow-red-900/30">{qty}</span>{bare}{suffix && <b>{suffix}</b>}
       </span>
     );
   });
@@ -500,15 +511,19 @@ function OrderRow({
     );
   }
 
+  // Status is now a left accent bar + soft tint instead of a full boxed
+  // border on every side — same status colors cashiers already recognize
+  // (red=selected, yellow=delivered, red=overdue, green=merge-selected),
+  // just read as a cleaner list rather than a spreadsheet grid.
   return (
     <li
-      className={`px-2 py-0.5 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-x border-b ${first ? "border-t" : ""} ${
-        selectedForMerge ? "border-green-500 bg-green-50" :
-        selected && isDelivered ? "border-red-500 bg-yellow-200/70" :
-        selected ? "border-red-500 bg-white" :
-        isDelivered ? "border-blue-900 bg-yellow-200/70 hover:bg-yellow-200" :
-        isOverdue ? "border-red-400 bg-red-100 hover:bg-red-200" :
-        "border-blue-900 bg-white hover:bg-slate-50"
+      className={`px-2.5 py-1 flex items-center gap-2 cursor-pointer transition-colors text-sm select-none border-l-4 border-b border-slate-100 ${
+        selectedForMerge ? "border-l-green-500 bg-green-50" :
+        selected && isDelivered ? "border-l-red-500 bg-yellow-100/70" :
+        selected ? "border-l-red-500 bg-red-50/40" :
+        isDelivered ? "border-l-slate-300 bg-yellow-100/70 hover:bg-yellow-100" :
+        isOverdue ? "border-l-red-400 bg-red-50 hover:bg-red-100/70" :
+        "border-l-transparent bg-white hover:bg-slate-50"
       }`}
       onClick={handleClick}
       title={mergeMode ? "Click to select/deselect for merge" : "Click: select (red border) + mark delivered (yellow) · Double-click: details · Shift+C: edit selected"}
@@ -586,7 +601,7 @@ function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave, onEdit }: { ela
         type="button"
         title="Edit this order (same as Shift+C) — always works, doesn't depend on the keyboard shortcut"
         onClick={stop(onEdit)}
-        className="p-1 rounded hover:bg-amber-100 hover:text-amber-700 cursor-pointer"
+        className="p-1 rounded hover:bg-amber-100 hover:text-amber-700 cursor-pointer transition-colors"
         aria-label="Edit"
       >
         <EditIcon />
@@ -595,7 +610,7 @@ function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave, onEdit }: { ela
         type="button"
         title="Print bill (reprint, does not save)"
         onClick={stop(onPrint)}
-        className="p-1 rounded hover:bg-slate-200 hover:text-slate-800 cursor-pointer"
+        className="p-1 rounded hover:bg-slate-200 hover:text-slate-800 cursor-pointer transition-colors"
         aria-label="Print"
       >
         <PrinterIcon />
@@ -604,7 +619,7 @@ function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave, onEdit }: { ela
         type="button"
         title="Save (mark paid as Cash, remove from box)"
         onClick={stop(onSave)}
-        className="p-1 rounded hover:bg-leaf-500/15 hover:text-leaf-600 cursor-pointer"
+        className="p-1 rounded hover:bg-leaf-500/15 hover:text-leaf-600 cursor-pointer transition-colors"
         aria-label="Save"
       >
         <SaveIcon />
@@ -613,7 +628,7 @@ function RowIcons({ elapsedMin, onPrint, onSave, onPrintAndSave, onEdit }: { ela
         type="button"
         title="Print + Save"
         onClick={stop(onPrintAndSave)}
-        className="p-1 rounded hover:bg-accent-100 hover:text-accent-700 cursor-pointer"
+        className="p-1 rounded hover:bg-accent-100 hover:text-accent-700 cursor-pointer transition-colors"
         aria-label="Print and save"
       >
         <PrintSaveIcon />

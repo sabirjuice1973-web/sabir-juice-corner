@@ -41,27 +41,30 @@ export function Layout({
     groups.get(g)!.push(item);
   }
 
+  // Initials for the footer avatar — "Sabir Owner" -> "SO", single name -> first two letters.
+  const initials = user.fullName.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
   return (
-    <div className="h-full flex">
-      <aside className="w-60 border-r border-slate-200 bg-white flex flex-col">
-        <div className="px-4 py-4 border-b border-slate-200 flex items-center gap-3 bg-gradient-to-r from-sjc-100 to-white">
+    <div className="h-full flex bg-slate-100">
+      <aside className="w-60 border-r border-slate-200 bg-white flex flex-col shadow-[1px_0_0_0_rgba(0,0,0,0.02),2px_0_12px_rgba(15,23,42,0.03)]">
+        <div className="px-4 py-4 border-b border-slate-200 flex items-center gap-3 bg-gradient-to-br from-sjc-100 via-sjc-50 to-white">
           <BrandLogo size={40} withWordmark={false} />
           <div>
             <div className="font-display font-bold text-slate-800 leading-tight">Sabir Juice Corner</div>
-            <div className="text-[10px] text-accent-700 uppercase tracking-widest">Est. 1973 · Admin</div>
+            <div className="text-[10px] text-accent-700 uppercase tracking-widest font-semibold">Est. 1973 · Admin</div>
           </div>
         </div>
-        <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
           {[...groups.entries()].map(([group, items]) => (
             <div key={group ?? "_top"}>
-              {group && <div className="text-[10px] font-semibold uppercase text-slate-400 tracking-wider px-3 mb-1">{group}</div>}
+              {group && <div className="text-[10px] font-bold uppercase text-slate-400 tracking-widest px-3 mb-1.5">{group}</div>}
               <div className="space-y-0.5">
                 {items.map((it) => (
                   <a
                     key={it.code}
                     href="#"
                     onClick={(e) => { e.preventDefault(); onNavigate(it.code); }}
-                    className={`nav-link ${screen === it.code ? "nav-link-active" : ""}`}
+                    className={`nav-link border-l-2 ${screen === it.code ? "nav-link-active border-accent-600" : "border-transparent"}`}
                   >
                     {it.label}
                   </a>
@@ -70,14 +73,24 @@ export function Layout({
             </div>
           ))}
         </nav>
-        <div className="border-t border-slate-200 px-4 py-3 text-sm">
-          <div className="font-medium">{user.fullName}</div>
-          <div className="text-xs text-slate-500 mb-2">{user.roles.map((r) => r.code).join(", ")}</div>
-          <button onClick={onLogout} className="text-xs text-slate-500 hover:text-slate-800">Sign out</button>
+        <div className="border-t border-slate-200 px-4 py-3 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-accent-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm shadow-accent-900/30">
+            {initials || "?"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-sm text-slate-800 truncate">{user.fullName}</div>
+            <div className="text-[11px] text-slate-500 truncate">{user.roles.map((r) => r.code).join(", ")}</div>
+          </div>
+          <button onClick={onLogout} title="Sign out"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto bg-slate-50">
+      <main className="flex-1 overflow-auto">
         <div className="max-w-6xl mx-auto p-6">{children}</div>
       </main>
     </div>
