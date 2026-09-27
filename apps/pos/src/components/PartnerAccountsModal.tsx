@@ -82,7 +82,7 @@ function EntriesTable({ rows, onEdit, onDelete }: {
             <td className="px-3 py-1 pl-5 border-l border-slate-200 text-xs text-slate-500 max-w-[220px] truncate" title={r.note ?? ""}>{r.note}</td>
             <td className="px-3 py-1 text-center">
               <div className="flex items-center justify-center gap-1">
-                <button title="Edit" onClick={() => onEdit(r)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700">Edit</button>
+                <button title="Edit" onClick={() => onEdit(r)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-700">Edit</button>
                 <button title="Delete" onClick={() => onDelete(r.id)} className="text-xs px-1.5 py-1 rounded bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700">Del</button>
               </div>
             </td>
@@ -356,23 +356,32 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
   return (
     <div className={`fixed inset-0 flex items-center justify-center z-50 ${standalone ? "bg-white p-0" : "bg-black/40 p-4"}`}>
       <div className={`card p-0 flex flex-col ${standalone ? "w-full h-full max-w-none max-h-none rounded-none border-0" : "w-full max-w-4xl max-h-[90vh]"}`}>
-        {/* Header */}
-        <div className="px-5 py-3 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-xl font-bold">Self Loan</h2>
-            <div className="text-xs text-slate-500 mt-0.5">Personal cash in/out between you and the shop</div>
+        {/* Header — warm amber gradient (this window is literally "your own pocket's
+            money" — distinct family from Hisaab Kitaab's indigo and Schedule's violet). */}
+        <div className="px-5 py-3.5 flex items-center justify-between gap-4 flex-wrap text-white"
+          style={{ background: "linear-gradient(135deg, #78350f 0%, #b45309 55%, #d97706 100%)" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-wide">Self Loan</h2>
+              <div className="text-xs text-amber-100 mt-0.5">Personal cash in/out between you and the shop</div>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none flex-shrink-0">×</button>
+          <button onClick={onClose} className="text-amber-100 hover:text-white hover:bg-white/10 rounded-lg w-8 h-8 flex items-center justify-center text-2xl leading-none flex-shrink-0">×</button>
         </div>
 
         {/* Tabs — one per partner, plus "+" for anyone beyond the default two */}
         {accounts && (
-          <div className="px-5 pt-3 border-b flex items-center gap-1 flex-wrap">
+          <div className="px-5 pt-3 border-b bg-amber-50/50 flex items-center gap-1 flex-wrap">
             {accounts.map((a) => (
               <button
                 key={a.id}
                 onClick={() => setSelectedId(a.id)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${selectedId === a.id ? "border-accent-600 text-accent-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${selectedId === a.id ? "border-amber-600 text-amber-800" : "border-transparent text-slate-500 hover:text-slate-800"}`}
               >
                 {a.name}
                 <span className={`ml-1.5 text-xs font-mono ${Number(a.balance) > 0 ? "text-emerald-600" : Number(a.balance) < 0 ? "text-red-600" : "text-slate-400"}`}>
@@ -402,7 +411,7 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
               <button
                 onClick={() => setAddingPartner(true)}
                 title="Add someone else — a friend you've lent shop cash to, or borrowed from"
-                className="px-3 py-2 mb-1 text-sm font-bold text-slate-400 hover:text-accent-600 hover:bg-slate-50 rounded-lg leading-none"
+                className="px-3 py-2 mb-1 text-sm font-bold text-slate-400 hover:text-amber-600 hover:bg-white rounded-lg leading-none"
               >+</button>
             )}
           </div>
@@ -451,8 +460,8 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
               </div>
 
               {/* Fast entry row */}
-              <div className={`border-2 rounded-lg px-3 py-2 mb-4 bg-white ${form.id ? "border-blue-400" : "border-emerald-400"}`}>
-                {form.id && <div className="text-[10px] text-blue-600 font-semibold mb-1.5">✎ Editing entry</div>}
+              <div className={`border-2 rounded-lg px-3 py-2 mb-4 bg-white ${form.id ? "border-amber-400" : "border-emerald-400"}`}>
+                {form.id && <div className="text-[10px] text-amber-600 font-semibold mb-1.5">✎ Editing entry</div>}
                 <div className="flex gap-2 items-end flex-wrap">
                   <div className="shrink-0">
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Date</label>
@@ -503,10 +512,10 @@ export function PartnerAccountsModal({ branchId, businessDate, onClose, standalo
                 </div>
                 <div className="flex rounded-lg overflow-hidden border border-slate-300 text-xs font-semibold shrink-0">
                   <button type="button" onClick={() => setShowAllDates(false)}
-                    className={`px-3 py-1 ${!showAllDates ? "bg-accent-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                    className={`px-3 py-1 ${!showAllDates ? "bg-amber-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
                   >Today</button>
                   <button type="button" onClick={() => setShowAllDates(true)}
-                    className={`px-3 py-1 ${showAllDates ? "bg-accent-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                    className={`px-3 py-1 ${showAllDates ? "bg-amber-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
                   >All dates</button>
                 </div>
               </div>

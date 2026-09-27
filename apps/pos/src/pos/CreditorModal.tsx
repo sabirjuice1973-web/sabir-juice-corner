@@ -477,13 +477,22 @@ ${printScript}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl flex flex-col" style={{ height: "90vh" }}>
 
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-sjc-100 to-white rounded-t-xl">
-          <div>
-            <div className="font-bold text-lg">Creditor Accounts</div>
-            <div className="text-xs text-slate-500">View & settle credit account balances</div>
+        {/* Header — deep teal gradient (distinct from the other windows' pale sjc-yellow
+            wash: Hisaab=indigo, Self Loan=amber, Schedule=violet, Accounts=teal). */}
+        <div className="px-5 py-3.5 flex items-center justify-between rounded-t-xl text-white"
+          style={{ background: "linear-gradient(135deg, #042f2e 0%, #0f766e 55%, #14b8a6 100%)" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="6" width="20" height="12" rx="2" /><path d="M2 10h20M6 15h4" />
+              </svg>
+            </div>
+            <div>
+              <div className="font-bold text-lg tracking-wide">Creditor Accounts</div>
+              <div className="text-xs text-teal-100">View & settle credit account balances</div>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none w-8 h-8 flex items-center justify-center">×</button>
+          <button onClick={onClose} className="text-teal-100 hover:text-white hover:bg-white/10 rounded-lg text-xl leading-none w-8 h-8 flex items-center justify-center">×</button>
         </div>
 
         <div className="flex-1 flex min-h-0">
@@ -691,8 +700,8 @@ ${printScript}
 
                 {/* Add Payment inline panel — for payments not linked to a specific order */}
                 {showAddPayment && (
-                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex-wrap">
-                    <span className="text-xs font-semibold text-blue-700 shrink-0">Record Payment</span>
+                  <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex-wrap">
+                    <span className="text-xs font-semibold text-teal-700 shrink-0">Record Payment</span>
                     <label className="text-xs text-slate-500 shrink-0">Cash:</label>
                     <input
                       type="number" min="0" placeholder="Amount (PKR)"
@@ -776,7 +785,7 @@ ${printScript}
                   <div className="ml-auto flex items-center gap-2 flex-wrap">
                     <button type="button"
                       onClick={() => { setShowAddPayment((v) => !v); setAddPaymentAmount(""); setAddPaymentNote(""); }}
-                      className={`btn-secondary text-xs px-3 py-1.5 ${showAddPayment ? "bg-blue-100 border-blue-300 text-blue-700" : ""}`}>
+                      className={`btn-secondary text-xs px-3 py-1.5 ${showAddPayment ? "bg-teal-100 border-teal-300 text-teal-700" : ""}`}>
                       + Add Payment
                     </button>
                     <button type="button"

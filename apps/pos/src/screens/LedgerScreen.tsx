@@ -276,9 +276,13 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
       )}
 
       <div style={containerStyle} className={`flex flex-col bg-white overflow-hidden select-none ${standalone ? "" : "shadow-2xl border border-slate-400 rounded-t-lg"}`}>
-        {/* Title bar — draggable (unless standalone: the real OS window handles move/resize/minimize) */}
+        {/* Title bar — draggable (unless standalone: the real OS window handles move/resize/minimize).
+            Deep indigo gradient — distinct hue from the other POS windows (Stats=green,
+            Self Loan=amber, Schedule=violet) so which window you're in is obvious at a glance,
+            same structural chrome (icon badge + bold title) as all the others. */}
         <div
-          className={`flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-blue-800 to-blue-600 text-white shrink-0 ${standalone ? "" : "cursor-move"}`}
+          className={`flex items-center justify-between px-3 py-2 text-white shrink-0 ${standalone ? "" : "cursor-move"}`}
+          style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #2e2a7a 55%, #4338ca 100%)", borderBottom: "2px solid #818cf8" }}
           onPointerDown={(e) => {
             if (standalone) return;
             if ((e.target as HTMLElement).closest("button")) return;
@@ -286,18 +290,20 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
           }}
           onDoubleClick={standalone ? undefined : toggleMaximize}
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-            </svg>
-            <span className="font-semibold text-sm truncate">Accounts / Hisaab Kitaab</span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+            </div>
+            <span className="font-bold text-sm truncate tracking-wide">Accounts / Hisaab Kitaab</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {!win.minimized && (
               <>
                 {canViewReports && (
                   <button type="button" onClick={() => setShowReport(true)}
-                    className="px-2.5 py-0.5 rounded bg-blue-400 hover:bg-blue-300 text-white text-xs font-semibold">
+                    className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-semibold border border-white/20 transition-colors">
                     Report
                   </button>
                 )}
@@ -331,8 +337,9 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
         {/* Body — hidden when minimized */}
         {!win.minimized && (
           <div className="flex flex-1 min-h-0">
-            {/* Sidebar */}
-            <aside className="w-48 shrink-0 bg-slate-800 text-white flex flex-col overflow-y-auto">
+            {/* Sidebar — deep indigo-black to match the title bar family, active item gets
+                a left accent bar (same pattern used for order rows) instead of a flat fill. */}
+            <aside className="w-48 shrink-0 bg-[#171532] text-white flex flex-col overflow-y-auto">
               {loadingAcc ? (
                 <div className="text-xs text-slate-400 p-3">Loading…</div>
               ) : accError ? (
@@ -351,7 +358,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                         onChange={(e) => setRenameValue(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") void saveRename(); if (e.key === "Escape") setRenamingId(null); }}
                         onBlur={() => void saveRename()}
-                        className="w-full text-xs bg-slate-700 text-white rounded px-1 py-0.5 border border-blue-400 outline-none"
+                        className="w-full text-xs bg-slate-700 text-white rounded px-1 py-0.5 border border-indigo-400 outline-none"
                       />
                     </div>
                   ) : (
@@ -359,11 +366,13 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                       onClick={() => { setSelectedId(acc.id); setEditingEntry(null); }}
                       onDoubleClick={canViewReports ? () => startRename(acc) : undefined}
                       title={canViewReports ? "Double-click to rename" : undefined}
-                      className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${
-                        selectedId === acc.id ? "bg-blue-600 text-white" : "text-slate-300 hover:bg-slate-700"
+                      className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors border-l-4 ${
+                        selectedId === acc.id
+                          ? "bg-indigo-500/20 text-white border-indigo-400"
+                          : "text-slate-300 border-transparent hover:bg-white/5 hover:border-indigo-500/40"
                       }`}
                     >
-                      <span className="text-slate-400 mr-1">{acc.position}.</span>{acc.name}
+                      <span className="text-slate-500 mr-1">{acc.position}.</span>{acc.name}
                     </button>
                   )}
                 </div>
@@ -371,7 +380,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
               {/* canViewReports doubles as the OWNER flag here — renaming these shared
                   account books is OWNER-only, matching the backend's PATCH guard. */}
               {canViewReports && (
-                <div className="mt-auto px-3 py-2 text-[10px] text-slate-500">Double-click to rename</div>
+                <div className="mt-auto px-3 py-2 text-[10px] text-slate-500 border-t border-white/5">Double-click to rename</div>
               )}
             </aside>
 
@@ -395,10 +404,10 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                     type="date"
                     value={viewDate}
                     onChange={(e) => setViewDate(e.target.value)}
-                    className="border border-slate-300 rounded px-1.5 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    className="border border-slate-300 rounded px-1.5 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   />
                   <button type="button" onClick={resetForm}
-                    className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs"
+                    className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-sm shadow-indigo-900/30"
                     title="Clear form and start a new entry">
                     + New
                   </button>
@@ -486,7 +495,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                                 <PrinterIcon className="w-3.5 h-3.5" />
                               </button>
                               <button type="button" onClick={() => setEditingEntry(e)}
-                                className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-blue-200 text-slate-700 text-[10px]">Edit</button>
+                                className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-indigo-200 text-slate-700 text-[10px]">Edit</button>
                               <button type="button" onClick={() => void handleDelete(e.id)}
                                 className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-red-200 text-red-700 text-[10px]">Del</button>
                             </div>
@@ -495,7 +504,7 @@ export function LedgerScreen({ branchId, shiftId, businessDate, canViewReports =
                       ))}
                     </tbody>
                     <tfoot className="sticky bottom-0">
-                      <tr className="bg-slate-800 text-white">
+                      <tr className="text-white" style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)" }}>
                         <td colSpan={5} className="px-3 py-2 text-sm font-bold tracking-wide">TODAY</td>
                         <td className="px-3 py-2 text-right tabular-nums text-sm font-bold text-white">
                           {fmtPKR(viewEntries.reduce((s, e) => s + parseFloat(e.total), 0).toFixed(2))}
@@ -813,7 +822,7 @@ function InlineEntryForm({
 
   return (
     <div className="border-b border-emerald-200 bg-emerald-50/40 px-3 py-2 shrink-0">
-      <div className={`border-2 rounded-lg px-3 py-2 bg-white ${editing ? "border-blue-400" : "border-emerald-400"}`}>
+      <div className={`border-2 rounded-lg px-3 py-2 bg-white ${editing ? "border-indigo-400" : "border-emerald-400"}`}>
         {editing && (
           <div className="text-[10px] text-blue-600 font-semibold mb-1.5">
             ✎ Editing — {editing.entryDate} · {editing.productName}
@@ -1047,7 +1056,7 @@ function BulkAddNamesModal({
             Close
           </button>
           <button type="button" onClick={() => void handleSave()} disabled={busy || names.length === 0}
-            className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs disabled:opacity-50">
+            className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs disabled:opacity-50">
             {busy ? "Saving…" : `Save ${names.length || ""}`.trim()}
           </button>
         </div>
@@ -1361,7 +1370,7 @@ function EntryFormModal({
           <div className="col-span-2 flex justify-end gap-2 pt-1">
             <button type="button" onClick={onCancel} className="px-4 py-1.5 rounded border text-slate-600 hover:bg-slate-50 text-xs">Cancel</button>
             <button type="button" onClick={() => void handleSubmit()} disabled={busy}
-              className="px-5 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs disabled:opacity-50">
+              className="px-5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs disabled:opacity-50">
               {busy ? "Saving…" : editing ? "Update" : "Add Entry"}
             </button>
           </div>
@@ -1648,7 +1657,7 @@ function ReportModal({ branchId, accounts, onClose, onMinimize }: { branchId: st
             );
           })}
           <button type="button" onClick={() => void runReport()} disabled={loading}
-            className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50">
+            className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-50">
             {loading ? "Running…" : "Run Report"}
           </button>
         </div>
