@@ -362,9 +362,9 @@ export function PaymentScheduleModal({ branchId, onClose, standalone = false }: 
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <label className="text-xs text-violet-100">From</label>
-            <input type="date" className="input text-sm py-1 px-2 w-36" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <input type="date" className="input text-sm py-1 px-2 w-36 text-slate-800" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             <label className="text-xs text-violet-100">To</label>
-            <input type="date" className="input text-sm py-1 px-2 w-36" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            <input type="date" className="input text-sm py-1 px-2 w-36 text-slate-800" value={toDate} onChange={(e) => setToDate(e.target.value)} />
             <button onClick={() => { setScheduleName(""); setSavingSchedule(true); }} title="Save this date range as a named schedule"
               className="text-xs px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold border border-white/20 transition-colors">
               + Save Schedule

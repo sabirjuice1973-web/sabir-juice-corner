@@ -307,7 +307,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                   if (toDate && v > toDate) setToDate(v);
                   setOrders(null); setItems(null); setOrderItemsCache({});
                 }}
-                className="input text-sm py-1 px-2 w-36"
+                className="input text-sm py-1 px-2 w-36 text-slate-800"
               />
             </div>
             <div className="flex items-center gap-1">
@@ -321,7 +321,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                   if (fromDate && v < fromDate) setFromDate(v);
                   setOrders(null); setItems(null); setOrderItemsCache({});
                 }}
-                className="input text-sm py-1 px-2 w-36"
+                className="input text-sm py-1 px-2 w-36 text-slate-800"
               />
             </div>
           </div>
