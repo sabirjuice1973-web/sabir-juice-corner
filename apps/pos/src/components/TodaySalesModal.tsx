@@ -5,6 +5,7 @@ import { displayItemName, BOX_LABELS, BOX_COUNT, type BoxOrder } from "../pos/po
 import { printReceipt } from "../pos/receipt";
 import { PrinterIcon } from "./PrinterIcon";
 import { CashTodayModal } from "./CashTodayModal";
+import { LoadingRing } from "./LoadingRing";
 
 const LABELS_KEY = "sjc.boxLabels";
 function getBoxLabel(boxNumber: number): string {
@@ -510,7 +511,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                 </div>
               </div>
 
-              {loading && !orders && <div className="text-slate-400 text-sm">Loading…</div>}
+              {loading && !orders && <LoadingRing size={40} label="Loading orders…" />}
               {orders && visibleOrders.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
                   {isToday
@@ -572,7 +573,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
 
             return (
               <div>
-                {loading && !orders && <div className="text-slate-400 text-sm">Loading…</div>}
+                {loading && !orders && <LoadingRing size={40} label="Loading…" />}
                 {orders && activeBoxes.length === 0 && (
                   <div className="text-slate-400 text-sm text-center py-12">No paid orders yet.</div>
                 )}
@@ -622,7 +623,7 @@ export function TodaySalesModal({ shiftId, branchId, onClose }: { shiftId: strin
                   Showing {orderTypeFilter === "CASH" ? "cash" : "credit"} orders only
                 </div>
               )}
-              {loading && !items && <div className="text-slate-400 text-sm">Loading…</div>}
+              {loading && !items && <LoadingRing size={40} label="Loading items…" />}
               {items && items.length === 0 && (
                 <div className="text-slate-400 text-sm text-center py-12">
                   {isToday
@@ -744,7 +745,7 @@ function OrderRow({ order, expanded, items, onToggle, onPrint, printing }: {
       {expanded && (
         <tr>
           <td colSpan={10} className="bg-slate-50 px-4 py-2">
-            {!items && <div className="text-xs text-slate-400 py-2">Loading items…</div>}
+            {!items && <div className="flex items-center gap-2 text-xs text-slate-400 py-2"><LoadingRing size={14} showPercent={false} /> Loading items…</div>}
             {items && items.length === 0 && <div className="text-xs text-slate-400 py-2">No items.</div>}
             {items && items.length > 0 && (
               <table className="w-full text-xs">
