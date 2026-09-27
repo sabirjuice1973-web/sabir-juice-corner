@@ -243,7 +243,7 @@ function FloatingPanel({
         height: `${win.h * 100}%`,
         zIndex: win.z,
       }}
-      className="flex flex-col overflow-hidden border border-black"
+      className="flex flex-col overflow-hidden rounded-lg shadow-lg shadow-black/25"
       onPointerDown={handlePanelPointerDown}
     >
       {children}
